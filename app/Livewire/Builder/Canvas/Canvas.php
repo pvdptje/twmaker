@@ -21,7 +21,22 @@ class Canvas extends Component
 
     public function mount(Renderer $renderer): void
     {
-        $this->srcdoc = $renderer->renderPreviewDocument($this->document, $this->library());
+        if (is_string($this->page->html_source) && trim($this->page->html_source) !== '') {
+            $this->srcdoc = $renderer->renderPreviewHtml($this->page->html_source, $this->page->name);
+
+            return;
+        }
+
+        if (($this->document['schema_version'] ?? null) === 2) {
+            $this->srcdoc = $renderer->renderPreviewHtml(
+                '<main class="flex min-h-screen items-center justify-center bg-white px-6 text-neutral-500"><p>No generated HTML yet.</p></main>',
+                $this->page->name,
+            );
+
+            return;
+        }
+
+        $this->srcdoc = $renderer->renderPreviewDocument($this->document);
     }
 
     public function selectNode(?string $nodeId = null): void
@@ -37,19 +52,5 @@ class Canvas extends Component
     public function render(): View
     {
         return view()->file(__DIR__.'/canvas.blade.php');
-    }
-
-    private function library(): array
-    {
-        return $this->page->project
-            ->reusableElements()
-            ->get()
-            ->keyBy('id')
-            ->map(fn ($element): array => [
-                'id' => $element->id,
-                'type' => $element->type,
-                'default_props' => $element->default_props,
-            ])
-            ->all();
     }
 }

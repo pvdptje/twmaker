@@ -34,6 +34,8 @@ class ProjectDashboard extends Component
             'name' => $validated['name'],
             'prompt' => $validated['prompt'] ?: '',
             'document_json' => $this->emptyDocument($validated['name'], $validated['prompt'] ?: ''),
+            'html_source' => null,
+            'block_index' => [],
             'rendered_html_cache' => null,
             'status' => 'draft',
             'last_generation_summary' => null,
@@ -54,7 +56,7 @@ class ProjectDashboard extends Component
         $now = now('UTC')->format('Y-m-d\TH:i:s\Z');
 
         return [
-            'schema_version' => 1,
+            'schema_version' => 2,
             'page_metadata' => [
                 'title' => $title,
                 'page_type' => 'landing',
@@ -65,28 +67,8 @@ class ProjectDashboard extends Component
                 'created_at' => $now,
                 'updated_at' => $now,
             ],
-            'design_system' => [
-                'colors' => [
-                    'primary' => 'cyan',
-                    'accent' => 'emerald',
-                    'neutral' => 'neutral',
-                    'background' => 'white',
-                    'foreground' => 'neutral-950',
-                ],
-                'typography' => [
-                    'heading_family' => 'sans',
-                    'body_family' => 'sans',
-                    'scale' => 'comfortable',
-                ],
-                'spacing' => [
-                    'density' => 'comfortable',
-                    'section_padding' => 'md',
-                ],
-                'radius' => 'md',
-                'tone' => 'professional',
-                'dark_mode' => false,
-            ],
-            'document_tree' => [],
+            'html_source' => '',
+            'block_index' => [],
             'generation_history' => [],
         ];
     }

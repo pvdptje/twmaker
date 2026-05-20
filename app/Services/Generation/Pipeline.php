@@ -3,26 +3,24 @@
 namespace App\Services\Generation;
 
 use App\Models\Page;
-use App\Services\Generation\Stages\Assembler;
-use App\Services\Generation\Stages\ElementResolver;
+use App\Services\Generation\Stages\HtmlMarker;
 use App\Services\Generation\Stages\Planner;
-use App\Services\Generation\Stages\Repair;
 use App\Services\Generation\Stages\SectionGenerator;
-use App\Services\Generation\Stages\Validator;
-use App\Services\Schema\SchemaValidationException;
+use App\Services\Html\BlockIndexer;
+use App\Services\Html\HtmlDocumentValidator;
+use App\Services\Rendering\Renderer;
 use Throwable;
 
 class Pipeline
 {
     public function __construct(
-        private readonly ProjectLibraryLoader $libraries,
         private readonly GenerationEventRecorder $events,
         private readonly Planner $planner,
         private readonly SectionGenerator $sections,
-        private readonly ElementResolver $elementResolver,
-        private readonly Assembler $assembler,
-        private readonly Validator $validator,
-        private readonly Repair $repair,
+        private readonly HtmlMarker $htmlMarker,
+        private readonly HtmlDocumentValidator $htmlValidator,
+        private readonly BlockIndexer $blockIndexer,
+        private readonly Renderer $renderer,
     ) {}
 
     public function generate(Page $page): array
@@ -31,22 +29,31 @@ class Pipeline
         $this->events->record($page, 'stage_started', 'planner', 'info', 'Planning page structure.');
 
         try {
-            $libraryDigest = $this->libraries->digest($page->project);
-            $library = $this->libraries->full($page->project);
-
-            $plan = $this->planner->plan($page, $libraryDigest);
+            $plan = $this->planner->plan($page);
             $this->events->record($page, 'stage_completed', 'planner', 'success', 'Planner produced a page outline.', payload: $plan);
 
-            $this->events->record($page, 'stage_started', 'section_generator', 'info', 'Generating structured document.');
-            $document = $this->sections->generate($page, $plan, $libraryDigest);
-            $this->events->record($page, 'stage_completed', 'section_generator', 'success', 'Document draft generated.');
+            $this->events->record($page, 'stage_started', 'section_generator', 'info', 'Generating raw Tailwind HTML.');
+            $artifact = $this->sections->generate($page, $plan);
+            $this->events->record($page, 'stage_completed', 'section_generator', 'success', 'Raw HTML draft generated.');
 
-            $document = $this->assembler->assemble($document);
-            $this->elementResolver->assertReferencesResolve($document, $library);
-            $document = $this->validateWithRepair($page, $document);
+            $this->events->record($page, 'stage_started', 'html_marker', 'info', 'Adding editable block markers.');
+            $marked = $this->htmlMarker->mark($page, $plan, $artifact);
+            $this->events->record($page, 'stage_completed', 'html_marker', 'success', 'Editable block markers added.');
+
+            $htmlSource = $this->htmlSource($marked, $artifact);
+            $this->events->record($page, 'stage_started', 'validation', 'info', 'Validating marked HTML.');
+            $this->htmlValidator->assertValid($htmlSource);
+            $blockIndex = $this->blockIndexer->index($htmlSource);
+            $this->events->record($page, 'stage_completed', 'validation', 'success', 'Marked HTML is valid.', payload: [
+                'blocks' => count($blockIndex),
+            ]);
+            $document = $this->htmlArtifact($artifact, $htmlSource, $blockIndex);
 
             $page->forceFill([
                 'document_json' => $document,
+                'html_source' => $htmlSource,
+                'block_index' => $blockIndex,
+                'rendered_html_cache' => $this->renderer->renderPreviewHtml($htmlSource, $artifact['title'] ?? $page->name),
                 'status' => 'valid',
                 'last_generation_summary' => $document['page_metadata']['prompt_summary'] ?? null,
             ])->save();
@@ -62,27 +69,36 @@ class Pipeline
         }
     }
 
-    private function validateWithRepair(Page $page, array $document): array
+    private function htmlArtifact(array $artifact, string $htmlSource, array $blockIndex): array
     {
-        try {
-            $this->validator->assertValidDocument($document);
+        $now = now('UTC')->format('Y-m-d\TH:i:s\Z');
 
-            return $document;
-        } catch (SchemaValidationException $exception) {
-            $this->events->record(
-                $page,
-                'validation_failed',
-                'validation',
-                'warning',
-                'Document failed validation; attempting deterministic repair.',
-                payload: ['errors' => $exception->errors],
-            );
+        return [
+            'schema_version' => 2,
+            'page_metadata' => [
+                'title' => (string) ($artifact['title'] ?? 'Generated page'),
+                'page_type' => (string) ($artifact['page_type'] ?? 'generic'),
+                'goal' => (string) ($artifact['goal'] ?? 'Generated from prompt.'),
+                'audience' => (string) ($artifact['audience'] ?? 'Visitors'),
+                'prompt_summary' => (string) ($artifact['prompt_summary'] ?? ''),
+                'status' => 'valid',
+                'created_at' => $now,
+                'updated_at' => $now,
+            ],
+            'html_source' => $htmlSource,
+            'block_index' => $blockIndex,
+            'generation_history' => [],
+        ];
+    }
+
+    private function htmlSource(array $marked, array $artifact): string
+    {
+        foreach ([$marked['html_source'] ?? null, $artifact['html_source'] ?? null, $artifact['raw_html'] ?? null] as $html) {
+            if (is_string($html) && trim($html) !== '') {
+                return $html;
+            }
         }
 
-        $repaired = $this->repair->repairDocument($document, $exception->errors);
-        $this->events->record($page, 'repair_attempt', 'repair', 'info', 'Applied deterministic document repair.');
-        $this->validator->assertValidDocument($repaired);
-
-        return $repaired;
+        return '';
     }
 }

@@ -51,13 +51,23 @@ in_progress
 - [2026-05-20] M4.schema-fallback-hardening: unknown node/element prop schemas now use a valid boolean false schema so Opis reports validation failure instead of throwing a schema-engine exception.
 - [2026-05-20] M4.assembler-normalization: assembler now assigns server IDs/envelopes, normalizes common section/node aliases, and reorders/fills supported section children before validation.
 - [2026-05-20] M4.preview-cdn-fallback: preview iframe now loads Tailwind CDN alongside `preview.css` so generated/unknown utility classes can render during local preview.
+- [2026-05-20] M4.generation-quality-baseline: seeded default reusable elements for fresh generation, expanded assembler support to all V1 section types, added richer section layouts, and strengthened generation prompts.
+- [2026-05-20] M4.footer-column-repair: assembler and deterministic repair now derive footer/stat column counts from actual element instances, fixing valid integer count mismatches.
+- [2026-05-20] M4.marked-html-pivot: updated `plan.md` to R3 and refactored generation to persist marked Tailwind HTML as source of truth with a derived block index.
+- [2026-05-20] M4.split-html-generation: split generation into raw HTML design and marker wrapping LLM stages, with additional stream events for visible progress.
+- [2026-05-20] M4.live-preview-refresh: workspace now polls page state and remounts the canvas/section tree when generated HTML or block index changes.
+- [2026-05-20] M4.element-library-cleanup: removed active element-library UI/runtime plumbing, deleted unused library loader/seeder/resolver/model paths, and updated `plan.md` to treat reusable elements as legacy JSON compatibility.
+- [2026-05-20] M4.element-library-cleanup-verification: `vendor\bin\pint.bat --dirty`, `php artisan test --filter=BuilderShellTest`, `php artisan test --filter=PipelineTest`, `php artisan test`, `npm.cmd run test:js`, and `npm.cmd run build` pass.
+- [2026-05-20] M4.sidebar-scroll-selection: sidebar-driven node selection now asks the preview iframe to smooth-scroll the selected block into view.
+- [2026-05-20] M4.selection-sync-fix: centralized selection sync through Workspace and replaced brittle section-tree parent calls with `node-selected` events so inspector and preview update together.
+- [2026-05-20] M4.selection-postmessage-fix: forced preview sync hook payloads to use a real boolean so Livewire morph DOM elements are never sent through `postMessage`.
 
 ## In Progress
-- None.
+- M5 prep: refactor targeted editing around marked block extraction and replacement.
 - Started: 2026-05-20
 - Last activity: 2026-05-20
-- Files touched: app/Services/Rendering/Renderer.php, tests/Unit/Rendering/RendererTest.php, progress.md
-- Current state: Preview iframe loads `/preview.css` plus Tailwind CDN. This is intentionally preview-only and does not change export behavior.
+- Files touched: app/Livewire/Builder/Canvas/Canvas.php, app/Livewire/Builder/Workspace/Workspace.php, app/Livewire/Builder/Workspace/workspace.blade.php, app/Livewire/Builder/LeftSidebar/LeftSidebar.php, app/Livewire/Builder/LeftSidebar/left-sidebar.blade.php, app/Livewire/Projects/ProjectDashboard/ProjectDashboard.php, app/Models/Project.php, app/Services/Generation/Pipeline.php, app/Services/Generation/Stages/Planner.php, app/Services/Generation/Stages/SectionGenerator.php, app/Services/Generation/Stages/HtmlMarker.php, resources/prompts/planner.system.md, resources/prompts/section_generator.system.md, plan.md, tests/Feature/Generation/PipelineTest.php, tests/Feature/BuilderShellTest.php, progress.md
+- Current state: Element-library cleanup is verified. Next implementation target is marked-block targeted editing.
 
 ## Blocked
 - None.
@@ -93,9 +103,15 @@ in_progress
 - Use JSON Schema boolean `false` for impossible fallback schemas. Do not use invalid empty `not` schemas with Opis.
 - Assembler owns server-side document hygiene before validation: IDs, locks, metadata, common prop defaults, alias normalization, and child ordering for supported sections.
 - Tailwind CDN is allowed in iframe preview as a local generation fallback. Keep export deterministic and do not rely on CDN for exported HTML.
+- Fresh generation should seed project-level defaults for reusable element types instead of forcing the planner to avoid element-instance sections. This preserves the V1 JSON model while letting the LLM compose richer pages immediately.
+- Dedicated Blade section templates are the preferred place for visual layout quality. The LLM should choose semantic sections and props; rendering should make those sections feel designed without requiring raw Tailwind class output in JSON.
+- Count-bearing section props such as footer/stat columns should be derived from normalized children when possible. A syntactically valid LLM integer can still be semantically wrong.
+- R3 pivot accepted by the user: marked Tailwind HTML is now the creative source of truth, and JSON is a derived block index for builder selection and targeted replacement.
+- Marker insertion is a separate LLM stage after freeform HTML generation. This preserves creative freedom and makes marker/validation failures easier to diagnose and repair.
+- Workspace owns a lightweight page signature (`status`, `updated_at`, `html_source`, `block_index`) and remounts nested preview components only when that signature changes.
 
 ## Spec Change Proposals
-- None.
+- None. Previous marked-HTML pivot proposal was approved by the user and applied to `plan.md` as R3.
 
 ## Files Created Or Modified This Session
 - `app/Services/Rendering/Renderer.php`: created: document, preview, section, node, and element rendering service.
@@ -178,11 +194,57 @@ in_progress
 - `tests/Feature/Generation/PipelineTest.php`: modified: covers conceptual LLM JSON assembly before validation.
 - `app/Services/Rendering/Renderer.php`: modified: injects Tailwind CDN into preview iframe document.
 - `tests/Unit/Rendering/RendererTest.php`: modified: asserts Tailwind CDN is present in preview document.
+- `app/Services/Generation/DefaultProjectLibrarySeeder.php`: created: seeds fresh projects with default reusable element definitions needed for richer section plans.
+- `app/Services/Generation/Pipeline.php`: modified: ensures default reusable elements exist before planner and section generation stages run.
+- `app/Services/Generation/Stages/Assembler.php`: modified: supports all V1 section types, additional section aliases, and child normalization for richer sections.
+- `app/Services/Rendering/TailwindClassMap.php`: modified: renders headers with compact vertical padding.
+- `resources/prompts/planner.system.md`: modified: encourages richer section planning when matching library elements exist.
+- `resources/prompts/section_generator.system.md`: modified: instructs the LLM to use visual hierarchy, varied backgrounds, section props, and element overrides.
+- `resources/tailwind/safelist.txt`: modified: added utilities used by richer section templates.
+- `public/preview.css`: modified: rebuilt from the updated safelist.
+- `resources/views/render/sections/header.blade.php`: modified: added header-specific layout.
+- `resources/views/render/sections/hero.blade.php`: modified: added centered and split hero layouts.
+- `resources/views/render/sections/feature_grid.blade.php`: modified: added intro plus responsive grid layout.
+- `resources/views/render/sections/feature_split.blade.php`: modified: added split text/visual layout.
+- `resources/views/render/sections/stats_band.blade.php`: modified: added responsive stats grid layout.
+- `resources/views/render/sections/testimonial_grid.blade.php`: modified: added responsive testimonial grid layout.
+- `resources/views/render/sections/faq.blade.php`: modified: added FAQ card grid layout.
+- `resources/views/render/sections/cta_band.blade.php`: modified: added CTA panel layout.
+- `resources/views/render/sections/footer.blade.php`: modified: added footer-specific layout.
+- `tests/Feature/Generation/PipelineTest.php`: modified: verifies generation seeds default reusable elements.
+- `tests/Unit/Rendering/RendererTest.php`: modified: covers richer section template rendering.
+- `app/Services/Generation/Stages/Assembler.php`: modified: derives footer/stat columns from actual element instance children.
+- `app/Services/Generation/Stages/Repair.php`: modified: repairs valid-but-wrong footer/stat column counts by counting element instances first.
+- `tests/Feature/Generation/PipelineTest.php`: modified: covers footer column assembly and deterministic repair for mismatched integer columns.
+- `plan.md`: modified: R3 marked-HTML architecture, persistence, preview, and M4/M5 acceptance updates.
+- `database/migrations/2026_05_20_000006_add_marked_html_columns_to_pages_table.php`: created: adds `html_source` and `block_index` to pages.
+- `app/Models/Page.php`: modified: fills and casts R3 page fields.
+- `app/Services/Html/BlockIndexer.php`: created: derives editable block index from marked HTML comments.
+- `app/Services/Html/HtmlDocumentValidator.php`: created: validates marker balance, IDs, and basic HTML safety.
+- `app/Services/Html/HtmlValidationException.php`: created: carries marked HTML validation errors.
+- `app/Services/Generation/Pipeline.php`: modified: saves marked HTML, derives block index, and stores schema version 2 document metadata.
+- `app/Services/Generation/Stages/SectionGenerator.php`: modified: returns marked HTML artifact schema instead of legacy document JSON.
+- `app/Services/Rendering/Renderer.php`: modified: wraps marked HTML in preview iframe document.
+- `app/Livewire/Projects/ProjectDashboard/ProjectDashboard.php`: modified: creates empty R3 pages.
+- `app/Livewire/Builder/Canvas/Canvas.php`: modified: renders `html_source` directly when available.
+- `app/Livewire/Builder/Canvas/canvas.blade.php`: modified: section count supports `block_index`.
+- `app/Livewire/Builder/SidePanels/SectionTree/section-tree.blade.php`: modified: lists derived blocks before legacy JSON sections.
+- `resources/prompts/planner.system.md`: modified: plans marked HTML pages, not constrained JSON trees.
+- `resources/prompts/section_generator.system.md`: modified: instructs the LLM to produce safe marked Tailwind HTML.
+- `app/Services/Generation/Stages/HtmlMarker.php`: created: wraps raw generated HTML with editable block markers in a separate LLM pass.
+- `resources/prompts/section_generator.system.md`: modified: raw creative HTML stage no longer adds markers.
+- `resources/prompts/html_marker.system.md`: created: marker wrapping prompt for converting raw HTML into editable marked HTML.
+- `app/Services/Generation/Pipeline.php`: modified: records raw HTML, marker, and validation stage events so long generations show more progress.
+- `tests/Feature/Generation/PipelineTest.php`: modified: covers marked HTML persistence, freeform footer acceptance, and safety rejection.
+- `app/Livewire/Builder/Workspace/Workspace.php`: modified: polls the page row, updates generated state, and tracks preview signatures.
+- `app/Livewire/Builder/Workspace/workspace.blade.php`: modified: adds polling and keyed child components so generated HTML refreshes without a hard browser refresh.
+- `tests/Feature/BuilderShellTest.php`: modified: covers polling generated HTML state into the workspace.
+- `tests/Feature/BuilderShellTest.php`: modified: expects empty R3 page shape on page creation.
 
 ## Next Up (Top 3)
-1. M4: seed default project reusable elements or otherwise generate required element definitions before planning element-heavy sections.
-2. M4: wire Echo/Reverb subscription for the stream panel and decide whether a separate Livewire `wire:stream` debug path is useful for sync-only local generation.
-3. M4: implement LLM repair retry flow and persist generation history entries into document JSON.
+1. M4: manually browser-test live preview refresh after generation completes without a hard refresh.
+2. M4: decide whether to implement true queued job chaining or provider streaming for progress during a single long LLM call.
+3. M5: refactor targeted edit to extract one marked block, prompt for replacement HTML, validate it, and replace only that block.
 
 ## Notes
 - Every agent: read `plan.md` Sec. 0.3 (Rules Of Engagement) before touching anything.
@@ -204,3 +266,12 @@ in_progress
 - M4 schema fallback hardening verification passed: `vendor\bin\pint.bat`, `php artisan test` (96 tests, 132 assertions), `npm.cmd run test:js`, and `npm.cmd run build`.
 - M4 assembler normalization verification passed: `vendor\bin\pint.bat`, `php artisan test` (97 tests, 137 assertions), `npm.cmd run test:js`, and `npm.cmd run build`.
 - M4 preview CDN fallback verification passed: `vendor\bin\pint.bat`, `php artisan test` (97 tests, 138 assertions), `npm.cmd run test:js`, and `npm.cmd run build`.
+- M4 generation quality baseline verification passed: `vendor\bin\pint.bat --dirty`, `php artisan test` (98 tests, 144 assertions), `npm.cmd run test:js`, `npm.cmd run build:preview-css`, and `npm.cmd run build`.
+- M4 footer column repair verification passed: `vendor\bin\pint.bat --dirty`, `php artisan test --filter=PipelineTest`, `php artisan test` (99 tests, 145 assertions), `npm.cmd run test:js`, and `npm.cmd run build`.
+- M4 marked HTML pivot verification passed: `vendor\bin\pint.bat --dirty`, `php artisan test --filter=PipelineTest`, `php artisan test --filter=BuilderShellTest`, `php artisan test` (98 tests, 142 assertions), `npm.cmd run test:js`, and `npm.cmd run build`.
+- M4 split HTML generation verification passed: `vendor\bin\pint.bat --dirty`, `php artisan test --filter=PipelineTest`, `php artisan test` (98 tests, 142 assertions), `npm.cmd run test:js`, and `npm.cmd run build`.
+- M4 live preview refresh verification passed: `vendor\bin\pint.bat --dirty`, `php artisan test --filter=BuilderShellTest`, `php artisan test` (99 tests, 146 assertions), `npm.cmd run test:js`, and `npm.cmd run build`.
+- M4 element-library cleanup verification passed: `vendor\bin\pint.bat --dirty`, `php artisan test --filter=BuilderShellTest`, `php artisan test --filter=PipelineTest`, `php artisan test` (99 tests, 146 assertions), `npm.cmd run test:js`, and `npm.cmd run build`.
+- M4 sidebar scroll selection verification passed: `npm.cmd run test:js`, `php artisan test --filter=BuilderShellTest`, and `npm.cmd run build`.
+- M4 selection sync fix verification passed: `php artisan test --filter=BuilderShellTest`, `npm.cmd run test:js`, and `npm.cmd run build`.
+- M4 selection postMessage fix verification passed: `php artisan test --filter=BuilderShellTest`, `npm.cmd run test:js`, and `npm.cmd run build`.

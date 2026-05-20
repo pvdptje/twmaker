@@ -18,6 +18,8 @@ class Page extends Model
         'name',
         'prompt',
         'document_json',
+        'html_source',
+        'block_index',
         'rendered_html_cache',
         'status',
         'last_generation_summary',
@@ -27,6 +29,7 @@ class Page extends Model
     {
         return [
             'document_json' => 'array',
+            'block_index' => 'array',
         ];
     }
 

@@ -52,6 +52,28 @@ class Renderer
 HTML;
     }
 
+    public function renderPreviewHtml(string $htmlSource, string $title = 'Preview'): string
+    {
+        $title = e($title);
+
+        return <<<HTML
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{$title}</title>
+<link rel="stylesheet" href="/preview.css">
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body>
+{$htmlSource}
+<script src="/preview-bridge.js"></script>
+</body>
+</html>
+HTML;
+    }
+
     public function renderSection(array $section, array $library): string
     {
         return $this->views->make('render.sections.'.$section['type'], [

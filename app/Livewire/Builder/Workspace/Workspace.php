@@ -16,9 +16,9 @@ class Workspace extends Component
 
     public array $document = [];
 
-    public array $library = [];
-
     public string $generation_status = 'idle';
+
+    public string $preview_signature = '';
 
     public Project $project;
 
@@ -32,22 +32,14 @@ class Workspace extends Component
         $this->page = $page;
         $this->page_id = $page->id;
         $this->document = $page->document_json ?? [];
-        $this->library = $project->reusableElements()
-            ->get()
-            ->keyBy('id')
-            ->map(fn ($element): array => [
-                'id' => $element->id,
-                'name' => $element->name,
-                'type' => $element->type,
-                'default_props' => $element->default_props,
-            ])
-            ->all();
+        $this->preview_signature = $this->pageSignature($page);
     }
 
     #[On('node-selected')]
     public function selectNode(?string $nodeId = null): void
     {
         $this->selected_node_id = $nodeId;
+        $this->dispatch('preview-selection-changed', nodeId: $nodeId, scrollIntoView: true);
     }
 
     #[On('generation-started')]
@@ -67,6 +59,7 @@ class Workspace extends Component
 
         $this->page->refresh();
         $this->document = $this->page->document_json ?? $this->document;
+        $this->preview_signature = $this->pageSignature($this->page);
         $this->generation_status = match ($status) {
             'generating' => 'running',
             'valid' => 'valid',
@@ -75,10 +68,38 @@ class Workspace extends Component
         };
     }
 
+    public function refreshFromPage(): void
+    {
+        $this->page->refresh();
+
+        $signature = $this->pageSignature($this->page);
+        if ($signature !== $this->preview_signature) {
+            $this->document = $this->page->document_json ?? $this->document;
+            $this->preview_signature = $signature;
+        }
+
+        $this->generation_status = match ($this->page->status) {
+            'generating' => 'running',
+            'valid' => 'valid',
+            'error' => 'error',
+            default => $this->generation_status,
+        };
+    }
+
     public function render(): View
     {
         return view()->file(__DIR__.'/workspace.blade.php')->layout('components.layouts.app', [
             'title' => $this->page->name,
         ]);
+    }
+
+    private function pageSignature(Page $page): string
+    {
+        return md5(implode('|', [
+            $page->status,
+            (string) $page->updated_at,
+            md5((string) ($page->html_source ?? '')),
+            md5(json_encode($page->block_index ?? [], JSON_THROW_ON_ERROR)),
+        ]));
     }
 }

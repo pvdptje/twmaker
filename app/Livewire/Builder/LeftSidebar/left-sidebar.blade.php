@@ -7,7 +7,6 @@
     <div class="min-h-0 flex-1 overflow-y-auto">
         <livewire:builder.side-panels.project-switcher.project-switcher :project="$project" />
         <livewire:builder.side-panels.section-tree.section-tree :document="$document" />
-        <livewire:builder.side-panels.element-library-panel.element-library-panel :library="$library" />
     </div>
 
     <div class="border-t border-neutral-800">

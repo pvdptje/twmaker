@@ -2,7 +2,7 @@
 
 > Status: Locked. This document is the single source of truth for V1.
 > Companion file: `progress.md` (mutable session log; see Sec. 22 for protocol).
-> Schema version: 1.
+> Schema version: 2.
 > Encoding: pure ASCII. Do not introduce non-ASCII characters when editing.
 
 ---
@@ -40,6 +40,7 @@ Any developer or AI agent picking up the project. This document assumes no prior
 ### 0.5 Revision History
 - R1 (initial lock): canonical spec drafted.
 - R2: ID DB columns widened from string(26) to string(32) to fit typed-prefix ULIDs. Element library demoted from embedded document field to single canonical DB table (`reusable_elements`); orchestrator loads it per call. All visible section text moved from props to child nodes (Content Principle, Sec. 5.1.1). Full file normalized to ASCII.
+- R3: architecture pivot approved. Marked Tailwind HTML is now the creative source of truth. JSON is a derived block index used for selection, inspection, and targeted replacement. The previous structured JSON document schema remains legacy compatibility during migration.
 
 ---
 
@@ -55,7 +56,7 @@ Not Figma. Not Webflow. Not a CMS. Not a multi-tenant SaaS. Not an image generat
 - A user can create a project and generate a full landing page draft from a prompt.
 - A user can inspect the generated structure as editable sections and elements.
 - A user can select one section or element and request a focused edit without rewriting the entire page.
-- A user can save useful generated elements into a local reusable library and reuse them later.
+- A user can save useful generated HTML blocks into snippets later; this is deferred until after marked-block editing works.
 - A user can always see generation progress and streaming output while the system is working.
 - A user can export the current page as plain HTML + Tailwind.
 
@@ -76,16 +77,16 @@ Not Figma. Not Webflow. Not a CMS. Not a multi-tenant SaaS. Not an image generat
 | # | Decision | Rationale |
 |---|----------|-----------|
 | D1 | Stack: Laravel 13, Blade, Tailwind v4, Livewire 4 multi-file components | Matches team familiarity; Livewire 4 multi-file gives clean component separation. |
-| D2 | JSON is the source of truth; HTML is a render artifact | Enables stable, scoped editing. |
+| D2 | Marked Tailwind HTML is the source of truth; JSON is a derived block index | Lets the LLM use its full HTML/Tailwind design ability while preserving selectable/editable regions. |
 | D3 | Hybrid document model: semantic sections at top, lower-level nodes inside | Planner stays predictable, editor stays granular. |
-| D4 | Reusable elements are project-scoped | Avoids global complexity in V1. |
+| D4 | Reusable snippet/library work is deferred behind marked-block editing | The immediate product value is full-quality generated Tailwind HTML plus reliable block replacement. |
 | D5 | Generation activity is always visible via a stream panel | Trust and diagnosability. |
-| D6 | One-way rendering (JSON -> HTML) | No HTML parser maintenance burden. |
+| D6 | One-way indexing (marked HTML -> block index) | Avoids a full HTML builder schema while keeping stable block extraction/replacement. |
 | D7 | Hybrid persistence: relational rows + JSON column for document | Queryable + flexible. |
 | D8 | Build behind a provider interface; first impl Anthropic | Future-proof. |
 | D9 | No raw JSON editing in main UI | UX clarity; reduces malformed-document risk. |
-| D10 | Tailwind class output is constrained to a known safelist | Enables predictable preview CSS + render stability. |
-| D11 | Reusable element library has one canonical store (DB table); documents reference by ID only | Removes dual-source-of-truth drift. |
+| D10 | Generated HTML is safety-validated; preview may use Tailwind CDN during local generation | Export can inline compiled CSS later, but generation should not fail because the model used a valid Tailwind utility outside a narrow safelist. |
+| D11 | The old reusable element library is legacy JSON compatibility only during the R3 migration | New generation must not depend on `reusable_elements`, element instances, or library seeding. |
 | D12 | All visible content lives in child nodes, not section props | Every visible text is selectable and editable. |
 
 ---
@@ -102,7 +103,94 @@ Not Figma. Not Webflow. Not a CMS. Not a multi-tenant SaaS. Not an image generat
 
 ---
 
-## 4. Document JSON Schema - Top Level
+## 4. Marked HTML Document Model - Top Level
+
+### 4.0 R3 Architecture Pivot
+V1 now treats generated Tailwind HTML as the page source of truth. The LLM is allowed to produce real HTML and Tailwind utility classes directly, as long as editable regions are marked with machine-readable comments and data attributes.
+
+The application derives a lightweight JSON `block_index` from the HTML. This index is not the creative source. It exists so the builder can list sections, sync canvas selections, extract one block for targeted editing, and replace that block after an edit.
+
+Legacy note: the structured JSON schema in Sec. 4.1 through Sec. 9 is retained as compatibility reference during migration. New generation and targeted editing should use Sec. 4.0.1 through Sec. 4.0.6.
+
+### 4.0.1 Page Artifact Shape
+```ts
+type HtmlPageArtifact = {
+  schema_version: 2;
+  page_metadata: PageMetadata;
+  html_source: string;                    // marked Tailwind HTML body content
+  block_index: BlockIndexEntry[];         // derived from html_source
+  generation_history: GenerationHistoryEntry[];
+};
+```
+
+### 4.0.2 Required Block Markers
+Every top-level editable region MUST be wrapped in balanced comments:
+
+```html
+<!-- tw:block id="block_01h..." type="hero" label="Hero" -->
+<section data-node-id="block_01h..." data-node-type="hero" data-tw-block="block_01h..." class="...">
+  ...
+</section>
+<!-- /tw:block -->
+```
+
+Rules:
+- `id` must be unique in the page.
+- The first element inside a block must include `data-node-id`, `data-node-type`, and `data-tw-block` matching the block marker.
+- Blocks may contain arbitrary safe HTML and Tailwind classes.
+- Blocks may contain nested node markers for granular selection, but V1 targeted edit only requires block-level replacement.
+
+### 4.0.3 Optional Node Markers
+Important editable text or controls MAY be wrapped as nodes:
+
+```html
+<!-- tw:node id="node_01h..." role="headline" -->
+<h1 data-node-id="node_01h..." data-node-type="headline" class="...">...</h1>
+<!-- /tw:node -->
+```
+
+Node markers are useful for inspection and future granular editing. If absent, block-level editing still works.
+
+### 4.0.4 BlockIndexEntry
+```ts
+type BlockIndexEntry = {
+  id: string;
+  type: string;                           // hero, feature_grid, footer, custom, etc.
+  label: string;
+  start_offset: number;
+  end_offset: number;
+  html: string;                           // exact marked block substring
+  summary: string | null;
+};
+```
+
+Offsets are derived and may be recalculated any time `html_source` changes.
+
+### 4.0.5 HTML Validation
+Validation MUST reject:
+- Missing or unbalanced `tw:block` comments.
+- Duplicate block IDs.
+- A block marker whose first element does not expose the same `data-node-id`.
+- `<script>` tags.
+- Inline event handler attributes such as `onclick`, `onload`, or any attribute beginning with `on`.
+- `javascript:` URLs.
+
+Validation SHOULD NOT reject:
+- Unknown Tailwind utility classes.
+- Custom section types.
+- Creative layout choices.
+- Different numbers of footer columns, cards, links, or visual elements.
+
+### 4.0.6 Targeted Replacement Contract
+For targeted editing, the orchestrator extracts the selected marked block and sends:
+- The user instruction.
+- The full page outline from `block_index`.
+- The selected block HTML.
+- Relevant page metadata.
+
+The LLM returns exactly one marked block. The replacement is accepted if it passes Sec. 4.0.5 and either preserves the selected block ID or explicitly declares a new ID with no collision. The builder replaces the old marked block substring in `html_source`, then regenerates `block_index`.
+
+## 4A. Legacy Document JSON Schema - Top Level
 
 ### 4.1 Top-Level Shape
 ```ts
@@ -114,7 +202,7 @@ type Document = {
   generation_history: GenerationHistoryEntry[];
 };
 ```
-Note: the reusable element library is NOT embedded in the document. Element instances reference definitions by ID (`library_id`), and the orchestrator loads the project's library from the `reusable_elements` DB table at generation, edit, render, and export time. See Sec. 4.5 and Sec. 15.3.
+Legacy note: schema version 1 may contain element instances that reference reusable element definitions by ID. This path is retained only so older handcrafted documents and renderer tests can keep working while R3 marked HTML replaces JSON generation.
 
 ### 4.2 Identifier Convention
 All IDs are typed-prefix ULIDs. A ULID is 26 characters; the prefix adds 4 or 5 more, giving a maximum total length of 31 characters. All DB columns that store IDs are `string(32)` to accommodate this with a small headroom.
@@ -180,22 +268,19 @@ green | emerald | teal | cyan | sky | blue | indigo | violet | purple | fuchsia 
 pink | rose
 ```
 
-### 4.5 Element Library Resolution
-The library is canonical in the `reusable_elements` DB table (Sec. 15.3). Pipelines and renderers receive a `ProjectLibrary` value object at runtime:
+### 4.5 Legacy Element Library Resolution
+The library in `reusable_elements` is legacy schema-version-1 compatibility. R3 generation, preview, targeted editing, and export should use `html_source` plus `block_index` and should not load or seed reusable elements.
 
 ```ts
 type ProjectLibrary = Record<string /* elem_... */, ElementDefinition>;
 ```
 
-Where the library is needed:
-- Planner (Sec. 10.2 Stage 1): receives a slim digest (name + type + summary of default_props) so it can suggest reuse.
-- Section generator (Sec. 10.2 Stage 2): receives the same slim digest.
-- Element resolver (Sec. 10.2 Stage 3): verifies every instance's `library_id` exists in the library; pure code.
-- Renderer (Sec. 13): loads full definitions to render instances.
-- Targeted edit (Sec. 10.3): same as above.
-- Export (Sec. 19): same as renderer.
+Where the library may still appear:
+- Legacy JSON renderer tests.
+- Legacy schema validation tests.
+- Existing schema-version-1 documents created before the R3 pivot.
 
-Consequence: when a user edits a definition in the library, all instances on every page in the project pick up the new `default_props` on next render. Instance-level `overrides` persist independently and continue to win field-by-field. Promoting overrides into a definition is a deliberate action (Sec. 7.2).
+Consequence: new pipeline code must not introduce `element_instance` nodes or call a project-library loader. Any future reusable-snippet feature should store and replace marked HTML blocks, not revive library-bound JSON rendering.
 
 ### 4.6 DocumentTree
 An ordered array of `SectionNode` objects. Section order is the rendered order. Sections are defined in Sec. 5.
@@ -775,11 +860,9 @@ Stage and kind mapping is enforced in the orchestrator (one-to-many).
 ```ts
 type PipelineStage =
   | "planner"
-  | "section_generation"
-  | "element_resolution"
-  | "assembly"
+  | "section_generator"
+  | "html_marker"
   | "validation"
-  | "repair"
   | "render"
   | "targeted_edit";
 ```
@@ -787,17 +870,19 @@ type PipelineStage =
 ### 10.2 Stage Contracts
 
 #### Stage 1 - Planner
-- Input: user prompt, optional preferences (page_type hint, audience hint, tone hint), and the project library digest (loaded from DB; names + types + a one-line summary of default_props).
+- Input: user prompt and optional preferences (page_type hint, audience hint, tone hint).
 - Output (must match this schema, enforced via tool_use):
   ```ts
   {
-    page_metadata: PageMetadata;          // status="generating"
-    design_system: DesignSystem;
-    section_briefs: Array<{
-      section_type: SectionType;
-      intent: string;                     // <= 300 chars
+    title: string;
+    page_type: string;
+    goal: string;
+    audience: string;
+    prompt_summary: string;
+    sections: Array<{
+      type: string;
+      intent: string;
       key_content_hints: string[];        // bullet hints for the generator
-      suggested_element_uses: string[];   // names of library elements to consider
     }>;
   }
   ```
@@ -805,60 +890,46 @@ type PipelineStage =
 - Failure mode: if the planner fails twice, abort with status="error".
 
 #### Stage 2 - Section Generator
-Runs sequentially, one section at a time, in declared order. Sections may reference earlier design choices; parallelism is a V2 optimization.
-- Input: one section brief + full `page_metadata` + `design_system` + the project library digest (names, types, default_props) + brief summaries of already-generated sections.
-- Output: one fully-formed `SectionNode` matching Sec. 5 schema.
-- Streamed events: `section_generation_started`, `section_generation_partial` (one per chunk), `section_generation_finished`.
-- Element references: the generator may include `element_instance` nodes referencing existing `library_id`s. It must NOT invent new library IDs.
-- Failure mode: validation failure routes to repair (Stage 6).
+Runs as one creative raw HTML pass for the full page body.
+- Input: user prompt + planner output.
+- Output: raw safe Tailwind HTML body in `raw_html`, without `tw:block` markers.
+- Streamed events: `section_generator / stage_started`, `section_generator / stage_completed`.
+- Element references: must not use `element_instance` or reusable library IDs.
+- Failure mode: empty output or unsafe output aborts the pipeline with status="error".
 
-#### Stage 3 - Element Resolver
-- Input: section JSON with `element_instance` references + project library (full definitions).
-- Action: for each instance, verify `library_id` exists in `reusable_elements` for this project. If missing -> validation error. Fill any unsupplied `overrides` with empty object.
-- No LLM call. Pure code.
+#### Stage 3 - HTML Marker
+- Input: raw HTML + planner output.
+- Action: wrap meaningful top-level regions in `<!-- tw:block ... -->` comments and add matching `data-node-id`, `data-node-type`, and `data-tw-block` attributes.
+- Output: `html_source`.
+- Streamed events: `html_marker / stage_started`, `html_marker / stage_completed`.
 
-#### Stage 4 - Assembler
-- Input: all generated sections + planner output.
-- Action: assemble into final `Document` shape. Assign any missing IDs (server-side ULID). Set `page_metadata.status = "valid"` if assembly succeeds.
-- No LLM call.
-
-#### Stage 5 - Validator
-- Input: assembled `Document` + project library.
+#### Stage 4 - Validator and Indexer
+- Input: marked `html_source`.
 - Checks (must all pass):
-  1. JSON Schema shape conformance.
-  2. All node `type` values are in the V1 vocabulary.
-  3. All section `children` arrays match the "Expected children" rules (Sec. 5.2).
-  4. All `element_instance.library_id` references resolve to definitions in the project library.
-  5. All IDs are unique within the document.
-  6. All locks are present on all nodes (default-false if absent).
-  7. All `image.src` URLs are well-formed or use the `placeholder:` prefix.
-  8. All `icon.name` values exist in `/resources/icons.json`.
-- Output: validated `Document` OR list of validation errors with paths.
+  1. HTML source is not empty.
+  2. At least one balanced `tw:block` marker pair exists.
+  3. Block IDs are unique.
+  4. Every block root exposes matching selectable attributes.
+  5. No `<script>`, inline event handlers, or `javascript:` URLs are present.
+- Output: schema-version-2 document with derived `block_index`, plus cached preview HTML.
 
-#### Stage 6 - Repair
-- Triggered only on validation failure of a generated section.
-- Input: the invalid section JSON, the validation errors with JSON paths, the section brief.
-- Action: LLM call asking for a targeted fix to ONLY the invalid paths. Output must conform to the section schema.
-- Retry limit: 2 repair attempts per section. After exhaustion, mark the section as failed, mark the page status as "invalid", surface error in stream.
-- Streamed events: `repair_attempt`, `repair_exhausted`.
-
-#### Stage 7 - Renderer
+#### Stage 5 - Renderer
 - See Sec. 13 for full contract.
 - No LLM call.
 
 ### 10.3 Targeted Edit Pipeline
-- Input: target node ID, edit instruction, edit scope (auto-derived from selection + edit type), full document for context, the target's current JSON, the target's locks, the project library.
-- LLM call: asks for the patched JSON for the target node only.
-- Validation: validates the patched node against its schema AND against locks (no locked-field mutations).
-- Apply: patch is merged into the document in-place by node ID.
-- Render: re-render only the affected subtree (renderer supports partial render by node ID, Sec. 13.4).
+- Input: target block ID, edit instruction, full `html_source` for context, and the extracted marked block HTML.
+- LLM call: asks for one replacement marked block only.
+- Validation: validates the replacement block with the same marked-HTML validator.
+- Apply: replace the old marked-block substring in `html_source`, regenerate `block_index`, and refresh preview cache.
+- Render: preview re-renders from the updated HTML source.
 - Streamed events: `edit_requested`, then either `edit_applied` or `edit_rejected`.
 
 ### 10.4 Pipeline Orchestration Code Location
 - Orchestrator: `app/Services/Generation/Pipeline.php`
-- Stage implementations: `app/Services/Generation/Stages/{Planner,SectionGenerator,ElementResolver,Assembler,Validator,Repair,Renderer,TargetedEdit}.php`
+- Stage implementations: `app/Services/Generation/Stages/{Planner,SectionGenerator,HtmlMarker,TargetedEdit}.php`
+- HTML services: `app/Services/Html/{BlockIndexer,HtmlDocumentValidator}.php`
 - Jobs: `app/Jobs/GeneratePageJob.php`, `app/Jobs/TargetedEditJob.php`
-- Library loading helper: `app/Services/Generation/ProjectLibraryLoader.php` (reads `reusable_elements` rows for a project and returns a `ProjectLibrary` value object).
 
 ---
 
@@ -1005,55 +1076,51 @@ The Livewire component appends events to its in-memory list (capped at 200 displ
 
 ---
 
-## 13. Renderer and Preview Isolation
+## 13. Marked HTML Preview Isolation
 
-### 13.1 Renderer Contract
-- Input: validated `Document` JSON + project library (or a subtree by node ID + library).
-- Output: HTML string with Tailwind classes.
-- Every renderable HTML element corresponds to exactly one node and carries `data-node-id="<id>"`.
-- The renderer is deterministic: same JSON + same library -> byte-identical HTML.
+### 13.1 Preview Contract
+- Input: validated marked Tailwind HTML source.
+- Output: complete iframe `srcdoc`.
+- Every editable block carries `data-node-id="<block id>"`, `data-node-type="<block type>"`, and `data-tw-block="<block id>"`.
+- Optional nested nodes may also carry `data-node-id`.
+- The preview is intentionally permissive about Tailwind utility classes.
 
 ### 13.2 Renderer Implementation
-- Location: `app/Services/Rendering/Renderer.php`
-- One Blade partial per section type: `resources/views/render/sections/{type}.blade.php`
-- One Blade partial per node type: `resources/views/render/nodes/{type}.blade.php`
-- One Blade partial per element type: `resources/views/render/elements/{type}.blade.php`
-- Partials receive `$node` (array, decoded JSON), `$design_system`, and `$library` (when applicable).
-- Class lookup: a `TailwindClassMap` service translates token combos (for example, `tone=accent + size=md`) into class strings. Map lives in `config/tailwind_map.php`.
+- Location: `app/Services/Rendering/Renderer.php`.
+- R3 path wraps `html_source` in a complete preview document with `/preview.css`, Tailwind CDN in local preview, and `/preview-bridge.js`.
+- Legacy JSON Blade partial rendering may remain during migration for tests and old pages.
 
-### 13.3 Class Safelist
-- The renderer emits ONLY classes that appear in `resources/tailwind/safelist.txt`.
-- The safelist is generated from the `TailwindClassMap` plus base classes.
-- Preview CSS is precompiled from this safelist via `npm run build:preview-css` to `public/preview.css`.
-- Any class emitted that is not in the safelist is a render bug; the renderer asserts in dev.
+### 13.3 Class Handling
+- Generated HTML may use arbitrary Tailwind utility classes.
+- Preview should render those classes through Tailwind CDN during local generation.
+- Export hardening may later compile used classes into an inline stylesheet.
+- The old safelist remains only for legacy JSON-rendered components and builder chrome.
 
-### 13.4 Partial Render By Node ID
-The renderer exposes `renderSubtree(Document $doc, ProjectLibrary $library, string $node_id): string` for targeted edits.
+### 13.4 Partial Extraction By Block ID
+`BlockIndexer` exposes extraction by block ID using the balanced marker comments from Sec. 4.0.2. Targeted edit replaces the exact marked substring.
 
 ### 13.5 Preview Isolation - `srcdoc` Iframe
 - The canvas component renders an `<iframe>` with `srcdoc` containing:
-  - `<!doctype html><html><head><link rel="stylesheet" href="/preview.css"><script src="/preview-bridge.js"></script></head><body> ...rendered HTML... </body></html>`
+  - `<!doctype html><html><head><link rel="stylesheet" href="/preview.css"><script src="https://cdn.tailwindcss.com"></script></head><body> ...html_source... <script src="/preview-bridge.js"></script></body></html>`
 - The iframe is same-origin, so the parent can read/write its DOM if ever needed.
-- `preview.css` is the precompiled Tailwind safelist (Sec. 13.3).
 - `preview-bridge.js` is a tiny script that:
   1. Listens for `click` events.
-  2. Walks up from the click target to nearest `[data-node-id]`.
-  3. Calls `window.parent.postMessage({ source: 'preview', type: 'node-selected', id }, '*')`.
-  4. Listens for `{ source: 'parent', type: 'highlight', id }` and adds an outline class to that node.
+  2. Walks up from the click target to nearest `[data-node-id]`, preferring marked blocks and nodes.
+  3. Calls `window.parent.postMessage({ type: 'builder:node-selected', nodeId, nodeType }, '*')`.
+  4. Listens for `{ type: 'select-node', nodeId }` and adds an outline class to that node.
 
 ### 13.6 Parent Bridge
-- Alpine.js component on the canvas listens to `window.message` events filtered by `source === 'preview'`.
-- On `node-selected`, dispatches a Livewire event `node-selected` with the ID.
-- The inspector Livewire component listens to `node-selected` and loads the node into its form.
+- Canvas JavaScript listens to preview bridge messages.
+- On selection, it dispatches Livewire event `node-selected` with the selected ID.
+- The inspector and section tree use `block_index` to display available editable blocks.
 
 ### 13.7 Iframe Reload Strategy
 - On full-document changes: rebuild `srcdoc` and reset the iframe.
-- On subtree changes: parent sends `postMessage({ source: 'parent', type: 'replace-subtree', id, html })`; the bridge replaces `outerHTML` of the matching `[data-node-id]` element.
-- This avoids full reloads on small edits.
+- On targeted block changes: parent may send `replace-subtree`, but V1 can safely reload the iframe after replacing the marked block in `html_source`.
 
 ### 13.8 Selection Overlay
-- The bridge applies the class `tplbuilder-selected` (added to the iframe's inline `<style>` block at bootstrap) to the selected element.
-- The class is defined as `outline: 2px solid currentColor; outline-offset: 2px; color: rgb(59 130 246);` and is NOT a Tailwind class. It lives in the iframe's bootstrap style block.
+- The bridge applies the class `builder-selected` to the selected element.
+- The class lives in `preview.css` and is builder-only.
 
 ---
 
@@ -1063,8 +1130,8 @@ The renderer exposes `renderSubtree(Document $doc, ProjectLibrary $library, stri
 ```ts
 type EditRequest = {
   page_id: string;
-  target_id: string;                      // sec_/node_/inst_/elem_
-  scope: "element" | "section" | "document_style" | "library_element";
+  target_id: string;                      // block_...
+  scope: "block" | "document_style";
   surfaces: Array<"content" | "style" | "layout" | "swap">;
   instruction: string;                    // user's free-text instruction
   // Optional structured hints from the inspector:
@@ -1076,41 +1143,40 @@ type EditRequest = {
 ```
 
 ### 14.2 Backend Validation Before LLM Call
-1. Resolve `target_id` to a node within the page document (or to an `ElementDefinition` row when `scope === "library_element"`).
-2. Read the node's `locks`. Filter `surfaces` to remove any blocked by locks.
-3. If `surfaces` is empty after filter -> reject with `edit_rejected` event.
-4. Build context: document slim summary (section types + IDs) + target subtree + design system + project library digest.
+1. Resolve `target_id` to a marked block in `block_index`.
+2. Extract the exact marked-block substring from `html_source`.
+3. If the selected block cannot be found -> reject with `edit_rejected` event.
+4. Build context: full page HTML summary, neighboring block summaries, the selected block HTML, and the user's instruction.
 
 ### 14.3 LLM Edit Output Contract
 The LLM is invoked via `tool_use` with this tool input schema:
 ```ts
 type EditResponse = {
-  patched_node: ContentNode | SectionNode | ElementDefinition;
-  changed_paths: string[];                // JSON pointer paths within the node
+  html_source: string;                    // exactly one marked replacement block
+  changed_summary: string;
   explanation: string;                    // <= 300 chars, shown in stream panel
 };
 ```
 
 ### 14.4 Post-LLM Validation
-- `patched_node.id` must equal the requested `target_id`.
-- `patched_node.type` must equal the original type unless scope is `swap` and the new type is in the same family (for example, button to button variant; not text to grid).
-- For each path in `changed_paths`, the corresponding lock must be unset.
-- The node must pass schema validation.
-- Children IDs that exist in the original must be preserved when content survives. New children get freshly-assigned IDs server-side.
+- Replacement must contain exactly one balanced `tw:block` pair.
+- Replacement must preserve the selected block ID unless the edit explicitly asks to split or transform the block and the new ID has no collision.
+- Replacement must pass marked-HTML safety validation.
+- The regenerated `block_index` must be valid and contain no duplicate IDs.
 
 ### 14.5 Apply and Render
-- Replace the node in the document by ID (or write to `reusable_elements` for library scope).
+- Replace the old marked-block substring in `html_source`.
+- Regenerate `block_index`.
 - Bump `page_metadata.updated_at`.
 - Write a new `page_versions` row (Sec. 15.5) with the previous snapshot for undo.
-- Re-render the subtree via Sec. 13.4.
-- Push a `replace-subtree` postMessage to the iframe.
+- Refresh the preview cache and remount the iframe preview.
 - Emit `edit_applied` event.
 
 ### 14.6 Document-Wide Style Edit
-Scope `document_style` is special: it only changes `design_system` fields. The validator confirms only `design_system.*` paths changed. Rendering is full-page.
+Scope `document_style` is deferred. The R3 implementation edits one marked block at a time first.
 
 ### 14.7 Library Element Edit
-Scope `library_element` edits an `ElementDefinition` row in `reusable_elements`. Because definitions are canonical and not embedded in documents, all instances across all pages will pick up the new `default_props` on next render. No batch update step is required. The UI surfaces a confirmation notice on save indicating how many pages contain instances of this definition.
+Deferred. Any future reusable feature should store marked HTML snippets or block templates, not schema-version-1 element definitions.
 
 ---
 
@@ -1135,25 +1201,27 @@ All ID columns are `string(32)` (varchar(32)) to fit typed-prefix ULIDs (Sec. 4.
 | name | string(160) | |
 | prompt | text | original user prompt |
 | document_json | json | current `Document` |
-| rendered_html_cache | longText nullable | cache of full render |
+| html_source | longText nullable | R3 marked Tailwind HTML source of truth |
+| block_index | json nullable | R3 derived editable block index |
+| rendered_html_cache | longText nullable | cache of full preview/export HTML |
 | status | enum | draft/generating/valid/invalid/error |
 | last_generation_summary | string(500) nullable | |
 | created_at, updated_at | timestamps | |
 
 Indexes: `(project_id)`, `(status)`.
 
-### 15.3 `reusable_elements` (CANONICAL ELEMENT LIBRARY STORE)
+### 15.3 `reusable_elements` (LEGACY JSON COMPATIBILITY)
 | Column | Type | Notes |
 |--------|------|-------|
 | id | string(32) PK | `elem_*` |
 | project_id | string(32) FK | onDelete cascade |
 | name | string(120) | |
-| type | string(40) | from Sec. 7 vocab |
-| default_props | json | matches `ElementDefinition.default_props` |
+| type | string(40) | legacy Sec. 7 vocab |
+| default_props | json | legacy `ElementDefinition.default_props` |
 | preview_html_cache | text nullable | |
 | created_at, updated_at | timestamps | |
 
-Indexes: `(project_id, type)`, `(project_id)` for full-library fetch.
+Indexes: `(project_id, type)`, `(project_id)` for legacy compatibility. R3 generation does not use this table.
 
 ### 15.4 `generation_events`
 | Column | Type | Notes |
@@ -1204,7 +1272,6 @@ Builder\Workspace                         (page-level shell)
 - Builder\LeftSidebar
   - Builder\SidePanels\ProjectSwitcher
   - Builder\SidePanels\SectionTree
-  - Builder\SidePanels\ElementLibraryPanel
   - Builder\SidePanels\GenerationControls
 - Builder\Canvas                          (renders srcdoc iframe; Alpine-driven bridge)
 - Builder\RightInspector
@@ -1226,7 +1293,7 @@ app/Livewire/Builder/Workspace/
 
 ### 16.4 Inter-Component Communication
 - Selection state lives in `Workspace` (the parent).
-- Children dispatch Livewire events: `node-selected`, `edit-requested`, `generation-started`, `library-element-saved`, etc.
+- Children dispatch Livewire events: `node-selected`, `edit-requested`, `generation-started`, etc.
 - The parent listens and updates shared state via `$dispatch`.
 - The stream panel listens directly to Echo (Sec. 12.6).
 
@@ -1235,8 +1302,7 @@ Workspace component public properties:
 ```php
 public string $page_id;
 public ?string $selected_node_id = null;
-public array $document = [];              // decoded Document JSON
-public array $library = [];               // project's reusable_elements (loaded from DB)
+public array $document = [];              // decoded schema v2 artifact with block_index
 public string $generation_status = 'idle'; // idle|running|error
 ```
 
@@ -1263,7 +1329,6 @@ app/
   Models/
     Project.php
     Page.php
-    ReusableElement.php
     GenerationEvent.php
     PageVersion.php
   Jobs/
@@ -1279,16 +1344,15 @@ app/
       StructuredResponse.php
     Generation/
       Pipeline.php
-      ProjectLibraryLoader.php
       Stages/
         Planner.php
         SectionGenerator.php
-        ElementResolver.php
-        Assembler.php
-        Validator.php
-        Repair.php
+        HtmlMarker.php
         TargetedEdit.php
         PromptBuilder.php
+    Html/
+      BlockIndexer.php
+      HtmlDocumentValidator.php
     Rendering/
       Renderer.php
       TailwindClassMap.php
@@ -1351,13 +1415,13 @@ tests/
 - These styles never enter the iframe.
 
 ### 18.2 Preview CSS
-- Built from `resources/tailwind/safelist.txt`.
+- Contains builder-only preview chrome, selection styles, and legacy JSON-renderer classes.
 - Build command: `npm run build:preview-css`.
 - Output: `public/preview.css`.
-- Rebuilt automatically when safelist changes; CI fails if not committed.
+- Marked HTML preview may additionally load Tailwind CDN so arbitrary generated utilities render.
 
 ### 18.3 Safelist Composition
-The safelist contains:
+The safelist is legacy support for JSON-rendered fixtures and builder preview styles. It contains:
 - All Tailwind base / preflight.
 - All color utilities for the 22 colors in Sec. 4.4.1 across `bg-`, `text-`, `border-`, `ring-` for shades `50`, `100`, `200`, `400`, `500`, `600`, `700`, `800`, `900`, `950`.
 - Spacing utilities for steps `0`, `1`, `2`, `3`, `4`, `6`, `8`, `12`, `16`, `20`, `24`, `32`, `48`, `64`.
@@ -1366,18 +1430,18 @@ The safelist contains:
 - Radius: `none`, `sm`, `md`, `lg`, `xl`, `2xl`, `full`.
 - Width/height: standard set + `max-w-{prose,4xl,5xl,6xl,7xl,full}`.
 
-Renderer asserts every emitted class is in this set (dev mode).
+Legacy JSON renderer asserts every emitted class is in this set (dev mode). R3 marked HTML generation is not constrained by this safelist.
 
 ---
 
 ## 19. Export
 
 ### 19.1 Export Contract
-- Input: a page + the project library (resolved at export time).
-- Output: a single HTML file with inlined `<style>` (a copy of `preview.css`) and the document body.
+- Input: a page with `html_source`.
+- Output: a single HTML file with the marked HTML body cleaned for public use.
 - The export contains:
   - `<!doctype html>` + minimal `<head>` (title from metadata, viewport meta, the CSS).
-  - The rendered body HTML stripped of `data-node-id` attributes.
+  - The `html_source` body stripped of marker comments, `data-node-id`, `data-node-type`, and `data-tw-block` attributes.
 - Export removes the bridge script, selection overlay class, and any builder-only artifacts.
 
 ### 19.2 Implementation
@@ -1455,40 +1519,40 @@ Acceptance:
 ### M4 - LLM Provider and Generation Pipeline
 Deliverables:
 - `LlmProvider` interface + `AnthropicProvider` implementation.
-- All stages in `app/Services/Generation/Stages/`.
-- `ProjectLibraryLoader`.
+- Marked HTML generation stages in `app/Services/Generation/Stages/`.
+- Generation is split into smaller LLM stages: planner -> raw HTML design -> marker wrapping -> validation. This gives the stream visible progress between LLM calls and separates creative design from editability markup.
+- `HtmlBlockIndexer` and `HtmlDocumentValidator` for R3 marked HTML.
 - `GeneratePageJob`.
 - Prompt files in `resources/prompts/`.
 - `GenerationEventBroadcast` + Reverb wiring.
 - Stream panel Livewire component listening via Echo, persisting events to DB and displaying live.
 
 Acceptance:
-- Submitting a prompt creates a `GeneratePageJob`, runs all stages, and produces a valid `Document` for at least 3 distinct prompts in a manual test (for example, "SaaS landing page", "developer tool", "agency portfolio").
+- Submitting a prompt creates a `GeneratePageJob`, runs all stages, and produces valid marked Tailwind HTML plus a derived `block_index` for at least 3 distinct prompts (for example, "SaaS landing page", "developer tool", "agency portfolio").
 - Stream panel shows planner output, per-section progress, validation events, and final success/failure.
-- A deliberate schema-violation injected into a stage triggers repair and shows the repair events.
+- A deliberate marker/safety violation injected into a stage triggers repair or failure and shows the events.
 - All events persist to `generation_events` and survive page reload.
 
 ### M5 - Targeted Editing and Reusable Elements
 Deliverables:
 - `TargetedEdit` stage + `TargetedEditJob`.
 - Inspector `EditForm` and `LockToggles`.
-- Edit request validation (lock enforcement).
-- Save-as-reusable flow (turning an instance subtree into an `ElementDefinition` row).
-- Insert-reusable flow (dropping a definition into a section).
-- Library edit flow that updates the canonical definition; instances reflect the change on next render.
+- Edit request validation against selected marked block boundaries.
+- Extract selected block by marker ID and replace only that marked block.
+- Optional save-as-reusable flow may store marked HTML snippets instead of structured element definitions.
+- Optional insert-reusable flow may insert marked HTML snippets.
 
 Acceptance:
-- Selecting a section + entering an instruction patches only that section. Other sections' HTML is byte-identical.
-- Locking content on a node and asking the LLM to change its text results in an `edit_rejected` event.
-- Saving a feature_card instance as a reusable definition appears in the library panel.
-- Inserting that definition into another `feature_grid` renders correctly.
-- Editing the definition updates instances on every page in the project on next render with no extra user step (definition is canonical).
+- Selecting a block + entering an instruction patches only that marked block. Other block substrings are byte-identical.
+- Returned edited block must preserve balanced markers and pass HTML safety validation.
+- The canvas and section tree refresh from the regenerated `block_index`.
+- Saving and inserting reusable snippets is accepted if the snippets retain valid markers.
 
 ### M6 - Export and Hardening
 Deliverables:
 - `HtmlExporter` + export route.
-- Test coverage: feature tests for full generation, edit, library, and export flows.
-- Failure-mode tests: planner timeout, repair exhaustion, malformed LLM output, locked-field edit, library reference miss.
+- Test coverage: feature tests for full generation, marked-block edit, snippet, and export flows.
+- Failure-mode tests: planner timeout, malformed LLM output, unsafe HTML, invalid markers, and stale block ID edit.
 - Documentation pass on `plan.md` (this file) for any drift.
 - `README.md` with run instructions.
 
@@ -1608,13 +1672,13 @@ If implementation reveals a `plan.md` decision is wrong:
 
 | Term | Meaning |
 |------|---------|
-| Document | The full JSON describing a page. The source of truth. |
-| Section | A top-level semantic node in the document tree. |
-| Node | Any element within a section (heading, text, container, etc). |
-| Element (reusable) | A saved component definition reusable across pages within a project. Stored canonically in `reusable_elements`. |
-| Element instance | A reference to a reusable element placed in a section's children. Carries optional overrides. |
-| Project library | The set of `ElementDefinition` rows for one project, loaded into pipeline and renderer at runtime. |
-| Render | The deterministic process of turning JSON + library into HTML. |
+| Document | The persisted page artifact. In R3 this stores marked HTML plus a derived block index. |
+| Section | A meaningful marked block or legacy top-level semantic node. |
+| Node | A selectable block in R3, or a legacy JSON child node in schema version 1. |
+| Element (reusable) | Legacy JSON component definition. Future reuse should be marked HTML snippets. |
+| Element instance | Legacy schema-version-1 reference to a reusable element. |
+| Project library | Legacy set of `ElementDefinition` rows. Not loaded by R3 generation. |
+| Render | The process of wrapping marked HTML in the preview/export document. Legacy JSON rendering remains for compatibility tests. |
 | Pipeline | The sequence of stages from prompt to validated document. |
 | Stream panel | The UI panel showing live generation events. |
 | Bridge | The small JS file injected into the preview iframe to handle clicks and updates. |

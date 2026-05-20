@@ -37,7 +37,7 @@ class Assembler
 
         $type = $this->sectionType($type);
 
-        if (! in_array($type, ['hero', 'feature_split', 'faq', 'logo_cloud', 'footer'], true)) {
+        if (! in_array($type, ['header', 'hero', 'feature_grid', 'feature_split', 'stats_band', 'testimonial_grid', 'faq', 'logo_cloud', 'cta_band', 'contact_form', 'footer'], true)) {
             return null;
         }
 
@@ -90,6 +90,12 @@ class Assembler
     {
         return match ($type) {
             'feature', 'feature_section', 'feature_highlight' => 'feature_split',
+            'features', 'feature_cards' => 'feature_grid',
+            'stats', 'numbers' => 'stats_band',
+            'testimonials', 'reviews' => 'testimonial_grid',
+            'cta', 'call_to_action' => 'cta_band',
+            'contact' => 'contact_form',
+            'navigation', 'nav' => 'header',
             'logos', 'logo_strip' => 'logo_cloud',
             default => $type,
         };
@@ -123,16 +129,35 @@ class Assembler
                 'variant' => $this->enum($props['variant'] ?? null, ['centered', 'split_left_image', 'split_right_image', 'background_image'], 'centered'),
                 'image_url' => is_string($props['image_url'] ?? null) ? $props['image_url'] : null,
             ],
+            'header' => [
+                'variant' => $this->enum($props['variant'] ?? null, ['simple', 'with_cta', 'centered'], 'with_cta'),
+                'sticky' => (bool) ($props['sticky'] ?? false),
+            ],
+            'feature_grid' => [
+                'columns' => $this->integerEnum($props['columns'] ?? null, [2, 3, 4], 3),
+            ],
             'feature_split' => [
                 'image_side' => $this->enum($props['image_side'] ?? null, ['left', 'right'], 'right'),
                 'image_url' => is_string($props['image_url'] ?? null) && $props['image_url'] !== '' ? $props['image_url'] : 'placeholder:feature',
             ],
+            'stats_band' => [
+                'columns' => $this->instanceColumnCount($children, 2, 4, $this->integerEnum($props['columns'] ?? null, [2, 3, 4], 3)),
+            ],
+            'testimonial_grid' => [
+                'columns' => $this->integerEnum($props['columns'] ?? null, [1, 2, 3], 3),
+            ],
             'faq' => [
                 'layout' => $this->enum($props['layout'] ?? null, ['single_column', 'two_column'], 'single_column'),
             ],
+            'cta_band' => [
+                'variant' => $this->enum($props['variant'] ?? null, ['centered', 'split'], 'centered'),
+            ],
+            'contact_form' => [
+                'submit_endpoint' => is_string($props['submit_endpoint'] ?? null) ? $props['submit_endpoint'] : null,
+            ],
             'footer' => [
                 'variant' => $this->enum($props['variant'] ?? null, ['simple', 'columned'], 'simple'),
-                'columns' => $props['columns'] ?? count(array_filter($children, fn (array $child): bool => ($child['type'] ?? null) === 'element_instance')),
+                'columns' => $this->instanceColumnCount($children, 1, 4, 1),
             ],
             default => [],
         };
@@ -141,13 +166,27 @@ class Assembler
     private function sectionChildren(string $type, array $children): array
     {
         return match ($type) {
+            'header' => $this->headerChildren($children),
             'hero' => $this->heroChildren($children),
+            'feature_grid' => $this->featureGridChildren($children),
             'feature_split' => $this->featureSplitChildren($children),
+            'stats_band' => $this->statsBandChildren($children),
+            'testimonial_grid' => $this->testimonialGridChildren($children),
             'faq' => $this->faqChildren($children),
             'logo_cloud' => $this->logoCloudChildren($children),
+            'cta_band' => $this->ctaBandChildren($children),
+            'contact_form' => $this->contactFormChildren($children),
             'footer' => $this->footerChildren($children),
             default => $children,
         };
+    }
+
+    private function headerChildren(array $children): array
+    {
+        $logo = $this->firstOf($children, 'image') ?? $this->fallbackImage('placeholder:logo', 'Logo');
+        $instances = array_values(array_filter($children, fn (array $child): bool => $child['type'] === 'element_instance'));
+
+        return array_values(array_filter(array_merge([$logo], array_slice($instances, 0, 2))));
     }
 
     private function heroChildren(array $children): array
@@ -167,8 +206,46 @@ class Assembler
         $heading['props']['level'] = 2;
         $text = $this->firstOf($children, 'text') ?? $this->fallbackText('A short explanation of the feature.');
         $list = $this->firstOf($children, 'list');
+        $instance = $this->firstOf($children, 'element_instance');
 
-        return array_values(array_filter([$heading, $text, $list]));
+        return array_values(array_filter([$heading, $text, $list, $instance]));
+    }
+
+    private function featureGridChildren(array $children): array
+    {
+        $heading = $this->firstOf($children, 'heading');
+        if ($heading !== null) {
+            $heading['props']['level'] = 2;
+        }
+
+        $text = $this->firstOf($children, 'text');
+        $instances = array_values(array_filter($children, fn (array $child): bool => $child['type'] === 'element_instance'));
+
+        return array_values(array_filter(array_merge([$heading, $text], array_slice($instances, 0, 12))));
+    }
+
+    private function statsBandChildren(array $children): array
+    {
+        $heading = $this->firstOf($children, 'heading');
+        if ($heading !== null) {
+            $heading['props']['level'] = 2;
+        }
+
+        $instances = array_values(array_filter($children, fn (array $child): bool => $child['type'] === 'element_instance'));
+
+        return array_values(array_filter(array_merge([$heading], array_slice($instances, 0, 4))));
+    }
+
+    private function testimonialGridChildren(array $children): array
+    {
+        $heading = $this->firstOf($children, 'heading');
+        if ($heading !== null) {
+            $heading['props']['level'] = 2;
+        }
+
+        $instances = array_values(array_filter($children, fn (array $child): bool => $child['type'] === 'element_instance'));
+
+        return array_values(array_filter(array_merge([$heading], array_slice($instances, 0, 9))));
     }
 
     private function faqChildren(array $children): array
@@ -205,6 +282,27 @@ class Assembler
         }
 
         return array_values(array_filter(array_merge([$heading], array_slice($images, 0, 8))));
+    }
+
+    private function ctaBandChildren(array $children): array
+    {
+        $heading = $this->firstOf($children, 'heading') ?? $this->fallbackHeading('Ready to get started?', 2);
+        $heading['props']['level'] = 2;
+        $text = $this->firstOf($children, 'text');
+        $instance = $this->firstOf($children, 'element_instance');
+
+        return array_values(array_filter([$heading, $text, $instance]));
+    }
+
+    private function contactFormChildren(array $children): array
+    {
+        $heading = $this->firstOf($children, 'heading') ?? $this->fallbackHeading('Contact us', 2);
+        $heading['props']['level'] = 2;
+        $text = $this->firstOf($children, 'text');
+        $formGroups = array_values(array_filter($children, fn (array $child): bool => $child['type'] === 'form_group'));
+        $instance = $this->firstOf($children, 'element_instance');
+
+        return array_values(array_filter(array_merge([$heading, $text], array_slice($formGroups, 0, 6), [$instance])));
     }
 
     private function footerChildren(array $children): array
@@ -336,6 +434,24 @@ class Assembler
     private function enum(mixed $value, array $allowed, mixed $fallback): mixed
     {
         return in_array($value, $allowed, true) ? $value : $fallback;
+    }
+
+    private function integerEnum(mixed $value, array $allowed, int $fallback): int
+    {
+        $value = is_numeric($value) ? (int) $value : $value;
+
+        return in_array($value, $allowed, true) ? $value : $fallback;
+    }
+
+    private function instanceColumnCount(array $children, int $minimum, int $maximum, int $fallback): int
+    {
+        $instances = count(array_filter($children, fn (array $child): bool => ($child['type'] ?? null) === 'element_instance'));
+
+        if ($instances === 0) {
+            return $fallback;
+        }
+
+        return max($minimum, min($maximum, $instances));
     }
 
     private function validId(mixed $id, string $prefix): bool

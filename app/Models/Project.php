@@ -29,9 +29,4 @@ class Project extends Model
     {
         return $this->hasMany(Page::class);
     }
-
-    public function reusableElements(): HasMany
-    {
-        return $this->hasMany(ReusableElement::class);
-    }
 }

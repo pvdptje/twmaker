@@ -15,7 +15,7 @@ class TailwindClassMap
         $classes = [
             'builder-section',
             $this->sectionBackground($props['background'] ?? 'default'),
-            $this->sectionPadding($props['padding'] ?? 'md'),
+            ($section['type'] ?? null) === 'header' ? 'py-0' : $this->sectionPadding($props['padding'] ?? 'md'),
         ];
 
         return $this->classes($classes);

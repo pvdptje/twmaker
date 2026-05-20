@@ -31,6 +31,42 @@ class RendererTest extends TestCase
         app(TailwindClassMap::class)->classes(['not-in-safelist']);
     }
 
+    public function test_renders_richer_section_layouts(): void
+    {
+        $document = $this->document();
+        $document['document_tree'][] = [
+            'id' => 'sec_01h00000000000000000000001',
+            'type' => 'feature_grid',
+            'props' => ['background' => 'neutral', 'padding' => 'lg', 'max_width' => 'wide', 'alignment' => 'center', 'columns' => 3],
+            'children' => [
+                $this->node('node_01h00000000000000000000003', 'heading', ['level' => 2, 'text' => 'Built for better drafts', 'alignment' => 'center', 'emphasis' => 'default']),
+                $this->node('node_01h00000000000000000000004', 'text', ['text' => 'Reusable elements let the LLM compose real sections.', 'size' => 'lg', 'alignment' => 'center', 'emphasis' => 'muted']),
+                $this->elementInstance('inst_01h00000000000000000000002', 'elem_01h00000000000000000000002'),
+                $this->elementInstance('inst_01h00000000000000000000003', 'elem_01h00000000000000000000002'),
+                $this->elementInstance('inst_01h00000000000000000000004', 'elem_01h00000000000000000000002'),
+            ],
+            'locks' => $this->locks(),
+            'metadata' => $this->metadata(),
+        ];
+        $document['document_tree'][] = [
+            'id' => 'sec_01h00000000000000000000002',
+            'type' => 'cta_band',
+            'props' => ['background' => 'default', 'padding' => 'lg', 'max_width' => 'wide', 'alignment' => 'center', 'variant' => 'centered'],
+            'children' => [
+                $this->node('node_01h00000000000000000000005', 'heading', ['level' => 2, 'text' => 'Ready to make it less bland?', 'alignment' => 'center', 'emphasis' => 'default']),
+                $this->elementInstance('inst_01h00000000000000000000005', 'elem_01h00000000000000000000001'),
+            ],
+            'locks' => $this->locks(),
+            'metadata' => $this->metadata(),
+        ];
+
+        $html = app(Renderer::class)->renderPreviewDocument($document, $this->library());
+
+        $this->assertStringContainsString('lg:grid-cols-3', $html);
+        $this->assertStringContainsString('rounded-2xl border border-blue-200 bg-blue-50', $html);
+        $this->assertStringContainsString('Built for better drafts', $html);
+    }
+
     private function document(): array
     {
         return [
@@ -102,6 +138,16 @@ class RendererTest extends TestCase
                     'primary' => ['label' => 'Start', 'href' => '#start'],
                     'secondary' => ['label' => 'Docs', 'href' => '#docs'],
                     'alignment' => 'center',
+                ],
+            ],
+            'elem_01h00000000000000000000002' => [
+                'id' => 'elem_01h00000000000000000000002',
+                'type' => 'feature_card',
+                'default_props' => [
+                    'icon' => null,
+                    'heading' => 'Editable structure',
+                    'body' => 'A feature card rendered from the reusable element library.',
+                    'link' => null,
                 ],
             ],
         ];

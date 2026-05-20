@@ -5,7 +5,6 @@ namespace App\Services\Generation\Stages;
 use App\Models\Page;
 use App\Services\Llm\LlmProvider;
 use App\Services\Llm\StructuredRequest;
-use App\Services\Schema\DocumentSchema;
 
 class SectionGenerator
 {
@@ -14,23 +13,40 @@ class SectionGenerator
         private readonly PromptBuilder $prompts,
     ) {}
 
-    public function generate(Page $page, array $plan, array $libraryDigest): array
+    public function generate(Page $page, array $plan): array
     {
         $response = $this->provider->sendStructured(new StructuredRequest(
             stage: 'section_generator',
             model: (string) config('llm.providers.anthropic.models.section_generator'),
             systemPrompt: $this->prompts->system('section_generator'),
             userPrompt: $page->prompt,
-            toolName: 'submit_document',
-            schema: DocumentSchema::schema(),
+            toolName: 'submit_raw_html_document',
+            schema: $this->schema(),
             context: [
                 'page_id' => $page->id,
                 'plan' => $plan,
-                'project_library' => $libraryDigest,
             ],
-            maxTokens: 12000,
+            maxTokens: 16000,
+            temperature: 0.7,
         ));
 
         return $response->output;
+    }
+
+    private function schema(): array
+    {
+        return [
+            'type' => 'object',
+            'additionalProperties' => false,
+            'required' => ['title', 'page_type', 'goal', 'audience', 'prompt_summary', 'raw_html'],
+            'properties' => [
+                'title' => ['type' => 'string', 'minLength' => 1, 'maxLength' => 120],
+                'page_type' => ['type' => 'string'],
+                'goal' => ['type' => 'string'],
+                'audience' => ['type' => 'string'],
+                'prompt_summary' => ['type' => 'string'],
+                'raw_html' => ['type' => 'string', 'minLength' => 1],
+            ],
+        ];
     }
 }

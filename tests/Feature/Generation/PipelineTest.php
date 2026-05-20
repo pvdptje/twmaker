@@ -4,7 +4,6 @@ namespace Tests\Feature\Generation;
 
 use App\Models\Page;
 use App\Models\Project;
-use App\Models\ReusableElement;
 use App\Services\Generation\Pipeline;
 use App\Services\Ids\IdGenerator;
 use App\Services\Llm\LlmProvider;
@@ -17,36 +16,22 @@ class PipelineTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_pipeline_persists_valid_document_and_generation_events(): void
+    public function test_pipeline_persists_marked_html_and_block_index(): void
     {
-        $ids = app(IdGenerator::class);
-        $project = Project::query()->create([
-            'id' => $ids->project(),
-            'name' => 'Acme',
-        ]);
-        $page = Page::query()->create([
-            'id' => $ids->page(),
-            'project_id' => $project->id,
-            'name' => 'Homepage',
-            'prompt' => 'A developer tool landing page',
-            'document_json' => $this->emptyDocument(),
-            'status' => 'draft',
-        ]);
+        [$project, $page] = $this->makePage('A developer tool landing page');
 
-        $this->app->instance(LlmProvider::class, new FakeGenerationProvider($this->generatedDocument()));
+        $this->app->instance(LlmProvider::class, new FakeHtmlGenerationProvider($this->htmlArtifact()));
 
         $document = app(Pipeline::class)->generate($page);
 
         $page->refresh();
 
         $this->assertSame('valid', $page->status);
+        $this->assertSame(2, $document['schema_version']);
+        $this->assertStringContainsString('tw:block id="block_hero"', $page->html_source);
+        $this->assertCount(2, $page->block_index);
+        $this->assertSame('block_hero', $page->block_index[0]['id']);
         $this->assertSame($document, $page->document_json);
-        $this->assertDatabaseHas('generation_events', [
-            'page_id' => $page->id,
-            'kind' => 'stage_completed',
-            'stage' => 'planner',
-            'level' => 'success',
-        ]);
         $this->assertDatabaseHas('generation_events', [
             'page_id' => $page->id,
             'kind' => 'generation_completed',
@@ -55,49 +40,42 @@ class PipelineTest extends TestCase
         ]);
     }
 
-    public function test_pipeline_repairs_malformed_section_column_counts(): void
+    public function test_pipeline_accepts_freeform_footer_without_schema_column_counts(): void
     {
-        $ids = app(IdGenerator::class);
-        $project = Project::query()->create([
-            'id' => $ids->project(),
-            'name' => 'Acme',
-        ]);
-        ReusableElement::query()->create([
-            'id' => 'elem_01h00000000000000000000001',
-            'project_id' => $project->id,
-            'name' => 'Footer links',
-            'type' => 'nav_link_group',
-            'default_props' => [
-                'links' => [['label' => 'Home', 'href' => '#', 'active' => true]],
-                'layout' => 'horizontal',
-            ],
-        ]);
-        $page = Page::query()->create([
-            'id' => $ids->page(),
-            'project_id' => $project->id,
-            'name' => 'Homepage',
-            'prompt' => 'A developer tool landing page',
-            'document_json' => $this->emptyDocument(),
-            'status' => 'draft',
-        ]);
-        $document = $this->generatedDocument();
-        $document['document_tree'][] = $this->footerWithMalformedColumns();
+        [$project, $page] = $this->makePage('A cat nail studio landing page');
+        $artifact = $this->htmlArtifact();
+        $artifact['marked_html'] .= "\n".$this->footerBlock();
 
-        $this->app->instance(LlmProvider::class, new FakeGenerationProvider($document));
+        $this->app->instance(LlmProvider::class, new FakeHtmlGenerationProvider($artifact));
 
         app(Pipeline::class)->generate($page);
 
         $page->refresh();
+
         $this->assertSame('valid', $page->status);
-        $this->assertSame(1, $page->document_json['document_tree'][1]['props']['columns']);
-        $this->assertDatabaseHas('generation_events', [
+        $this->assertCount(3, $page->block_index);
+        $this->assertSame('footer', $page->block_index[2]['type']);
+        $this->assertDatabaseMissing('generation_events', [
             'page_id' => $page->id,
-            'kind' => 'repair_attempt',
-            'stage' => 'repair',
+            'kind' => 'generation_failed',
+            'stage' => 'pipeline',
         ]);
     }
 
-    public function test_pipeline_assembles_conceptual_llm_json_before_validation(): void
+    public function test_pipeline_rejects_unsafe_marked_html(): void
+    {
+        [$project, $page] = $this->makePage('Unsafe page');
+        $artifact = $this->htmlArtifact();
+        $artifact['marked_html'] = '<!-- tw:block id="block_bad" type="hero" label="Hero" --><section data-node-id="block_bad" data-node-type="hero" data-tw-block="block_bad"><script>alert(1)</script></section><!-- /tw:block -->';
+
+        $this->app->instance(LlmProvider::class, new FakeHtmlGenerationProvider($artifact));
+
+        $this->expectExceptionMessage('script tags');
+
+        app(Pipeline::class)->generate($page);
+    }
+
+    private function makePage(string $prompt): array
     {
         $ids = app(IdGenerator::class);
         $project = Project::query()->create([
@@ -108,216 +86,92 @@ class PipelineTest extends TestCase
             'id' => $ids->page(),
             'project_id' => $project->id,
             'name' => 'Homepage',
-            'prompt' => 'A cat nail studio landing page',
-            'document_json' => $this->emptyDocument(),
+            'prompt' => $prompt,
+            'document_json' => ['schema_version' => 2, 'page_metadata' => [], 'html_source' => '', 'block_index' => [], 'generation_history' => []],
             'status' => 'draft',
         ]);
 
-        $this->app->instance(LlmProvider::class, new FakeGenerationProvider($this->conceptualDocument()));
-
-        app(Pipeline::class)->generate($page);
-
-        $page->refresh();
-
-        $this->assertSame('valid', $page->status);
-        $this->assertSame('hero', $page->document_json['document_tree'][0]['type']);
-        $this->assertSame('heading', $page->document_json['document_tree'][0]['children'][0]['type']);
-        $this->assertSame('text', $page->document_json['document_tree'][0]['children'][1]['type']);
-        $this->assertSame('feature_split', $page->document_json['document_tree'][1]['type']);
+        return [$project, $page];
     }
 
-    private function emptyDocument(): array
-    {
-        $document = $this->generatedDocument();
-        $document['page_metadata']['status'] = 'draft';
-        $document['document_tree'] = [];
-
-        return $document;
-    }
-
-    private function generatedDocument(): array
-    {
-        $now = now('UTC')->format('Y-m-d\TH:i:s\Z');
-
-        return [
-            'schema_version' => 1,
-            'page_metadata' => [
-                'title' => 'Acme DevTools',
-                'page_type' => 'landing',
-                'goal' => 'Convince developers to try Acme.',
-                'audience' => 'Senior backend engineers',
-                'prompt_summary' => 'Developer tool landing page',
-                'status' => 'valid',
-                'created_at' => $now,
-                'updated_at' => $now,
-            ],
-            'design_system' => [
-                'colors' => [
-                    'primary' => 'cyan',
-                    'accent' => 'emerald',
-                    'neutral' => 'neutral',
-                    'background' => 'white',
-                    'foreground' => 'neutral-950',
-                ],
-                'typography' => [
-                    'heading_family' => 'sans',
-                    'body_family' => 'sans',
-                    'scale' => 'comfortable',
-                ],
-                'spacing' => [
-                    'density' => 'comfortable',
-                    'section_padding' => 'md',
-                ],
-                'radius' => 'md',
-                'tone' => 'technical',
-                'dark_mode' => false,
-            ],
-            'document_tree' => [
-                [
-                    'id' => 'sec_01h00000000000000000000000',
-                    'type' => 'hero',
-                    'props' => [
-                        'background' => 'default',
-                        'padding' => 'lg',
-                        'max_width' => 'default',
-                        'alignment' => 'center',
-                        'variant' => 'centered',
-                        'image_url' => null,
-                    ],
-                    'children' => [
-                        [
-                            'id' => 'node_01h00000000000000000000001',
-                            'type' => 'heading',
-                            'props' => [
-                                'level' => 1,
-                                'text' => 'Ship pages with structure',
-                                'alignment' => 'center',
-                                'emphasis' => 'default',
-                            ],
-                            'locks' => $this->locks(),
-                            'metadata' => $this->metadata(),
-                        ],
-                        [
-                            'id' => 'node_01h00000000000000000000002',
-                            'type' => 'text',
-                            'props' => [
-                                'text' => 'Turn prompts into validated landing page JSON.',
-                                'size' => 'lg',
-                                'alignment' => 'center',
-                                'emphasis' => 'muted',
-                            ],
-                            'locks' => $this->locks(),
-                            'metadata' => $this->metadata(),
-                        ],
-                    ],
-                    'locks' => $this->locks(),
-                    'metadata' => $this->metadata(),
-                ],
-            ],
-            'generation_history' => [],
-        ];
-    }
-
-    private function footerWithMalformedColumns(): array
+    private function htmlArtifact(): array
     {
         return [
-            'id' => 'sec_01h00000000000000000000002',
-            'type' => 'footer',
-            'props' => [
-                'background' => 'default',
-                'padding' => 'lg',
-                'max_width' => 'default',
-                'alignment' => 'left',
-                'variant' => 'simple',
-                'columns' => ['Main'],
-            ],
-            'children' => [
-                [
-                    'id' => 'node_01h00000000000000000000003',
-                    'type' => 'image',
-                    'props' => [
-                        'src' => 'placeholder:logo',
-                        'alt' => 'Acme',
-                        'width' => null,
-                        'height' => null,
-                        'fit' => 'contain',
-                        'radius' => 'none',
-                    ],
-                    'locks' => $this->locks(),
-                    'metadata' => $this->metadata(),
-                ],
-                [
-                    'id' => 'inst_01h00000000000000000000001',
-                    'type' => 'element_instance',
-                    'props' => [
-                        'library_id' => 'elem_01h00000000000000000000001',
-                        'overrides' => [],
-                    ],
-                    'locks' => $this->locks(),
-                    'metadata' => $this->metadata(),
-                ],
-            ],
-            'locks' => $this->locks(),
-            'metadata' => $this->metadata(),
+            'title' => 'Acme DevTools',
+            'page_type' => 'landing',
+            'goal' => 'Convince developers to try Acme.',
+            'audience' => 'Senior backend engineers',
+            'prompt_summary' => 'Developer tool landing page',
+            'raw_html' => <<<'HTML'
+<section class="bg-neutral-950 px-6 py-24 text-white">
+  <div class="mx-auto max-w-5xl">
+    <p class="text-sm font-semibold text-cyan-300">Structured HTML, full design freedom</p>
+    <h1 class="mt-4 text-5xl font-bold">Ship pages with marked blocks</h1>
+  </div>
+</section>
+<section class="bg-white px-6 py-20">
+  <div class="mx-auto grid max-w-6xl gap-6 md:grid-cols-3">
+    <article class="rounded-2xl border border-neutral-200 p-6">Editable block index</article>
+    <article class="rounded-2xl border border-neutral-200 p-6">Freeform Tailwind HTML</article>
+    <article class="rounded-2xl border border-neutral-200 p-6">Targeted replacement ready</article>
+  </div>
+</section>
+HTML,
+            'marked_html' => <<<'HTML'
+<!-- tw:block id="block_hero" type="hero" label="Hero" -->
+<section data-node-id="block_hero" data-node-type="hero" data-tw-block="block_hero" class="bg-neutral-950 px-6 py-24 text-white">
+  <div class="mx-auto max-w-5xl">
+    <p class="text-sm font-semibold text-cyan-300">Structured HTML, full design freedom</p>
+    <h1 class="mt-4 text-5xl font-bold">Ship pages with marked blocks</h1>
+  </div>
+</section>
+<!-- /tw:block -->
+<!-- tw:block id="block_features" type="features" label="Features" -->
+<section data-node-id="block_features" data-node-type="features" data-tw-block="block_features" class="bg-white px-6 py-20">
+  <div class="mx-auto grid max-w-6xl gap-6 md:grid-cols-3">
+    <article class="rounded-2xl border border-neutral-200 p-6">Editable block index</article>
+    <article class="rounded-2xl border border-neutral-200 p-6">Freeform Tailwind HTML</article>
+    <article class="rounded-2xl border border-neutral-200 p-6">Targeted replacement ready</article>
+  </div>
+</section>
+<!-- /tw:block -->
+HTML,
         ];
     }
 
-    private function conceptualDocument(): array
+    private function footerBlock(): string
     {
-        $document = $this->generatedDocument();
-        $document['document_tree'] = [
-            [
-                'type' => 'hero',
-                'props' => [
-                    'layout' => 'centered',
-                    'headline' => 'Polished claws for elegant cats',
-                ],
-                'children' => [
-                    ['type' => 'headline', 'props' => ['content' => 'Polished claws for elegant cats']],
-                    ['type' => 'paragraph', 'props' => ['content' => 'A calm grooming studio for tidy paws.']],
-                    ['type' => 'button', 'props' => ['label' => 'Book now', 'href' => '#book']],
-                ],
-            ],
-            [
-                'type' => 'feature',
-                'props' => ['theme' => 'soft'],
-                'children' => [
-                    ['type' => 'title', 'props' => ['text' => 'Gentle handling']],
-                    ['type' => 'body', 'props' => ['text' => 'Each appointment is slow, careful, and stress aware.']],
-                ],
-            ],
-        ];
-
-        return $document;
-    }
-
-    private function locks(): array
-    {
-        return ['content_locked' => false, 'style_locked' => false, 'layout_locked' => false];
-    }
-
-    private function metadata(): array
-    {
-        return ['created_by' => 'generator', 'created_at' => '2026-05-20T18:00:00Z', 'updated_at' => '2026-05-20T18:00:00Z'];
+        return <<<'HTML'
+<!-- tw:block id="block_footer" type="footer" label="Footer" -->
+<footer data-node-id="block_footer" data-node-type="footer" data-tw-block="block_footer" class="bg-neutral-950 px-6 py-12 text-white">
+  <div class="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-6">
+    <p>Cat nail studio</p>
+    <nav class="flex gap-4"><a href="#hero">Home</a><a href="#book">Book</a></nav>
+  </div>
+</footer>
+<!-- /tw:block -->
+HTML;
     }
 }
 
-class FakeGenerationProvider implements LlmProvider
+class FakeHtmlGenerationProvider implements LlmProvider
 {
-    public function __construct(private readonly array $document) {}
+    public function __construct(private readonly array $artifact) {}
 
     public function sendStructured(StructuredRequest $request): StructuredResponse
     {
-        $output = $request->stage === 'planner'
-            ? [
+        $output = match ($request->stage) {
+            'planner' => [
                 'title' => 'Acme DevTools',
                 'page_type' => 'landing',
                 'goal' => 'Convince developers to try Acme.',
                 'audience' => 'Senior backend engineers',
                 'prompt_summary' => 'Developer tool landing page',
-                'sections' => [['type' => 'hero', 'intent' => 'Introduce the product.']],
-            ]
-            : $this->document;
+                'sections' => [['type' => 'hero', 'intent' => 'Create a polished opening block.']],
+            ],
+            'html_marker' => ['html_source' => $this->artifact['marked_html']],
+            default => array_diff_key($this->artifact, ['marked_html' => true]),
+        };
 
         return new StructuredResponse($request->stage, $request->model, $output);
     }

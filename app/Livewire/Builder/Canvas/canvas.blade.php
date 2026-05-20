@@ -2,7 +2,7 @@
     <div class="flex h-12 items-center justify-between border-b border-neutral-800 px-4">
         <div>
             <div class="text-sm font-medium text-white">Canvas</div>
-            <div class="text-xs text-neutral-500">{{ count($document['document_tree'] ?? []) }} sections</div>
+            <div class="text-xs text-neutral-500">{{ count($page->block_index ?? ($document['document_tree'] ?? [])) }} sections</div>
         </div>
         <span class="rounded bg-neutral-900 px-2 py-1 text-xs text-neutral-400">Live preview</span>
     </div>
@@ -18,7 +18,7 @@
     </div>
 
     <script>
-        function syncPreviewSelection() {
+        function syncPreviewSelection(scrollIntoView = false) {
             const frame = document.getElementById('builder-preview-frame');
 
             if (!frame?.contentWindow) {
@@ -28,19 +28,20 @@
             frame.contentWindow.postMessage({
                 type: 'select-node',
                 nodeId: frame.dataset.selectedNodeId || null,
+                scrollIntoView: scrollIntoView === true,
             }, '*');
         }
 
-        document.getElementById('builder-preview-frame')?.addEventListener('load', syncPreviewSelection);
+        document.getElementById('builder-preview-frame')?.addEventListener('load', () => syncPreviewSelection(false));
 
         window.addEventListener('preview-selection-changed', (event) => {
             const frame = document.getElementById('builder-preview-frame');
 
             if (frame) {
-                frame.dataset.selectedNodeId = event.detail.nodeId || '';
+                frame.dataset.selectedNodeId = event.detail?.nodeId || '';
             }
 
-            syncPreviewSelection();
+            syncPreviewSelection(event.detail?.scrollIntoView === true);
         });
 
         function registerLivewireSelectionSync() {
@@ -69,7 +70,7 @@
                 frame.dataset.selectedNodeId = event.data.nodeId || '';
             }
 
-            syncPreviewSelection();
+            syncPreviewSelection(false);
 
             if (window.Livewire?.dispatch) {
                 window.Livewire.dispatch('node-selected', {

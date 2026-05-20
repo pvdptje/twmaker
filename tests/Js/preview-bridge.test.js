@@ -111,4 +111,31 @@ describe('preview bridge', () => {
 
         expect(document.querySelector('p').classList.contains('builder-selected')).toBe(false);
     });
+
+    it('scrolls a parent-selected node into view when requested', () => {
+        const { document, window } = bootPreview(`
+            <main>
+                <section data-node-id="block_hero" data-node-type="hero">Hero</section>
+                <section data-node-id="block_pricing" data-node-type="pricing">Pricing</section>
+            </main>
+        `);
+        const pricing = document.querySelector('[data-node-id="block_pricing"]');
+        const calls = [];
+        pricing.scrollIntoView = (options) => calls.push(options);
+
+        window.dispatchEvent(new window.MessageEvent('message', {
+            data: {
+                type: 'select-node',
+                nodeId: 'block_pricing',
+                scrollIntoView: true,
+            },
+        }));
+
+        expect(pricing.classList.contains('builder-selected')).toBe(true);
+        expect(calls).toEqual([{
+            behavior: 'smooth',
+            block: 'center',
+            inline: 'nearest',
+        }]);
+    });
 });

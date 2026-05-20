@@ -24,14 +24,24 @@ class Repair
                 $section['props']['columns'] ?? null,
                 $section['children'] ?? [],
                 $section['type'] === 'footer' ? 1 : 2,
+                $section['type'] === 'footer' ? 1 : 3,
             );
         }
 
         return $section;
     }
 
-    private function repairColumnCount(mixed $value, array $children, int $minimum): int
+    private function repairColumnCount(mixed $value, array $children, int $minimum, int $fallback): int
     {
+        $instances = count(array_filter(
+            $children,
+            fn (array $child): bool => ($child['type'] ?? null) === 'element_instance',
+        ));
+
+        if ($instances > 0) {
+            return $this->clamp($instances, $minimum, 4);
+        }
+
         if (is_int($value)) {
             return $this->clamp($value, $minimum, 4);
         }
@@ -44,12 +54,7 @@ class Repair
             return $this->clamp(count($value), $minimum, 4);
         }
 
-        $instances = count(array_filter(
-            $children,
-            fn (array $child): bool => ($child['type'] ?? null) === 'element_instance',
-        ));
-
-        return $this->clamp($instances, $minimum, 4);
+        return $fallback;
     }
 
     private function clamp(int $value, int $minimum, int $maximum): int

@@ -40,6 +40,14 @@
 
             if (selected) {
                 selected.classList.add('builder-selected');
+
+                if (event.data.scrollIntoView === true && typeof selected.scrollIntoView === 'function') {
+                    selected.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'center',
+                        inline: 'nearest'
+                    });
+                }
             }
 
             return;

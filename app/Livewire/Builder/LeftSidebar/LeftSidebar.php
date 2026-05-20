@@ -15,8 +15,6 @@ class LeftSidebar extends Component
 
     public array $document = [];
 
-    public array $library = [];
-
     public function render(): View
     {
         return view()->file(__DIR__.'/left-sidebar.blade.php');

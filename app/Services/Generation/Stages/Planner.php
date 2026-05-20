@@ -13,7 +13,7 @@ class Planner
         private readonly PromptBuilder $prompts,
     ) {}
 
-    public function plan(Page $page, array $libraryDigest): array
+    public function plan(Page $page): array
     {
         $response = $this->provider->sendStructured(new StructuredRequest(
             stage: 'planner',
@@ -24,7 +24,6 @@ class Planner
             schema: $this->schema(),
             context: [
                 'page_id' => $page->id,
-                'project_library' => $libraryDigest,
             ],
         ));
 

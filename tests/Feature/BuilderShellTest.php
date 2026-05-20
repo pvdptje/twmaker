@@ -10,7 +10,6 @@ use App\Livewire\Projects\ProjectDashboard\ProjectDashboard;
 use App\Livewire\Projects\ProjectList\ProjectList;
 use App\Models\Page;
 use App\Models\Project;
-use App\Models\ReusableElement;
 use App\Services\Ids\IdGenerator;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
@@ -52,7 +51,8 @@ class BuilderShellTest extends TestCase
 
         $this->assertSame($project->id, $page->project_id);
         $this->assertSame('draft', $page->status);
-        $this->assertSame([], $page->document_json['document_tree']);
+        $this->assertSame(2, $page->document_json['schema_version']);
+        $this->assertSame([], $page->document_json['block_index']);
     }
 
     public function test_workspace_renders_four_panel_shell_with_placeholder_canvas_and_empty_stream(): void
@@ -81,23 +81,11 @@ class BuilderShellTest extends TestCase
             ->assertSee('/preview.css', false);
     }
 
-    public function test_workspace_renders_handcrafted_document_in_preview_srcdoc(): void
+    public function test_workspace_renders_marked_html_in_preview_srcdoc(): void
     {
         $project = Project::query()->create([
             'id' => app(IdGenerator::class)->project(),
             'name' => 'Acme',
-        ]);
-
-        ReusableElement::query()->create([
-            'id' => 'elem_01h00000000000000000000001',
-            'project_id' => $project->id,
-            'name' => 'Hero CTA',
-            'type' => 'cta_group',
-            'default_props' => [
-                'primary' => ['label' => 'Start', 'href' => '#start'],
-                'secondary' => null,
-                'alignment' => 'center',
-            ],
         ]);
 
         $page = Page::query()->create([
@@ -105,14 +93,26 @@ class BuilderShellTest extends TestCase
             'project_id' => $project->id,
             'name' => 'Homepage',
             'prompt' => '',
-            'document_json' => $this->renderDocument(),
+            'document_json' => $this->markedHtmlDocument(),
+            'html_source' => $this->markedHtmlSource(),
+            'block_index' => [
+                [
+                    'id' => 'block_hero',
+                    'type' => 'hero',
+                    'label' => 'Hero',
+                    'start_offset' => 0,
+                    'end_offset' => strlen($this->markedHtmlSource()),
+                    'html' => '<section data-node-id="block_hero" data-node-type="hero" data-tw-block="block_hero" class="px-6 py-24"><h1>Ship pages with marked blocks</h1></section>',
+                    'summary' => 'Ship pages with marked blocks',
+                ],
+            ],
             'status' => 'valid',
         ]);
 
         $this->get(route('builder.workspace', [$project, $page]))
             ->assertOk()
-            ->assertSee('Ship pages with structure')
-            ->assertSee('data-node-id=&quot;node_01h00000000000000000000001&quot;', false)
+            ->assertSee('Ship pages with marked blocks')
+            ->assertSee('data-node-id=&quot;block_hero&quot;', false)
             ->assertSee('/preview-bridge.js', false);
     }
 
@@ -188,6 +188,38 @@ class BuilderShellTest extends TestCase
             ->assertSet('generation_status', 'error');
     }
 
+    public function test_workspace_poll_refreshes_generated_html_state(): void
+    {
+        $project = Project::query()->create([
+            'id' => app(IdGenerator::class)->project(),
+            'name' => 'Acme',
+        ]);
+        $page = Page::query()->create([
+            'id' => app(IdGenerator::class)->page(),
+            'project_id' => $project->id,
+            'name' => 'Homepage',
+            'prompt' => '',
+            'document_json' => $this->emptyDocument(),
+            'status' => 'generating',
+        ]);
+
+        $component = Livewire::test(Workspace::class, ['project' => $project, 'page' => $page])
+            ->assertSet('generation_status', 'idle');
+
+        $page->forceFill([
+            'status' => 'valid',
+            'html_source' => '<!-- tw:block id="block_hero" type="hero" label="Hero" --><section data-node-id="block_hero" data-node-type="hero" data-tw-block="block_hero">Hello</section><!-- /tw:block -->',
+            'block_index' => [['id' => 'block_hero', 'type' => 'hero', 'label' => 'Hero', 'start_offset' => 0, 'end_offset' => 1, 'html' => 'Hello', 'summary' => 'Hello']],
+            'document_json' => ['schema_version' => 2, 'page_metadata' => [], 'html_source' => 'Hello', 'block_index' => [['id' => 'block_hero']], 'generation_history' => []],
+        ])->save();
+
+        $component
+            ->call('refreshFromPage')
+            ->assertSet('generation_status', 'valid')
+            ->assertSet('document.schema_version', 2)
+            ->assertSet('document.block_index.0.id', 'block_hero');
+    }
+
     public function test_stream_panel_derives_status_from_page_row(): void
     {
         $project = Project::query()->create([
@@ -249,60 +281,38 @@ class BuilderShellTest extends TestCase
         ];
     }
 
-    private function renderDocument(): array
+    private function markedHtmlDocument(): array
     {
-        $document = $this->emptyDocument();
-        $document['page_metadata']['status'] = 'valid';
-        $document['document_tree'] = [
-            [
-                'id' => 'sec_01h00000000000000000000000',
-                'type' => 'hero',
-                'props' => [
-                    'background' => 'default',
-                    'padding' => 'lg',
-                    'max_width' => 'default',
-                    'alignment' => 'center',
-                    'variant' => 'centered',
-                    'image_url' => null,
-                ],
-                'children' => [
-                    [
-                        'id' => 'node_01h00000000000000000000001',
-                        'type' => 'heading',
-                        'props' => ['level' => 1, 'text' => 'Ship pages with structure', 'alignment' => 'center', 'emphasis' => 'default'],
-                        'locks' => $this->locks(),
-                        'metadata' => $this->metadata(),
-                    ],
-                    [
-                        'id' => 'node_01h00000000000000000000002',
-                        'type' => 'text',
-                        'props' => ['text' => 'A renderer turns page JSON into selectable HTML.', 'size' => 'lg', 'alignment' => 'center', 'emphasis' => 'muted'],
-                        'locks' => $this->locks(),
-                        'metadata' => $this->metadata(),
-                    ],
-                    [
-                        'id' => 'inst_01h00000000000000000000001',
-                        'type' => 'element_instance',
-                        'props' => ['library_id' => 'elem_01h00000000000000000000001', 'overrides' => []],
-                        'locks' => $this->locks(),
-                        'metadata' => $this->metadata('library_instance'),
-                    ],
-                ],
-                'locks' => $this->locks(),
-                'metadata' => $this->metadata(),
+        return [
+            'schema_version' => 2,
+            'page_metadata' => [
+                'title' => 'Homepage',
+                'page_type' => 'landing',
+                'goal' => 'Draft a landing page.',
+                'audience' => 'General audience',
+                'prompt_summary' => 'Marked HTML preview',
+                'status' => 'valid',
+                'created_at' => '2026-05-20T18:00:00Z',
+                'updated_at' => '2026-05-20T18:00:00Z',
             ],
+            'html_source' => $this->markedHtmlSource(),
+            'block_index' => [
+                [
+                    'id' => 'block_hero',
+                    'type' => 'hero',
+                    'label' => 'Hero',
+                    'start_offset' => 0,
+                    'end_offset' => strlen($this->markedHtmlSource()),
+                    'html' => '<section data-node-id="block_hero" data-node-type="hero" data-tw-block="block_hero" class="px-6 py-24"><h1>Ship pages with marked blocks</h1></section>',
+                    'summary' => 'Ship pages with marked blocks',
+                ],
+            ],
+            'generation_history' => [],
         ];
-
-        return $document;
     }
 
-    private function locks(): array
+    private function markedHtmlSource(): string
     {
-        return ['content_locked' => false, 'style_locked' => false, 'layout_locked' => false];
-    }
-
-    private function metadata(string $createdBy = 'generator'): array
-    {
-        return ['created_by' => $createdBy, 'created_at' => '2026-05-20T18:00:00Z', 'updated_at' => '2026-05-20T18:00:00Z'];
+        return '<!-- tw:block id="block_hero" type="hero" label="Hero" --><section data-node-id="block_hero" data-node-type="hero" data-tw-block="block_hero" class="px-6 py-24"><h1>Ship pages with marked blocks</h1></section><!-- /tw:block -->';
     }
 }
