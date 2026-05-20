@@ -27,6 +27,7 @@ idle
 - [2026-05-20] M2.flows: implemented project creation and empty-page creation with draft document JSON.
 - [2026-05-20] M2.tests: added builder shell feature coverage for create flows, workspace rendering, preview CSS iframe reference, and stream empty state.
 - [2026-05-20] M2.acceptance: `php artisan migrate:fresh --no-interaction`, `php artisan test`, and `npm.cmd run build` pass.
+- [2026-05-20] M1.database-fix: added the standard `sessions` table migration required by local database-backed sessions.
 
 ## In Progress
 - None.
@@ -47,6 +48,7 @@ idle
 - Livewire 4.3.0 is installed for M2 because it is compatible with Laravel 13 and available as the current stable Livewire 4 package.
 - Empty pages are persisted as valid draft `Document` JSON with an empty `document_tree`, so M2 can navigate to the workspace before generation exists.
 - The shared app layout skips Vite asset resolution in the `testing` environment; otherwise feature tests fail without a built manifest.
+- Local `.env` uses `SESSION_DRIVER=database`, so the standard `sessions` table must exist even though V1 has no users table.
 
 ## Spec Change Proposals
 - None.
@@ -104,6 +106,7 @@ idle
 - `app/Livewire/Builder/StreamPanel/EventList/event-list.js`: created: component placeholder module.
 - `tests/Feature/BuilderShellTest.php`: created: M2 feature tests.
 - `tests/Feature/ExampleTest.php`: modified: uses `RefreshDatabase` for the new database-backed home route.
+- `database/migrations/0001_01_01_000003_create_sessions_table.php`: created: standard Laravel sessions table for local database-backed sessions.
 - `progress.md`: modified: recorded M2 completion and next M3 handoff.
 
 ## Next Up (Top 3)
