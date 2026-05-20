@@ -4,7 +4,7 @@
 > Encoding: pure ASCII. Do not introduce non-ASCII characters when editing.
 
 ## Current Milestone
-M2 - Builder Shell
+M3 - Renderer and Preview
 
 ## Status
 idle
@@ -21,6 +21,12 @@ idle
 - [2026-05-20] M1.tests: added positive and negative schema coverage for every section, node, and element type, malformed fixture coverage, and ID column acceptance coverage.
 - [2026-05-20] M1.acceptance: `php artisan migrate:fresh --no-interaction`, `php artisan test --filter=Schema`, and `php artisan test` pass.
 - [2026-05-20] spec: added explicit agent instruction to commit completed verified work after updating `progress.md`.
+- [2026-05-20] M2.dependencies: installed Livewire 4.
+- [2026-05-20] M2.routes: added project list, project dashboard, and builder workspace routes.
+- [2026-05-20] M2.components: added Livewire 4 folder-based components for the full builder shell and placeholder child panels.
+- [2026-05-20] M2.flows: implemented project creation and empty-page creation with draft document JSON.
+- [2026-05-20] M2.tests: added builder shell feature coverage for create flows, workspace rendering, preview CSS iframe reference, and stream empty state.
+- [2026-05-20] M2.acceptance: `php artisan migrate:fresh --no-interaction`, `php artisan test`, and `npm.cmd run build` pass.
 
 ## In Progress
 - None.
@@ -38,44 +44,72 @@ idle
 - M1 schema validation uses `opis/json-schema` for JSON Schema checks and a small semantic pass for rules that need cross-node context, such as ordered section children and count rules.
 - Empty JSON object fields are normalized before `opis/json-schema` validation so PHP empty arrays can represent `{}` for fields like `props`, `overrides`, and `payload`.
 - The default Laravel users migration was removed because V1 explicitly has no users table.
+- Livewire 4.3.0 is installed for M2 because it is compatible with Laravel 13 and available as the current stable Livewire 4 package.
+- Empty pages are persisted as valid draft `Document` JSON with an empty `document_tree`, so M2 can navigate to the workspace before generation exists.
+- The shared app layout skips Vite asset resolution in the `testing` environment; otherwise feature tests fail without a built manifest.
 
 ## Spec Change Proposals
 - None.
 
 ## Files Created Or Modified This Session
-- `plan.md`: modified: added explicit instruction for agents to commit completed verified work after updating `progress.md`.
-- `progress.md`: created/rewritten: initial session log with R2 changes recorded.
-- `composer.json`: modified: added `opis/json-schema`.
-- `composer.lock`: modified: locked `opis/json-schema` and its dependencies.
-- `config/builder.php`: created: builder limits and retention skeleton.
-- `config/llm.php`: created: provider/model configuration skeleton.
-- `config/tailwind_map.php`: created: Tailwind token skeleton.
-- `app/Services/Ids/IdGenerator.php`: created: typed-prefix ULID generator.
-- `app/Services/Schema/DocumentSchema.php`: created: top-level document JSON Schema.
-- `app/Services/Schema/SectionSchemas.php`: created: section envelope and prop schemas.
-- `app/Services/Schema/NodeSchemas.php`: created: node envelope and prop schemas.
-- `app/Services/Schema/ElementSchemas.php`: created: reusable element definition and prop schemas.
-- `app/Services/Schema/SchemaValidator.php`: created: JSON Schema plus semantic validator.
-- `app/Services/Schema/SchemaValidationException.php`: created: validation exception wrapper.
-- `app/Models/Project.php`: created: project model.
-- `app/Models/Page.php`: created: page model.
-- `app/Models/ReusableElement.php`: created: reusable element model.
-- `app/Models/GenerationEvent.php`: created: generation event model.
-- `app/Models/PageVersion.php`: created: page version model.
-- `database/migrations/0001_01_01_000000_create_users_table.php`: deleted: V1 has no users table.
-- `database/migrations/2026_05_20_000001_create_projects_table.php`: created: projects table.
-- `database/migrations/2026_05_20_000002_create_pages_table.php`: created: pages table.
-- `database/migrations/2026_05_20_000003_create_reusable_elements_table.php`: created: reusable elements table.
-- `database/migrations/2026_05_20_000004_create_generation_events_table.php`: created: generation events table.
-- `database/migrations/2026_05_20_000005_create_page_versions_table.php`: created: page versions table.
-- `tests/Unit/Schema/SchemaValidatorTest.php`: created: schema coverage for every V1 vocabulary type.
-- `tests/Feature/DatabaseSchemaTest.php`: created: ID column acceptance test.
-- `tests/fixtures/documents/invalid-missing-document-tree.json`: created: malformed fixture for validator rejection.
+- `composer.json`: modified: added `livewire/livewire`.
+- `composer.lock`: modified: locked Livewire 4.3.0.
+- `package-lock.json`: created: npm lockfile from `npm.cmd install`.
+- `routes/web.php`: modified: replaced welcome route with M2 Livewire routes.
+- `resources/views/components/layouts/app.blade.php`: created: shared app layout.
+- `app/Livewire/Projects/ProjectList/ProjectList.php`: created: project list and create flow.
+- `app/Livewire/Projects/ProjectList/project-list.blade.php`: created: project list UI.
+- `app/Livewire/Projects/ProjectList/project-list.js`: created: component placeholder module.
+- `app/Livewire/Projects/ProjectDashboard/ProjectDashboard.php`: created: dashboard and page create flow.
+- `app/Livewire/Projects/ProjectDashboard/project-dashboard.blade.php`: created: dashboard UI.
+- `app/Livewire/Projects/ProjectDashboard/project-dashboard.js`: created: component placeholder module.
+- `app/Livewire/Builder/Workspace/Workspace.php`: created: workspace parent state component.
+- `app/Livewire/Builder/Workspace/workspace.blade.php`: created: four-panel workspace layout.
+- `app/Livewire/Builder/Workspace/workspace.js`: created: component placeholder module.
+- `app/Livewire/Builder/LeftSidebar/LeftSidebar.php`: created: sidebar shell component.
+- `app/Livewire/Builder/LeftSidebar/left-sidebar.blade.php`: created: sidebar composition.
+- `app/Livewire/Builder/LeftSidebar/left-sidebar.js`: created: component placeholder module.
+- `app/Livewire/Builder/Canvas/Canvas.php`: created: canvas component.
+- `app/Livewire/Builder/Canvas/canvas.blade.php`: created: placeholder iframe with `preview.css`.
+- `app/Livewire/Builder/Canvas/canvas.js`: created: component placeholder module.
+- `app/Livewire/Builder/RightInspector/RightInspector.php`: created: inspector shell component.
+- `app/Livewire/Builder/RightInspector/right-inspector.blade.php`: created: inspector composition.
+- `app/Livewire/Builder/RightInspector/right-inspector.js`: created: component placeholder module.
+- `app/Livewire/Builder/StreamPanel/StreamPanel.php`: created: stream shell component.
+- `app/Livewire/Builder/StreamPanel/stream-panel.blade.php`: created: stream panel composition.
+- `app/Livewire/Builder/StreamPanel/stream-panel.js`: created: component placeholder module.
+- `app/Livewire/Builder/SidePanels/ProjectSwitcher/ProjectSwitcher.php`: created: project switcher placeholder.
+- `app/Livewire/Builder/SidePanels/ProjectSwitcher/project-switcher.blade.php`: created: project switcher UI.
+- `app/Livewire/Builder/SidePanels/ProjectSwitcher/project-switcher.js`: created: component placeholder module.
+- `app/Livewire/Builder/SidePanels/SectionTree/SectionTree.php`: created: section tree placeholder.
+- `app/Livewire/Builder/SidePanels/SectionTree/section-tree.blade.php`: created: section tree UI.
+- `app/Livewire/Builder/SidePanels/SectionTree/section-tree.js`: created: component placeholder module.
+- `app/Livewire/Builder/SidePanels/ElementLibraryPanel/ElementLibraryPanel.php`: created: element library placeholder.
+- `app/Livewire/Builder/SidePanels/ElementLibraryPanel/element-library-panel.blade.php`: created: element library UI.
+- `app/Livewire/Builder/SidePanels/ElementLibraryPanel/element-library-panel.js`: created: component placeholder module.
+- `app/Livewire/Builder/SidePanels/GenerationControls/GenerationControls.php`: created: generation controls placeholder.
+- `app/Livewire/Builder/SidePanels/GenerationControls/generation-controls.blade.php`: created: generation controls UI.
+- `app/Livewire/Builder/SidePanels/GenerationControls/generation-controls.js`: created: component placeholder module.
+- `app/Livewire/Builder/Inspector/NodeSummary/NodeSummary.php`: created: node summary placeholder.
+- `app/Livewire/Builder/Inspector/NodeSummary/node-summary.blade.php`: created: node summary UI.
+- `app/Livewire/Builder/Inspector/NodeSummary/node-summary.js`: created: component placeholder module.
+- `app/Livewire/Builder/Inspector/EditForm/EditForm.php`: created: edit form placeholder.
+- `app/Livewire/Builder/Inspector/EditForm/edit-form.blade.php`: created: edit form UI.
+- `app/Livewire/Builder/Inspector/EditForm/edit-form.js`: created: component placeholder module.
+- `app/Livewire/Builder/Inspector/LockToggles/LockToggles.php`: created: lock toggles placeholder.
+- `app/Livewire/Builder/Inspector/LockToggles/lock-toggles.blade.php`: created: lock toggles UI.
+- `app/Livewire/Builder/Inspector/LockToggles/lock-toggles.js`: created: component placeholder module.
+- `app/Livewire/Builder/StreamPanel/EventList/EventList.php`: created: generation event list placeholder.
+- `app/Livewire/Builder/StreamPanel/EventList/event-list.blade.php`: created: generation event list UI.
+- `app/Livewire/Builder/StreamPanel/EventList/event-list.js`: created: component placeholder module.
+- `tests/Feature/BuilderShellTest.php`: created: M2 feature tests.
+- `tests/Feature/ExampleTest.php`: modified: uses `RefreshDatabase` for the new database-backed home route.
+- `progress.md`: modified: recorded M2 completion and next M3 handoff.
 
 ## Next Up (Top 3)
-1. Begin M2: install and configure Livewire 4 if it is not already present.
-2. M2: add project list, project dashboard, and builder workspace routes/components with placeholder content.
-3. M2: implement project create and page create flows with empty-page documents.
+1. Begin M3: add `Renderer.php`, `TailwindClassMap`, and the render Blade partial structure.
+2. M3: replace the canvas placeholder `srcdoc` with rendered fixture document HTML and the preview bridge.
+3. M3: add selection postMessage handling so the inspector receives selected node IDs.
 
 ## Notes
 - Every agent: read `plan.md` Sec. 0.3 (Rules Of Engagement) before touching anything.
@@ -83,5 +117,7 @@ idle
 - `php artisan migrate:fresh --no-interaction` required elevated filesystem permission in this environment for SQLite writes.
 - `php artisan test` required elevated filesystem permission once for Laravel compiled view writes; final run passed.
 - Completed M1 foundations and the requested agent-instruction update are ready to commit after successful verification.
+- M2 acceptance is complete as of 2026-05-20.
+- `npm run build` is blocked by PowerShell execution policy for `npm.ps1` in this environment; `npm.cmd run build` works and passed.
 - If a decision in `plan.md` looks wrong while implementing, follow `plan.md` Sec. 22.5: stop and propose, do not silently change the spec.
 - Encoding rule (`plan.md` Sec. 23.7) is non-negotiable for both this file and `plan.md`. Use `->` not an arrow, `Sec.` not a section sign, straight quotes only.
