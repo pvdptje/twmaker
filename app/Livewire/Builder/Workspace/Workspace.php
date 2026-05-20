@@ -5,6 +5,7 @@ namespace App\Livewire\Builder\Workspace;
 use App\Models\Page;
 use App\Models\Project;
 use Illuminate\Contracts\View\View;
+use Livewire\Attributes\On;
 use Livewire\Component;
 
 class Workspace extends Component
@@ -43,7 +44,8 @@ class Workspace extends Component
             ->all();
     }
 
-    public function selectNode(?string $nodeId): void
+    #[On('node-selected')]
+    public function selectNode(?string $nodeId = null): void
     {
         $this->selected_node_id = $nodeId;
     }

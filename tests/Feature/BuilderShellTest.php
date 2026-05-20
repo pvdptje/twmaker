@@ -6,6 +6,8 @@ use App\Livewire\Projects\ProjectDashboard\ProjectDashboard;
 use App\Livewire\Projects\ProjectList\ProjectList;
 use App\Models\Page;
 use App\Models\Project;
+use App\Models\ReusableElement;
+use App\Livewire\Builder\Workspace\Workspace;
 use App\Services\Ids\IdGenerator;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
@@ -74,6 +76,62 @@ class BuilderShellTest extends TestCase
             ->assertSee('/preview.css', false);
     }
 
+    public function test_workspace_renders_handcrafted_document_in_preview_srcdoc(): void
+    {
+        $project = Project::query()->create([
+            'id' => app(IdGenerator::class)->project(),
+            'name' => 'Acme',
+        ]);
+
+        ReusableElement::query()->create([
+            'id' => 'elem_01h00000000000000000000001',
+            'project_id' => $project->id,
+            'name' => 'Hero CTA',
+            'type' => 'cta_group',
+            'default_props' => [
+                'primary' => ['label' => 'Start', 'href' => '#start'],
+                'secondary' => null,
+                'alignment' => 'center',
+            ],
+        ]);
+
+        $page = Page::query()->create([
+            'id' => app(IdGenerator::class)->page(),
+            'project_id' => $project->id,
+            'name' => 'Homepage',
+            'prompt' => '',
+            'document_json' => $this->renderDocument(),
+            'status' => 'valid',
+        ]);
+
+        $this->get(route('builder.workspace', [$project, $page]))
+            ->assertOk()
+            ->assertSee('Ship pages with structure')
+            ->assertSee('data-node-id=&quot;node_01h00000000000000000000001&quot;', false)
+            ->assertSee('/preview-bridge.js', false);
+    }
+
+    public function test_workspace_tracks_node_selected_events(): void
+    {
+        $project = Project::query()->create([
+            'id' => app(IdGenerator::class)->project(),
+            'name' => 'Acme',
+        ]);
+
+        $page = Page::query()->create([
+            'id' => app(IdGenerator::class)->page(),
+            'project_id' => $project->id,
+            'name' => 'Homepage',
+            'prompt' => '',
+            'document_json' => $this->emptyDocument(),
+            'status' => 'draft',
+        ]);
+
+        Livewire::test(Workspace::class, ['project' => $project, 'page' => $page])
+            ->dispatch('node-selected', nodeId: 'node_01h00000000000000000000001')
+            ->assertSet('selected_node_id', 'node_01h00000000000000000000001');
+    }
+
     private function emptyDocument(): array
     {
         $now = now('UTC')->format('Y-m-d\TH:i:s\Z');
@@ -114,5 +172,62 @@ class BuilderShellTest extends TestCase
             'document_tree' => [],
             'generation_history' => [],
         ];
+    }
+
+    private function renderDocument(): array
+    {
+        $document = $this->emptyDocument();
+        $document['page_metadata']['status'] = 'valid';
+        $document['document_tree'] = [
+            [
+                'id' => 'sec_01h00000000000000000000000',
+                'type' => 'hero',
+                'props' => [
+                    'background' => 'default',
+                    'padding' => 'lg',
+                    'max_width' => 'default',
+                    'alignment' => 'center',
+                    'variant' => 'centered',
+                    'image_url' => null,
+                ],
+                'children' => [
+                    [
+                        'id' => 'node_01h00000000000000000000001',
+                        'type' => 'heading',
+                        'props' => ['level' => 1, 'text' => 'Ship pages with structure', 'alignment' => 'center', 'emphasis' => 'default'],
+                        'locks' => $this->locks(),
+                        'metadata' => $this->metadata(),
+                    ],
+                    [
+                        'id' => 'node_01h00000000000000000000002',
+                        'type' => 'text',
+                        'props' => ['text' => 'A renderer turns page JSON into selectable HTML.', 'size' => 'lg', 'alignment' => 'center', 'emphasis' => 'muted'],
+                        'locks' => $this->locks(),
+                        'metadata' => $this->metadata(),
+                    ],
+                    [
+                        'id' => 'inst_01h00000000000000000000001',
+                        'type' => 'element_instance',
+                        'props' => ['library_id' => 'elem_01h00000000000000000000001', 'overrides' => []],
+                        'locks' => $this->locks(),
+                        'metadata' => $this->metadata('library_instance'),
+                    ],
+                ],
+                'locks' => $this->locks(),
+                'metadata' => $this->metadata(),
+            ],
+        ];
+
+        return $document;
+    }
+
+    private function locks(): array
+    {
+        return ['content_locked' => false, 'style_locked' => false, 'layout_locked' => false];
+    }
+
+    private function metadata(string $createdBy = 'generator'): array
+    {
+        return ['created_by' => $createdBy, 'created_at' => '2026-05-20T18:00:00Z', 'updated_at' => '2026-05-20T18:00:00Z'];
     }
 }

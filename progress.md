@@ -7,7 +7,7 @@
 M3 - Renderer and Preview
 
 ## Status
-idle
+in_progress
 
 ## Completed Tasks
 - [2026-05-20] spec: `plan.md` R1 drafted as canonical V1 specification.
@@ -28,9 +28,17 @@ idle
 - [2026-05-20] M2.tests: added builder shell feature coverage for create flows, workspace rendering, preview CSS iframe reference, and stream empty state.
 - [2026-05-20] M2.acceptance: `php artisan migrate:fresh --no-interaction`, `php artisan test`, and `npm.cmd run build` pass.
 - [2026-05-20] M1.database-fix: added the standard `sessions` table migration required by local database-backed sessions.
+- [2026-05-20] M3.renderer: added `Renderer`, `TailwindClassMap`, render Blade partials for V1 sections/nodes/elements, preview CSS, and preview bridge.
+- [2026-05-20] M3.canvas: replaced the placeholder iframe with renderer-generated `srcdoc` and wired preview `node-selected` postMessage events into workspace selection state.
+- [2026-05-20] M3.srcdoc-fix: fixed iframe `srcdoc` escaping so rendered HTML is parsed by the iframe instead of shown as plain text.
+- [2026-05-20] M3.tests: added renderer unit tests and workspace feature tests for rendered fixture HTML, preview bridge inclusion, safe class rejection, and Livewire selection events.
 
 ## In Progress
-- None.
+- M3 renderer and preview implementation.
+- Started: 2026-05-20
+- Last activity: 2026-05-20
+- Files touched: app/Services/Rendering/Renderer.php, app/Services/Rendering/TailwindClassMap.php, resources/views/render/*, public/preview.css, public/preview-bridge.js, resources/tailwind/safelist.txt, app/Livewire/Builder/Canvas/*, app/Livewire/Builder/Workspace/Workspace.php, tests/Unit/Rendering/RendererTest.php, tests/Feature/BuilderShellTest.php, progress.md
+- Current state: renderer and iframe preview path are working and tested; remaining M3 work is richer per-section layouts, formal replace-subtree test coverage, fuller preview CSS build pipeline, and browser-level click verification.
 
 ## Blocked
 - None.
@@ -49,70 +57,34 @@ idle
 - Empty pages are persisted as valid draft `Document` JSON with an empty `document_tree`, so M2 can navigate to the workspace before generation exists.
 - The shared app layout skips Vite asset resolution in the `testing` environment; otherwise feature tests fail without a built manifest.
 - Local `.env` uses `SESSION_DRIVER=database`, so the standard `sessions` table must exist even though V1 has no users table.
+- M3 renderer uses Blade partials and a service-level class map rather than hand-building HTML in the canvas, keeping export and preview on the same path later.
+- Preview bridge currently supports click selection and `replace-subtree` messages in plain JS. Browser-level verification is still pending.
+- Blade must escape iframe `srcdoc` exactly once. Double escaping causes the iframe to render the HTML source as visible text.
 
 ## Spec Change Proposals
 - None.
 
 ## Files Created Or Modified This Session
-- `composer.json`: modified: added `livewire/livewire`.
-- `composer.lock`: modified: locked Livewire 4.3.0.
-- `package-lock.json`: created: npm lockfile from `npm.cmd install`.
-- `routes/web.php`: modified: replaced welcome route with M2 Livewire routes.
-- `resources/views/components/layouts/app.blade.php`: created: shared app layout.
-- `app/Livewire/Projects/ProjectList/ProjectList.php`: created: project list and create flow.
-- `app/Livewire/Projects/ProjectList/project-list.blade.php`: created: project list UI.
-- `app/Livewire/Projects/ProjectList/project-list.js`: created: component placeholder module.
-- `app/Livewire/Projects/ProjectDashboard/ProjectDashboard.php`: created: dashboard and page create flow.
-- `app/Livewire/Projects/ProjectDashboard/project-dashboard.blade.php`: created: dashboard UI.
-- `app/Livewire/Projects/ProjectDashboard/project-dashboard.js`: created: component placeholder module.
-- `app/Livewire/Builder/Workspace/Workspace.php`: created: workspace parent state component.
-- `app/Livewire/Builder/Workspace/workspace.blade.php`: created: four-panel workspace layout.
-- `app/Livewire/Builder/Workspace/workspace.js`: created: component placeholder module.
-- `app/Livewire/Builder/LeftSidebar/LeftSidebar.php`: created: sidebar shell component.
-- `app/Livewire/Builder/LeftSidebar/left-sidebar.blade.php`: created: sidebar composition.
-- `app/Livewire/Builder/LeftSidebar/left-sidebar.js`: created: component placeholder module.
-- `app/Livewire/Builder/Canvas/Canvas.php`: created: canvas component.
-- `app/Livewire/Builder/Canvas/canvas.blade.php`: created: placeholder iframe with `preview.css`.
-- `app/Livewire/Builder/Canvas/canvas.js`: created: component placeholder module.
-- `app/Livewire/Builder/RightInspector/RightInspector.php`: created: inspector shell component.
-- `app/Livewire/Builder/RightInspector/right-inspector.blade.php`: created: inspector composition.
-- `app/Livewire/Builder/RightInspector/right-inspector.js`: created: component placeholder module.
-- `app/Livewire/Builder/StreamPanel/StreamPanel.php`: created: stream shell component.
-- `app/Livewire/Builder/StreamPanel/stream-panel.blade.php`: created: stream panel composition.
-- `app/Livewire/Builder/StreamPanel/stream-panel.js`: created: component placeholder module.
-- `app/Livewire/Builder/SidePanels/ProjectSwitcher/ProjectSwitcher.php`: created: project switcher placeholder.
-- `app/Livewire/Builder/SidePanels/ProjectSwitcher/project-switcher.blade.php`: created: project switcher UI.
-- `app/Livewire/Builder/SidePanels/ProjectSwitcher/project-switcher.js`: created: component placeholder module.
-- `app/Livewire/Builder/SidePanels/SectionTree/SectionTree.php`: created: section tree placeholder.
-- `app/Livewire/Builder/SidePanels/SectionTree/section-tree.blade.php`: created: section tree UI.
-- `app/Livewire/Builder/SidePanels/SectionTree/section-tree.js`: created: component placeholder module.
-- `app/Livewire/Builder/SidePanels/ElementLibraryPanel/ElementLibraryPanel.php`: created: element library placeholder.
-- `app/Livewire/Builder/SidePanels/ElementLibraryPanel/element-library-panel.blade.php`: created: element library UI.
-- `app/Livewire/Builder/SidePanels/ElementLibraryPanel/element-library-panel.js`: created: component placeholder module.
-- `app/Livewire/Builder/SidePanels/GenerationControls/GenerationControls.php`: created: generation controls placeholder.
-- `app/Livewire/Builder/SidePanels/GenerationControls/generation-controls.blade.php`: created: generation controls UI.
-- `app/Livewire/Builder/SidePanels/GenerationControls/generation-controls.js`: created: component placeholder module.
-- `app/Livewire/Builder/Inspector/NodeSummary/NodeSummary.php`: created: node summary placeholder.
-- `app/Livewire/Builder/Inspector/NodeSummary/node-summary.blade.php`: created: node summary UI.
-- `app/Livewire/Builder/Inspector/NodeSummary/node-summary.js`: created: component placeholder module.
-- `app/Livewire/Builder/Inspector/EditForm/EditForm.php`: created: edit form placeholder.
-- `app/Livewire/Builder/Inspector/EditForm/edit-form.blade.php`: created: edit form UI.
-- `app/Livewire/Builder/Inspector/EditForm/edit-form.js`: created: component placeholder module.
-- `app/Livewire/Builder/Inspector/LockToggles/LockToggles.php`: created: lock toggles placeholder.
-- `app/Livewire/Builder/Inspector/LockToggles/lock-toggles.blade.php`: created: lock toggles UI.
-- `app/Livewire/Builder/Inspector/LockToggles/lock-toggles.js`: created: component placeholder module.
-- `app/Livewire/Builder/StreamPanel/EventList/EventList.php`: created: generation event list placeholder.
-- `app/Livewire/Builder/StreamPanel/EventList/event-list.blade.php`: created: generation event list UI.
-- `app/Livewire/Builder/StreamPanel/EventList/event-list.js`: created: component placeholder module.
-- `tests/Feature/BuilderShellTest.php`: created: M2 feature tests.
-- `tests/Feature/ExampleTest.php`: modified: uses `RefreshDatabase` for the new database-backed home route.
-- `database/migrations/0001_01_01_000003_create_sessions_table.php`: created: standard Laravel sessions table for local database-backed sessions.
-- `progress.md`: modified: recorded M2 completion and next M3 handoff.
+- `app/Services/Rendering/Renderer.php`: created: document, preview, section, node, and element rendering service.
+- `app/Services/Rendering/TailwindClassMap.php`: created: renderer class map with dev-mode safelist assertions.
+- `resources/views/render/document.blade.php`: created: document render root.
+- `resources/views/render/sections/*.blade.php`: created: section partials for the V1 vocabulary.
+- `resources/views/render/nodes/*.blade.php`: created: node partials for the V1 vocabulary.
+- `resources/views/render/elements/*.blade.php`: created: reusable element partials for the V1 vocabulary.
+- `public/preview-bridge.js`: created: iframe click selection and subtree replacement bridge.
+- `public/preview.css`: created: minimal preview baseline and selection outline.
+- `resources/tailwind/safelist.txt`: created: initial preview safelist placeholder.
+- `app/Livewire/Builder/Canvas/Canvas.php`: modified: renders iframe `srcdoc` through `Renderer` and dispatches selected node events.
+- `app/Livewire/Builder/Canvas/canvas.blade.php`: modified: uses renderer output and listens for preview bridge messages.
+- `app/Livewire/Builder/Workspace/Workspace.php`: modified: listens for `node-selected` events.
+- `tests/Unit/Rendering/RendererTest.php`: created: renderer and class-map tests.
+- `tests/Feature/BuilderShellTest.php`: modified: added rendered preview and selection event coverage.
+- `progress.md`: modified: recorded M3 progress and handoff state.
 
 ## Next Up (Top 3)
-1. Begin M3: add `Renderer.php`, `TailwindClassMap`, and the render Blade partial structure.
-2. M3: replace the canvas placeholder `srcdoc` with rendered fixture document HTML and the preview bridge.
-3. M3: add selection postMessage handling so the inspector receives selected node IDs.
+1. M3: add browser-level preview verification for clicking rendered nodes and selection overlay behavior.
+2. M3: add formal `replace-subtree` bridge coverage and connect it to future subtree re-rendering.
+3. M3: expand `preview.css` build pipeline from `resources/tailwind/safelist.txt` instead of the current minimal checked-in baseline.
 
 ## Notes
 - Every agent: read `plan.md` Sec. 0.3 (Rules Of Engagement) before touching anything.
@@ -121,6 +93,7 @@ idle
 - `php artisan test` required elevated filesystem permission once for Laravel compiled view writes; final run passed.
 - Completed M1 foundations and the requested agent-instruction update are ready to commit after successful verification.
 - M2 acceptance is complete as of 2026-05-20.
+- M3 partial verification passed after the `srcdoc` fix: `php artisan test` (86 tests, 104 assertions) and `npm.cmd run build`.
 - `npm run build` is blocked by PowerShell execution policy for `npm.ps1` in this environment; `npm.cmd run build` works and passed.
 - If a decision in `plan.md` looks wrong while implementing, follow `plan.md` Sec. 22.5: stop and propose, do not silently change the spec.
 - Encoding rule (`plan.md` Sec. 23.7) is non-negotiable for both this file and `plan.md`. Use `->` not an arrow, `Sec.` not a section sign, straight quotes only.

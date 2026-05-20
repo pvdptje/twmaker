@@ -1,0 +1,1 @@
+<input data-node-id="{{ $node['id'] }}" data-node-type="input" class="{{ $classes->node($node) }}" name="{{ $node['props']['name'] }}" type="{{ $node['props']['input_type'] }}" placeholder="{{ $node['props']['placeholder'] }}" @required($node['props']['required'])>

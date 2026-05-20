@@ -1,0 +1,1 @@
+<a data-node-id="{{ $instance['id'] }}" data-node-type="element_instance" data-element-type="secondary_button" class="{{ $classes->element('secondary_button', $props) }}" href="{{ $props['href'] }}">{{ $props['label'] }}</a>

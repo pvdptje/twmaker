@@ -1,0 +1,1 @@
+<textarea data-node-id="{{ $node['id'] }}" data-node-type="textarea" class="{{ $classes->node($node) }}" name="{{ $node['props']['name'] }}" rows="{{ $node['props']['rows'] }}" placeholder="{{ $node['props']['placeholder'] }}" @required($node['props']['required'])></textarea>

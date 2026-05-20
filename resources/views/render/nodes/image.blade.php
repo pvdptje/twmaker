@@ -1,0 +1,1 @@
+<img data-node-id="{{ $node['id'] }}" data-node-type="image" class="{{ $classes->node($node) }}" src="{{ $renderer->placeholderSrc($node['props']['src']) }}" alt="{{ $node['props']['alt'] }}" {!! $renderer->styleAttr($node['props']) !!}>
