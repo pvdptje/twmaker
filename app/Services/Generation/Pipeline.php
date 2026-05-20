@@ -41,8 +41,10 @@ class Pipeline
             if ($rawHtml === '') {
                 throw new HtmlValidationException(['Section generator returned empty HTML.']);
             }
-            $this->events->record($page, 'stage_completed', 'section_generator', 'success', 'Raw HTML draft generated.', payload: [
+            $recovery = $artifact['_recovered'] ?? null;
+            $this->events->record($page, 'stage_completed', 'section_generator', $recovery === null ? 'success' : 'warning', $this->sectionGeneratorSummary($recovery), payload: [
                 'html_bytes' => strlen($rawHtml),
+                'recovery' => $recovery,
             ]);
 
             $this->events->record($page, 'stage_started', 'html_marker', 'info', 'Adding editable block markers.');
@@ -163,6 +165,15 @@ class Pipeline
         }
 
         return '';
+    }
+
+    private function sectionGeneratorSummary(mixed $recovery): string
+    {
+        return match ($recovery) {
+            'retry' => 'Raw HTML draft generated after a recovery retry.',
+            'deterministic_fallback' => 'Section generator returned empty HTML twice, so a fallback draft was created from the plan.',
+            default => 'Raw HTML draft generated.',
+        };
     }
 
     private function markedHtml(array $marked): string

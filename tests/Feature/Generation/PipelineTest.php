@@ -6,7 +6,6 @@ use App\Models\Page;
 use App\Models\Project;
 use App\Services\Generation\Pipeline;
 use App\Services\Html\BlockIndexer;
-use App\Services\Html\HtmlValidationException;
 use App\Services\Ids\IdGenerator;
 use App\Services\Llm\LlmProvider;
 use App\Services\Llm\StructuredRequest;
@@ -77,25 +76,51 @@ class PipelineTest extends TestCase
         app(Pipeline::class)->generate($page);
     }
 
-    public function test_pipeline_rejects_empty_section_generator_output_before_marker_completion(): void
+    public function test_pipeline_retries_empty_section_generator_output(): void
+    {
+        [$project, $page] = $this->makePage('Retry section draft');
+        $artifact = $this->htmlArtifact();
+
+        $this->app->instance(LlmProvider::class, new FakeRetrySectionProvider($artifact));
+
+        app(Pipeline::class)->generate($page);
+
+        $page->refresh();
+
+        $this->assertSame('valid', $page->status);
+        $this->assertDatabaseHas('generation_events', [
+            'page_id' => $page->id,
+            'kind' => 'stage_completed',
+            'stage' => 'section_generator',
+            'level' => 'warning',
+        ]);
+    }
+
+    public function test_pipeline_creates_fallback_draft_when_section_generator_stays_empty(): void
     {
         [$project, $page] = $this->makePage('Empty section draft');
-        $artifact = $this->htmlArtifact();
-        $artifact['raw_html'] = '';
 
-        $this->app->instance(LlmProvider::class, new FakeHtmlGenerationProvider($artifact));
+        $this->app->instance(LlmProvider::class, new FakeAlwaysEmptySectionProvider);
 
-        try {
-            app(Pipeline::class)->generate($page);
-            $this->fail('Expected empty section output to fail generation.');
-        } catch (HtmlValidationException $exception) {
-            $this->assertStringContainsString('Section generator returned empty HTML', $exception->getMessage());
-        }
+        app(Pipeline::class)->generate($page);
 
-        $this->assertDatabaseMissing('generation_events', [
+        $page->refresh();
+
+        $this->assertSame('valid', $page->status);
+        $this->assertNotSame('', $page->html_source);
+        $this->assertStringContainsString('AI recovery draft', $page->html_source);
+        $this->assertDatabaseHas('generation_events', [
+            'page_id' => $page->id,
+            'kind' => 'stage_completed',
+            'stage' => 'section_generator',
+            'level' => 'warning',
+        ]);
+
+        $this->assertDatabaseHas('generation_events', [
             'page_id' => $page->id,
             'kind' => 'stage_completed',
             'stage' => 'html_marker',
+            'level' => 'warning',
         ]);
     }
 
@@ -281,5 +306,60 @@ class FakeTargetedEditProvider implements LlmProvider
             'html_source' => $this->replacement,
             'explanation' => 'Replaced the selected block with two focused sections.',
         ]);
+    }
+}
+
+class FakeRetrySectionProvider implements LlmProvider
+{
+    public function __construct(private readonly array $artifact) {}
+
+    public function sendStructured(StructuredRequest $request): StructuredResponse
+    {
+        $output = match ($request->stage) {
+            'planner' => [
+                'title' => 'Acme DevTools',
+                'page_type' => 'landing',
+                'goal' => 'Convince developers to try Acme.',
+                'audience' => 'Senior backend engineers',
+                'prompt_summary' => 'Developer tool landing page',
+                'sections' => [['type' => 'hero', 'intent' => 'Create a polished opening block.']],
+            ],
+            'section_generator' => array_merge(array_diff_key($this->artifact, ['marked_html' => true]), ['raw_html' => '']),
+            'html_marker' => ['html_source' => $this->artifact['marked_html']],
+            default => array_diff_key($this->artifact, ['marked_html' => true]),
+        };
+
+        return new StructuredResponse($request->stage, $request->model, $output);
+    }
+}
+
+class FakeAlwaysEmptySectionProvider implements LlmProvider
+{
+    public function sendStructured(StructuredRequest $request): StructuredResponse
+    {
+        $output = match ($request->stage) {
+            'planner' => [
+                'title' => 'Recovery Page',
+                'page_type' => 'landing',
+                'goal' => 'Show a page even when generation returns empty output.',
+                'audience' => 'Operators',
+                'prompt_summary' => 'Recovery page',
+                'sections' => [
+                    ['type' => 'hero', 'intent' => 'Introduce the page.'],
+                    ['type' => 'features', 'intent' => 'Explain the offer.'],
+                ],
+            ],
+            'html_marker' => ['html_source' => ''],
+            default => [
+                'title' => 'Recovery Page',
+                'page_type' => 'landing',
+                'goal' => 'Show a page even when generation returns empty output.',
+                'audience' => 'Operators',
+                'prompt_summary' => 'Recovery page',
+                'raw_html' => '',
+            ],
+        };
+
+        return new StructuredResponse($request->stage, $request->model, $output);
     }
 }
