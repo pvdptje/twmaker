@@ -67,13 +67,14 @@ in_progress
 - [2026-05-20] M5.flexible-targeted-edit-baseline: inspector edits now dispatch queued targeted edits; the pipeline can replace one selected marked block with one or more validated marked blocks, then regenerate `html_source`, `block_index`, rendered cache, and stream events.
 - [2026-05-20] M5.stream-panel-polish: stream status now shows a running loader, success/error/info event rows have clearer visual states, and completed page refreshes re-sync the selected preview block.
 - [2026-05-21] M5.production-generation-hardening: added configurable Anthropic request timeouts/token caps, explicit generation/edit job timeouts, and sanitized LLM timing logs for deployed queue diagnosis.
+- [2026-05-21] ops.deploy-hook-secret-handling: documented that approved agents may commit, push, and deploy, while keeping Forge deploy hook secrets only in ignored local files.
 
 ## In Progress
 - M5 prep: refactor targeted editing around marked block extraction and replacement.
 - Started: 2026-05-20
 - Last activity: 2026-05-20
 - Files touched: app/Livewire/Builder/Canvas/Canvas.php, app/Livewire/Builder/Workspace/Workspace.php, app/Livewire/Builder/Workspace/workspace.blade.php, app/Livewire/Builder/LeftSidebar/LeftSidebar.php, app/Livewire/Builder/LeftSidebar/left-sidebar.blade.php, app/Livewire/Projects/ProjectDashboard/ProjectDashboard.php, app/Models/Project.php, app/Services/Generation/Pipeline.php, app/Services/Generation/Stages/Planner.php, app/Services/Generation/Stages/SectionGenerator.php, app/Services/Generation/Stages/HtmlMarker.php, resources/prompts/planner.system.md, resources/prompts/section_generator.system.md, plan.md, tests/Feature/Generation/PipelineTest.php, tests/Feature/BuilderShellTest.php, progress.md
-- Current state: Flexible block-level targeted editing is wired through the inspector and pipeline, with livelier stream/status feedback. Production generation now logs each LLM request boundary and uses explicit long-running job/request limits. Next implementation target is live token/progress streaming for long LLM calls.
+- Current state: Flexible block-level targeted editing is wired through the inspector and pipeline, with livelier stream/status feedback. Production generation now logs each LLM request boundary and uses explicit long-running job/request limits. Deploy hook handling is documented and `.forge-deploy-hook` is ignored. Next implementation target is live token/progress streaming for long LLM calls.
 
 ## Blocked
 - None.
@@ -287,3 +288,4 @@ in_progress
 - M5 flexible targeted edit baseline verification passed: `vendor\bin\pint.bat --dirty`, `php artisan test --filter=PipelineTest`, `php artisan test --filter=BuilderShellTest`, `php artisan test`, `npm.cmd run test:js`, and `npm.cmd run build`.
 - M5 stream panel polish verification passed: `vendor\bin\pint.bat --dirty`, `php artisan test --filter=BuilderShellTest`, `php artisan test --filter=PipelineTest`, `npm.cmd run test:js`, and `npm.cmd run build`.
 - M5 production generation hardening verification passed: `vendor\bin\pint.bat --dirty`, `php artisan test --filter=GeneratePageJobTest`, `php artisan test --filter=PipelineTest`, and `php artisan test`.
+- Ops deploy hook secret handling verification passed: `vendor\bin\pint.bat --dirty`.

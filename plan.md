@@ -25,6 +25,7 @@ Any developer or AI agent picking up the project. This document assumes no prior
 - Never skip schema validation in code paths. Validation is required at all generator and editor boundaries.
 - Never commit partial work without updating `progress.md`'s "In Progress" and "Next Up" sections.
 - After finishing a task or milestone, update `progress.md`, run the relevant verification, and commit the completed work before handing back.
+- If the human has approved deploy access, agents may commit, push, and trigger the deploy hook after verification. The deploy hook URL/token must live only in an ignored local file such as `.forge-deploy-hook`; never store deploy secrets in tracked files.
 - Never reintroduce non-ASCII characters into `plan.md` or `progress.md`.
 
 ### 0.4 How To Find Things
