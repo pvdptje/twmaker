@@ -6,6 +6,7 @@ use App\Models\Page;
 use App\Models\Project;
 use App\Services\Generation\Pipeline;
 use App\Services\Html\BlockIndexer;
+use App\Services\Html\HtmlValidationException;
 use App\Services\Ids\IdGenerator;
 use App\Services\Llm\LlmProvider;
 use App\Services\Llm\StructuredRequest;
@@ -74,6 +75,52 @@ class PipelineTest extends TestCase
         $this->expectExceptionMessage('script tags');
 
         app(Pipeline::class)->generate($page);
+    }
+
+    public function test_pipeline_rejects_empty_section_generator_output_before_marker_completion(): void
+    {
+        [$project, $page] = $this->makePage('Empty section draft');
+        $artifact = $this->htmlArtifact();
+        $artifact['raw_html'] = '';
+
+        $this->app->instance(LlmProvider::class, new FakeHtmlGenerationProvider($artifact));
+
+        try {
+            app(Pipeline::class)->generate($page);
+            $this->fail('Expected empty section output to fail generation.');
+        } catch (HtmlValidationException $exception) {
+            $this->assertStringContainsString('Section generator returned empty HTML', $exception->getMessage());
+        }
+
+        $this->assertDatabaseMissing('generation_events', [
+            'page_id' => $page->id,
+            'kind' => 'stage_completed',
+            'stage' => 'html_marker',
+        ]);
+    }
+
+    public function test_pipeline_wraps_raw_html_when_marker_output_is_empty(): void
+    {
+        [$project, $page] = $this->makePage('Marker fallback');
+        $artifact = $this->htmlArtifact();
+        $artifact['marked_html'] = '';
+
+        $this->app->instance(LlmProvider::class, new FakeHtmlGenerationProvider($artifact));
+
+        app(Pipeline::class)->generate($page);
+
+        $page->refresh();
+
+        $this->assertSame('valid', $page->status);
+        $this->assertCount(1, $page->block_index);
+        $this->assertSame('block_page', $page->block_index[0]['id']);
+        $this->assertStringContainsString('data-tw-block="block_page"', $page->html_source);
+        $this->assertDatabaseHas('generation_events', [
+            'page_id' => $page->id,
+            'kind' => 'stage_completed',
+            'stage' => 'html_marker',
+            'level' => 'warning',
+        ]);
     }
 
     public function test_pipeline_targeted_edit_can_replace_one_block_with_multiple_blocks(): void

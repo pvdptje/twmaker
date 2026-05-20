@@ -9,6 +9,7 @@ use App\Services\Generation\Stages\SectionGenerator;
 use App\Services\Generation\Stages\TargetedEdit;
 use App\Services\Html\BlockIndexer;
 use App\Services\Html\HtmlDocumentValidator;
+use App\Services\Html\HtmlValidationException;
 use App\Services\Rendering\Renderer;
 use Throwable;
 
@@ -36,13 +37,30 @@ class Pipeline
 
             $this->events->record($page, 'stage_started', 'section_generator', 'info', 'Generating raw Tailwind HTML.');
             $artifact = $this->sections->generate($page, $plan);
-            $this->events->record($page, 'stage_completed', 'section_generator', 'success', 'Raw HTML draft generated.');
+            $rawHtml = $this->rawHtml($artifact);
+            if ($rawHtml === '') {
+                throw new HtmlValidationException(['Section generator returned empty HTML.']);
+            }
+            $this->events->record($page, 'stage_completed', 'section_generator', 'success', 'Raw HTML draft generated.', payload: [
+                'html_bytes' => strlen($rawHtml),
+            ]);
 
             $this->events->record($page, 'stage_started', 'html_marker', 'info', 'Adding editable block markers.');
             $marked = $this->htmlMarker->mark($page, $plan, $artifact);
-            $this->events->record($page, 'stage_completed', 'html_marker', 'success', 'Editable block markers added.');
+            $htmlSource = $this->markedHtml($marked);
 
-            $htmlSource = $this->htmlSource($marked, $artifact);
+            if ($htmlSource === '') {
+                $htmlSource = $this->fallbackMarkedHtml($rawHtml);
+                $this->events->record($page, 'stage_completed', 'html_marker', 'warning', 'Marker returned empty HTML, so the raw draft was wrapped as one editable block.', payload: [
+                    'html_bytes' => strlen($htmlSource),
+                    'fallback' => true,
+                ]);
+            } else {
+                $this->events->record($page, 'stage_completed', 'html_marker', 'success', 'Editable block markers added.', payload: [
+                    'html_bytes' => strlen($htmlSource),
+                ]);
+            }
+
             $this->events->record($page, 'stage_started', 'validation', 'info', 'Validating marked HTML.');
             $this->htmlValidator->assertValid($htmlSource);
             $blockIndex = $this->blockIndexer->index($htmlSource);
@@ -136,15 +154,39 @@ class Pipeline
         ];
     }
 
-    private function htmlSource(array $marked, array $artifact): string
+    private function rawHtml(array $artifact): string
     {
-        foreach ([$marked['html_source'] ?? null, $artifact['html_source'] ?? null, $artifact['raw_html'] ?? null] as $html) {
+        foreach ([$artifact['raw_html'] ?? null, $artifact['html_source'] ?? null] as $html) {
             if (is_string($html) && trim($html) !== '') {
                 return $html;
             }
         }
 
         return '';
+    }
+
+    private function markedHtml(array $marked): string
+    {
+        $html = $marked['html_source'] ?? null;
+
+        if (is_string($html) && trim($html) !== '') {
+            return $html;
+        }
+
+        return '';
+    }
+
+    private function fallbackMarkedHtml(string $rawHtml): string
+    {
+        if (preg_match('/<!--\s*tw:block\b/i', $rawHtml)) {
+            return $rawHtml;
+        }
+
+        return '<!-- tw:block id="block_page" type="custom" label="Page" -->'."\n"
+            .'<div data-node-id="block_page" data-node-type="custom" data-tw-block="block_page">'."\n"
+            .$rawHtml."\n"
+            .'</div>'."\n"
+            .'<!-- /tw:block -->';
     }
 
     private function editArtifact(Page $page, string $instruction): array
