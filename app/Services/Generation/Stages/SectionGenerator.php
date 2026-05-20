@@ -26,7 +26,7 @@ class SectionGenerator
                 'page_id' => $page->id,
                 'plan' => $plan,
             ],
-            maxTokens: 16000,
+            maxTokens: (int) config('llm.providers.anthropic.section_max_tokens', 8000),
             temperature: 0.7,
         ));
 

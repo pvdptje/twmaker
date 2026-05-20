@@ -32,7 +32,7 @@ class HtmlMarker
                 'prompt_summary' => $artifact['prompt_summary'] ?? $page->prompt,
                 'raw_html' => $artifact['raw_html'] ?? $artifact['html_source'] ?? '',
             ],
-            maxTokens: 16000,
+            maxTokens: (int) config('llm.providers.anthropic.marker_max_tokens', 8000),
             temperature: 0.2,
         ));
 

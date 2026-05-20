@@ -3,7 +3,10 @@
 namespace App\Services\Llm;
 
 use Anthropic\Client;
+use Anthropic\RequestOptions;
+use Illuminate\Support\Facades\Log;
 use RuntimeException;
+use Throwable;
 
 class AnthropicProvider implements LlmProvider
 {
@@ -11,20 +14,54 @@ class AnthropicProvider implements LlmProvider
 
     public function sendStructured(StructuredRequest $request): StructuredResponse
     {
-        $client = $this->client ?? new Client(apiKey: (string) config('llm.providers.anthropic.api_key'));
-
-        $message = $client->messages->create(
-            maxTokens: $request->maxTokens,
-            messages: [[
-                'role' => 'user',
-                'content' => $this->buildUserContent($request),
-            ]],
-            model: $request->model,
-            system: $request->systemPrompt,
-            temperature: $request->temperature,
-            toolChoice: ['type' => 'tool', 'name' => $request->toolName],
-            tools: [$request->toolDefinition()],
+        $client = $this->client ?? new Client(
+            apiKey: (string) config('llm.providers.anthropic.api_key'),
+            requestOptions: RequestOptions::with(
+                timeout: (float) config('llm.providers.anthropic.request_timeout', 600),
+            ),
         );
+
+        $userContent = $this->buildUserContent($request);
+        $startedAt = microtime(true);
+
+        Log::info('LLM structured request started.', [
+            'stage' => $request->stage,
+            'model' => $request->model,
+            'max_tokens' => $request->maxTokens,
+            'prompt_bytes' => strlen($userContent),
+        ]);
+
+        try {
+            $message = $client->messages->create(
+                maxTokens: $request->maxTokens,
+                messages: [[
+                    'role' => 'user',
+                    'content' => $userContent,
+                ]],
+                model: $request->model,
+                system: $request->systemPrompt,
+                temperature: $request->temperature,
+                toolChoice: ['type' => 'tool', 'name' => $request->toolName],
+                tools: [$request->toolDefinition()],
+            );
+        } catch (Throwable $exception) {
+            Log::error('LLM structured request failed.', [
+                'stage' => $request->stage,
+                'model' => $request->model,
+                'duration_ms' => (int) round((microtime(true) - $startedAt) * 1000),
+                'exception' => $exception::class,
+                'message' => $exception->getMessage(),
+            ]);
+
+            throw $exception;
+        }
+
+        Log::info('LLM structured request completed.', [
+            'stage' => $request->stage,
+            'model' => $request->model,
+            'duration_ms' => (int) round((microtime(true) - $startedAt) * 1000),
+            'stop_reason' => $message->stopReason ?? null,
+        ]);
 
         $output = $this->extractToolInput($message->content ?? [], $request->toolName);
 

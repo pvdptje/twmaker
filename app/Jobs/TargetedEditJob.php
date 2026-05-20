@@ -12,6 +12,10 @@ class TargetedEditJob implements ShouldQueue
 {
     use Queueable;
 
+    public int $tries = 1;
+
+    public int $timeout = 300;
+
     public function __construct(
         public readonly string $pageId,
         public readonly string $targetId,

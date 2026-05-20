@@ -12,15 +12,20 @@ class GeneratePageJob implements ShouldQueue
 {
     use Queueable;
 
+    public int $tries = 1;
+
+    public int $timeout = 900;
+
     public function __construct(public readonly string $pageId) {}
 
     public function handle(Pipeline $pipeline): void
     {
         try {
             $pipeline->generate(Page::query()->findOrFail($this->pageId));
-        } catch (Throwable) {
+        } catch (Throwable $exception) {
             // Pipeline records the terminal generation_failed event and page status.
             // Swallow here so sync queue mode does not surface a Livewire 500 overlay.
+            report($exception);
         }
     }
 }
