@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "page_metadata": {
+    "title": "Broken",
+    "page_type": "landing",
+    "goal": "Show validation failure.",
+    "audience": "Developers",
+    "prompt_summary": "Broken fixture.",
+    "status": "invalid",
+    "created_at": "2026-05-20T18:00:00Z",
+    "updated_at": "2026-05-20T18:00:00Z"
+  },
+  "design_system": {
+    "colors": {
+      "primary": "blue",
+      "accent": "emerald",
+      "neutral": "neutral",
+      "background": "white",
+      "foreground": "neutral-950"
+    },
+    "typography": {
+      "heading_family": "sans",
+      "body_family": "sans",
+      "scale": "comfortable"
+    },
+    "spacing": {
+      "density": "comfortable",
+      "section_padding": "lg"
+    },
+    "radius": "lg",
+    "tone": "technical",
+    "dark_mode": false
+  },
+  "generation_history": []
+}

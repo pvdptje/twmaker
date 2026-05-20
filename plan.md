@@ -24,6 +24,7 @@ Any developer or AI agent picking up the project. This document assumes no prior
 - Never invent JSON shapes, prop names, or element types not defined in this file. Unknown types are validation failures (Sec. 20).
 - Never skip schema validation in code paths. Validation is required at all generator and editor boundaries.
 - Never commit partial work without updating `progress.md`'s "In Progress" and "Next Up" sections.
+- After finishing a task or milestone, update `progress.md`, run the relevant verification, and commit the completed work before handing back.
 - Never reintroduce non-ASCII characters into `plan.md` or `progress.md`.
 
 ### 0.4 How To Find Things
@@ -1586,6 +1587,7 @@ If implementation reveals a `plan.md` decision is wrong:
 ### 23.4 Commits
 - Commit messages: `[M{n}] {short imperative summary}` (e.g. `[M3] Add card node renderer`).
 - One logical change per commit.
+- Commit completed tasks after verification and after `progress.md` has been updated for handoff.
 
 ### 23.5 Tests
 - Feature tests for user-visible flows.
