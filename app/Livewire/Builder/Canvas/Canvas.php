@@ -5,6 +5,7 @@ namespace App\Livewire\Builder\Canvas;
 use App\Models\Page;
 use App\Services\Rendering\Renderer;
 use Illuminate\Contracts\View\View;
+use Livewire\Attributes\Reactive;
 use Livewire\Component;
 
 class Canvas extends Component
@@ -12,6 +13,9 @@ class Canvas extends Component
     public Page $page;
 
     public array $document = [];
+
+    #[Reactive]
+    public ?string $selectedNodeId = null;
 
     public string $srcdoc = '';
 
@@ -23,6 +27,11 @@ class Canvas extends Component
     public function selectNode(?string $nodeId = null): void
     {
         $this->dispatch('node-selected', nodeId: $nodeId);
+    }
+
+    public function updatedSelectedNodeId(): void
+    {
+        $this->dispatch('preview-selection-changed', nodeId: $this->selectedNodeId);
     }
 
     public function render(): View

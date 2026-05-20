@@ -28,6 +28,23 @@
     }, true);
 
     window.addEventListener('message', function (event) {
+        if (event.data?.type === 'select-node') {
+            clearSelection();
+
+            if (!event.data.nodeId) {
+                selected = null;
+                return;
+            }
+
+            selected = document.querySelector('[data-node-id="' + event.data.nodeId + '"]');
+
+            if (selected) {
+                selected.classList.add('builder-selected');
+            }
+
+            return;
+        }
+
         if (event.data?.type !== 'replace-subtree') {
             return;
         }

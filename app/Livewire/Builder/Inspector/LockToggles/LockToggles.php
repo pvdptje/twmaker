@@ -3,10 +3,12 @@
 namespace App\Livewire\Builder\Inspector\LockToggles;
 
 use Illuminate\Contracts\View\View;
+use Livewire\Attributes\Reactive;
 use Livewire\Component;
 
 class LockToggles extends Component
 {
+    #[Reactive]
     public ?string $selectedNodeId = null;
 
     public bool $contentLocked = false;

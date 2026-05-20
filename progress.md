@@ -34,13 +34,17 @@ in_progress
 - [2026-05-20] M3.tests: added renderer unit tests and workspace feature tests for rendered fixture HTML, preview bridge inclusion, safe class rejection, and Livewire selection events.
 - [2026-05-20] M3.bridge-tests: added JS DOM coverage for preview bridge click selection, selection overlay class toggling, parent postMessage payloads, and replace-subtree behavior.
 - [2026-05-20] M3.preview-css-pipeline: added `npm run build:preview-css`, Tailwind CLI generation for `public/preview.css`, and a single shared safelist source for CSS output and renderer debug assertions.
+- [2026-05-20] M3.selection-sync: added parent-to-preview selection sync so iframe highlights can be restored after Livewire updates.
+- [2026-05-20] M3.selection-events: changed preview click handling to dispatch `node-selected` through Livewire globally, avoiding stale Canvas child component references after the first selection.
+- [2026-05-20] M3.inspector-reactivity: marked right inspector selected-node props reactive so nested inspector components update across repeated canvas selections.
+- [2026-05-20] M3.browser-verified-selection: user verified in Herd that switching iframe nodes updates the inspector repeatedly.
 
 ## In Progress
 - M3 renderer and preview implementation.
 - Started: 2026-05-20
 - Last activity: 2026-05-20
 - Files touched: app/Services/Rendering/Renderer.php, app/Services/Rendering/TailwindClassMap.php, resources/views/render/*, public/preview.css, public/preview-bridge.js, resources/css/preview.css, resources/tailwind/safelist.txt, scripts/build-preview-css.mjs, app/Livewire/Builder/Canvas/*, app/Livewire/Builder/Workspace/Workspace.php, tests/Unit/Rendering/RendererTest.php, tests/Feature/BuilderShellTest.php, tests/Js/preview-bridge.test.js, package.json, package-lock.json, progress.md
-- Current state: renderer and iframe preview path are working and tested. JS DOM bridge tests cover click selection, overlay class toggling, postMessage payloads, and replace-subtree. Preview CSS now builds from the checked-in safelist. Remaining M3 work is browser smoke verification in a real browser and any layout polish found there.
+- Current state: renderer and iframe preview path are working and tested. JS DOM bridge tests cover click selection, overlay class toggling, postMessage payloads, parent-driven selection sync, and replace-subtree. Preview clicks now dispatch selection events directly to Livewire/Workspace instead of through a Canvas child method. Right inspector and nested inspector controls now receive selected-node changes through reactive props. User verified in Herd that switching nodes in the iframe updates the inspector repeatedly. Preview CSS now builds from the checked-in safelist.
 
 ## Blocked
 - None.
@@ -65,6 +69,7 @@ in_progress
 - Preview bridge tests use Vitest + jsdom because the bridge is framework-independent plain JS. This gives fast DOM behavior coverage without introducing a full browser automation stack yet.
 - Preview CSS generation uses `@tailwindcss/cli` through `scripts/build-preview-css.mjs`; the script injects `resources/tailwind/safelist.txt` into `resources/css/preview.css` and writes `public/preview.css`.
 - `TailwindClassMap` reads `resources/tailwind/safelist.txt` for debug assertions so the renderer and CSS build share one class allow-list.
+- Browser verification will be handled by the user on request; avoid ad hoc browser automation unless explicitly requested.
 
 ## Spec Change Proposals
 - None.
@@ -82,8 +87,14 @@ in_progress
 - `resources/css/preview.css`: created: Tailwind v4 preview CSS source with safelist injection token and builder selection styles.
 - `scripts/build-preview-css.mjs`: created: reads safelist and builds `public/preview.css` through Tailwind CLI.
 - `app/Livewire/Builder/Canvas/Canvas.php`: modified: renders iframe `srcdoc` through `Renderer` and dispatches selected node events.
-- `app/Livewire/Builder/Canvas/canvas.blade.php`: modified: uses renderer output and listens for preview bridge messages.
+- `app/Livewire/Builder/Canvas/canvas.blade.php`: modified: uses renderer output, listens for preview bridge messages, and syncs selected node state back into the iframe.
+- `app/Livewire/Builder/RightInspector/RightInspector.php`: modified: selected node prop is reactive for repeated canvas selections.
+- `app/Livewire/Builder/Inspector/NodeSummary/NodeSummary.php`: modified: selected node prop is reactive for repeated canvas selections.
+- `app/Livewire/Builder/Inspector/EditForm/EditForm.php`: modified: selected node prop is reactive for repeated canvas selections.
+- `app/Livewire/Builder/Inspector/LockToggles/LockToggles.php`: modified: selected node prop is reactive for repeated canvas selections.
 - `app/Livewire/Builder/Workspace/Workspace.php`: modified: listens for `node-selected` events.
+- `app/Livewire/Builder/Workspace/workspace.blade.php`: modified: passes selected node state into the canvas.
+- `public/preview-bridge.js`: modified: accepts parent-driven `select-node` messages to restore iframe highlight.
 - `tests/Unit/Rendering/RendererTest.php`: created: renderer and class-map tests.
 - `tests/Feature/BuilderShellTest.php`: modified: added rendered preview and selection event coverage.
 - `tests/Js/preview-bridge.test.js`: created: preview bridge DOM behavior tests.
@@ -92,7 +103,7 @@ in_progress
 - `progress.md`: modified: recorded M3 progress and handoff state.
 
 ## Next Up (Top 3)
-1. M3: run a real-browser smoke check of the iframe click path and rendered layout.
+1. M3: ask the user to browser-verify the iframe click path and rendered layout when a check is useful.
 2. M3: review per-section render layouts against the hand-crafted fixture and polish obvious spacing/structure issues.
 3. M3: decide whether `test:js` should be folded into the default CI/test command before closing M3.
 

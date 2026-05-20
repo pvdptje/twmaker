@@ -3,10 +3,12 @@
 namespace App\Livewire\Builder\Inspector\EditForm;
 
 use Illuminate\Contracts\View\View;
+use Livewire\Attributes\Reactive;
 use Livewire\Component;
 
 class EditForm extends Component
 {
+    #[Reactive]
     public ?string $selectedNodeId = null;
 
     public string $instruction = '';

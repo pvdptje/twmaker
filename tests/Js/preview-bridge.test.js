@@ -83,4 +83,32 @@ describe('preview bridge', () => {
         expect(document.querySelector('[data-node-id="node_01h00000000000000000000001"]')).toBeNull();
         expect(document.querySelector('[data-node-id="node_01h00000000000000000000002"]').textContent).toBe('New copy');
     });
+
+    it('applies a selection sent by the parent frame', () => {
+        const { document, window } = bootPreview(`
+            <main>
+                <h1 data-node-id="node_01h00000000000000000000001" data-node-type="heading">Heading</h1>
+                <p data-node-id="node_01h00000000000000000000002" data-node-type="text">Copy</p>
+            </main>
+        `);
+
+        window.dispatchEvent(new window.MessageEvent('message', {
+            data: {
+                type: 'select-node',
+                nodeId: 'node_01h00000000000000000000002',
+            },
+        }));
+
+        expect(document.querySelector('h1').classList.contains('builder-selected')).toBe(false);
+        expect(document.querySelector('p').classList.contains('builder-selected')).toBe(true);
+
+        window.dispatchEvent(new window.MessageEvent('message', {
+            data: {
+                type: 'select-node',
+                nodeId: null,
+            },
+        }));
+
+        expect(document.querySelector('p').classList.contains('builder-selected')).toBe(false);
+    });
 });
