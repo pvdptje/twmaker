@@ -49,13 +49,14 @@ in_progress
 - [2026-05-20] M4.validation-hardening: schema validator now reports malformed section column counts instead of throwing PHP type errors; pipeline attempts deterministic repair for recoverable column-count drift.
 - [2026-05-20] M4.browser-sync-ux: sync queue generation failures no longer surface as Livewire 500 overlays; stream status now derives from page status and prompt guidance avoids impossible fresh-library sections.
 - [2026-05-20] M4.schema-fallback-hardening: unknown node/element prop schemas now use a valid boolean false schema so Opis reports validation failure instead of throwing a schema-engine exception.
+- [2026-05-20] M4.assembler-normalization: assembler now assigns server IDs/envelopes, normalizes common section/node aliases, and reorders/fills supported section children before validation.
 
 ## In Progress
 - None.
 - Started: 2026-05-20
 - Last activity: 2026-05-20
-- Files touched: app/Services/Schema/NodeSchemas.php, app/Services/Schema/ElementSchemas.php, app/Services/Schema/SchemaValidator.php, tests/Unit/Schema/SchemaValidatorTest.php, progress.md
-- Current state: Browser generation failed with `not must contain a json schema (object or boolean)`. Root cause was schema fallbacks using invalid `['not' => []]`; unknown vocabulary now becomes normal validation errors.
+- Files touched: app/Services/Generation/Stages/Assembler.php, tests/Feature/Generation/PipelineTest.php, progress.md
+- Current state: Browser generation failed with many section/node schema errors from conceptual LLM output. Assembler now normalizes supported sections (`hero`, `feature_split`, `faq`, `logo_cloud`, `footer`) and common node aliases before validation. Unsupported element-heavy sections are dropped for now when no safe assembly path exists.
 
 ## Blocked
 - None.
@@ -89,6 +90,7 @@ in_progress
 - In sync queue mode, `GeneratePageJob` swallows pipeline exceptions because `Pipeline` already records the error event and page status. This keeps local browser testing from showing Laravel's 500 overlay.
 - Fresh projects currently have no reusable element library, so prompts must avoid sections that require element instances until default library seeding is implemented.
 - Use JSON Schema boolean `false` for impossible fallback schemas. Do not use invalid empty `not` schemas with Opis.
+- Assembler owns server-side document hygiene before validation: IDs, locks, metadata, common prop defaults, alias normalization, and child ordering for supported sections.
 
 ## Spec Change Proposals
 - None.
@@ -170,6 +172,8 @@ in_progress
 - `app/Services/Schema/ElementSchemas.php`: modified: unknown element props return boolean false schema.
 - `app/Services/Schema/SchemaValidator.php`: modified: accepts boolean schemas and normalizes data safely.
 - `tests/Unit/Schema/SchemaValidatorTest.php`: modified: covers unknown node/element validation without schema-engine exceptions.
+- `app/Services/Generation/Stages/Assembler.php`: modified: normalizes conceptual LLM JSON into valid V1 envelopes where possible.
+- `tests/Feature/Generation/PipelineTest.php`: modified: covers conceptual LLM JSON assembly before validation.
 
 ## Next Up (Top 3)
 1. M4: seed default project reusable elements or otherwise generate required element definitions before planning element-heavy sections.
@@ -194,3 +198,4 @@ in_progress
 - M4 validation hardening verification passed: `vendor\bin\pint.bat`, `php artisan test` (91 tests, 120 assertions), `npm.cmd run test:js`, and `npm.cmd run build`.
 - M4 browser sync UX verification passed: `vendor\bin\pint.bat`, `php artisan test` (94 tests, 126 assertions), `npm.cmd run test:js`, and `npm.cmd run build`.
 - M4 schema fallback hardening verification passed: `vendor\bin\pint.bat`, `php artisan test` (96 tests, 132 assertions), `npm.cmd run test:js`, and `npm.cmd run build`.
+- M4 assembler normalization verification passed: `vendor\bin\pint.bat`, `php artisan test` (97 tests, 137 assertions), `npm.cmd run test:js`, and `npm.cmd run build`.

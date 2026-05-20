@@ -97,6 +97,35 @@ class PipelineTest extends TestCase
         ]);
     }
 
+    public function test_pipeline_assembles_conceptual_llm_json_before_validation(): void
+    {
+        $ids = app(IdGenerator::class);
+        $project = Project::query()->create([
+            'id' => $ids->project(),
+            'name' => 'Acme',
+        ]);
+        $page = Page::query()->create([
+            'id' => $ids->page(),
+            'project_id' => $project->id,
+            'name' => 'Homepage',
+            'prompt' => 'A cat nail studio landing page',
+            'document_json' => $this->emptyDocument(),
+            'status' => 'draft',
+        ]);
+
+        $this->app->instance(LlmProvider::class, new FakeGenerationProvider($this->conceptualDocument()));
+
+        app(Pipeline::class)->generate($page);
+
+        $page->refresh();
+
+        $this->assertSame('valid', $page->status);
+        $this->assertSame('hero', $page->document_json['document_tree'][0]['type']);
+        $this->assertSame('heading', $page->document_json['document_tree'][0]['children'][0]['type']);
+        $this->assertSame('text', $page->document_json['document_tree'][0]['children'][1]['type']);
+        $this->assertSame('feature_split', $page->document_json['document_tree'][1]['type']);
+    }
+
     private function emptyDocument(): array
     {
         $document = $this->generatedDocument();
@@ -231,6 +260,35 @@ class PipelineTest extends TestCase
             'locks' => $this->locks(),
             'metadata' => $this->metadata(),
         ];
+    }
+
+    private function conceptualDocument(): array
+    {
+        $document = $this->generatedDocument();
+        $document['document_tree'] = [
+            [
+                'type' => 'hero',
+                'props' => [
+                    'layout' => 'centered',
+                    'headline' => 'Polished claws for elegant cats',
+                ],
+                'children' => [
+                    ['type' => 'headline', 'props' => ['content' => 'Polished claws for elegant cats']],
+                    ['type' => 'paragraph', 'props' => ['content' => 'A calm grooming studio for tidy paws.']],
+                    ['type' => 'button', 'props' => ['label' => 'Book now', 'href' => '#book']],
+                ],
+            ],
+            [
+                'type' => 'feature',
+                'props' => ['theme' => 'soft'],
+                'children' => [
+                    ['type' => 'title', 'props' => ['text' => 'Gentle handling']],
+                    ['type' => 'body', 'props' => ['text' => 'Each appointment is slow, careful, and stress aware.']],
+                ],
+            ],
+        ];
+
+        return $document;
     }
 
     private function locks(): array
