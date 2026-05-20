@@ -14,6 +14,7 @@ class RendererTest extends TestCase
         $html = app(Renderer::class)->renderPreviewDocument($this->document(), $this->library());
 
         $this->assertStringContainsString('<link rel="stylesheet" href="/preview.css">', $html);
+        $this->assertStringContainsString('<script src="https://cdn.tailwindcss.com"></script>', $html);
         $this->assertStringContainsString('<script src="/preview-bridge.js"></script>', $html);
         $this->assertStringContainsString('data-node-id="sec_01h00000000000000000000000"', $html);
         $this->assertStringContainsString('data-node-id="node_01h00000000000000000000001"', $html);

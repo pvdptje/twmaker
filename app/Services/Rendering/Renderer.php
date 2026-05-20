@@ -42,6 +42,7 @@ class Renderer
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{$title}</title>
 <link rel="stylesheet" href="/preview.css">
+<script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body>
 {$body}
