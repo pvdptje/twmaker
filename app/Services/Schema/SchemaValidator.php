@@ -372,7 +372,7 @@ class SchemaValidator
         }
     }
 
-    private function check(array $schema, mixed $data, string $path): void
+    private function check(array|bool $schema, mixed $data, string $path): void
     {
         $validator = new Validator;
         $result = $validator->validate(
@@ -390,8 +390,12 @@ class SchemaValidator
         return json_decode(json_encode($value, JSON_THROW_ON_ERROR), false, 512, JSON_THROW_ON_ERROR);
     }
 
-    private function normalizeDataForSchema(mixed $data, array $schema): mixed
+    private function normalizeDataForSchema(mixed $data, array|bool $schema): mixed
     {
+        if (is_bool($schema)) {
+            return $data;
+        }
+
         if (is_array($data) && $this->schemaAcceptsObject($schema)) {
             $properties = $schema['properties'] ?? [];
 

@@ -82,6 +82,30 @@ class SchemaValidatorTest extends TestCase
         $this->assertContains('document_tree.1: footer columns must be an integer', $validator->errors());
     }
 
+    public function test_rejects_unknown_node_type_without_schema_engine_error(): void
+    {
+        $node = self::node('heading');
+        $node['type'] = 'headline';
+
+        $validator = $this->validator();
+
+        $this->assertFalse($validator->validateContentNode($node));
+        $this->assertContains('node: JSON schema validation failed', $validator->errors());
+        $this->assertContains('node.props: JSON schema validation failed', $validator->errors());
+    }
+
+    public function test_rejects_unknown_element_type_without_schema_engine_error(): void
+    {
+        $element = self::element('primary_button');
+        $element['type'] = 'fancy_button';
+
+        $validator = $this->validator();
+
+        $this->assertFalse($validator->validateElementDefinition($element));
+        $this->assertContains('element: JSON schema validation failed', $validator->errors());
+        $this->assertContains('element.default_props: JSON schema validation failed', $validator->errors());
+    }
+
     public static function sectionProvider(): array
     {
         $cases = [];

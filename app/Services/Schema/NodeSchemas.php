@@ -29,7 +29,7 @@ class NodeSchemas
         ];
     }
 
-    public static function props(string $type): array
+    public static function props(string $type): array|bool
     {
         return match ($type) {
             'container' => self::object([
@@ -116,7 +116,7 @@ class NodeSchemas
                 'library_id' => ['type' => 'string', 'pattern' => '^elem_[0-9a-hjkmnp-tv-z]{26}$', 'maxLength' => 32],
                 'overrides' => ['type' => 'object'],
             ], ['library_id', 'overrides']),
-            default => ['not' => []],
+            default => false,
         };
     }
 

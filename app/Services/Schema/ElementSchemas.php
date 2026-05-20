@@ -34,7 +34,7 @@ class ElementSchemas
         ];
     }
 
-    public static function props(string $type, bool $partial = false): array
+    public static function props(string $type, bool $partial = false): array|bool
     {
         $schemas = [
             'primary_button' => self::buttonProps(),
@@ -91,9 +91,9 @@ class ElementSchemas
             ], ['primary', 'secondary', 'alignment']),
         ];
 
-        $schema = $schemas[$type] ?? ['not' => []];
+        $schema = $schemas[$type] ?? false;
 
-        if ($partial && isset($schema['required'])) {
+        if ($partial && is_array($schema) && isset($schema['required'])) {
             $schema['required'] = [];
         }
 
