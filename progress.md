@@ -45,13 +45,14 @@ in_progress
 - [2026-05-20] M4.pipeline-scaffold: added project library loading, prompt loading, generation pipeline, core stage scaffolds, and prompt files.
 - [2026-05-20] M4.generation-controls: wired the Generate button to persist prompt/status and dispatch `GeneratePageJob`.
 - [2026-05-20] M4.tests: added structured request and fake-provider pipeline tests; `php artisan test`, `npm.cmd run test:js`, and `npm.cmd run build` pass.
+- [2026-05-20] M4.stream-dom-cap: added Alpine pruning to cap browser-rendered generation event rows while preserving persisted event history.
 
 ## In Progress
-- M4 foundation: LLM provider contracts, generation events, stream loading, and stage scaffolding.
+- None.
 - Started: 2026-05-20
 - Last activity: 2026-05-20
-- Files touched: app/Services/Llm/*, app/Services/Generation/*, app/Events/GenerationEventBroadcast.php, app/Jobs/GeneratePageJob.php, app/Jobs/TargetedEditJob.php, app/Providers/AppServiceProvider.php, app/Livewire/Builder/SidePanels/GenerationControls/*, app/Livewire/Builder/StreamPanel/EventList/event-list.blade.php, resources/prompts/*, composer.json, composer.lock, tests/Unit/Llm/StructuredRequestTest.php, tests/Feature/Generation/PipelineTest.php, tests/Feature/BuilderShellTest.php, progress.md
-- Current state: M4 foundation is partially complete. Provider contracts, Anthropic adapter, generation event persistence/broadcast event, queue job shell, prompt files, library loader, and pipeline scaffolding are in place. The pipeline is verified with a fake provider and validates/persists generated documents. Real Anthropic prompt quality, repair retries, Echo/Reverb live subscription, and manual three-prompt acceptance remain pending.
+- Files touched: app/Livewire/Builder/StreamPanel/EventList/event-list.blade.php, tests/Feature/BuilderShellTest.php, progress.md
+- Current state: Stream panel still uses queued persisted events and polling, but now includes an Alpine `MutationObserver` cap that keeps only the newest 80 event rows in the browser DOM. `wire:stream` is intentionally not used for the queued job path because Livewire streaming only streams during the active Livewire request.
 
 ## Blocked
 - None.
@@ -80,6 +81,7 @@ in_progress
 - JS bridge tests stay as `npm.cmd run test:js` for now instead of being folded into `php artisan test`; revisit when a CI script exists.
 - M4 provider code depends on Anthropic's official `anthropic-ai/sdk` package and keeps it behind `LlmProvider` so tests and future providers can swap implementations.
 - Stream panel uses polling against persisted `generation_events` as a working baseline before Echo/Reverb live subscription is wired.
+- Do not use `wire:stream` for queued generation worker output. Livewire streaming is request-scoped; queued worker updates should continue through persisted events plus broadcast/polling. Alpine can still prune browser-side rows.
 
 ## Spec Change Proposals
 - None.
@@ -142,6 +144,8 @@ in_progress
 - `tests/Unit/Llm/StructuredRequestTest.php`: created: structured request tool definition coverage.
 - `tests/Feature/Generation/PipelineTest.php`: created: fake-provider pipeline coverage.
 - `tests/Feature/BuilderShellTest.php`: modified: added generation enqueue coverage.
+- `app/Livewire/Builder/StreamPanel/EventList/event-list.blade.php`: modified: added Alpine DOM pruning cap for generation event rows.
+- `tests/Feature/BuilderShellTest.php`: modified: asserts stream panel includes the DOM cap behavior.
 
 ## Next Up (Top 3)
 1. M4: wire Echo/Reverb subscription for the stream panel and refresh Workspace state when generation completes.
@@ -162,3 +166,4 @@ in_progress
 - If a decision in `plan.md` looks wrong while implementing, follow `plan.md` Sec. 22.5: stop and propose, do not silently change the spec.
 - Encoding rule (`plan.md` Sec. 23.7) is non-negotiable for both this file and `plan.md`. Use `->` not an arrow, `Sec.` not a section sign, straight quotes only.
 - M4 partial verification passed: `php artisan test` (89 tests, 113 assertions), `npm.cmd run test:js` (3 tests), and `npm.cmd run build`.
+- M4 stream DOM cap verification passed: `php artisan test --filter=BuilderShellTest` and `npm.cmd run build`.

@@ -76,6 +76,7 @@ class BuilderShellTest extends TestCase
             ->assertSee('Inspector')
             ->assertSee('Stream')
             ->assertSee('No generation events yet.')
+            ->assertSee('maxRows: 80', false)
             ->assertSee('/preview.css', false);
     }
 
