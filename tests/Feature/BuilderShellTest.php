@@ -2,14 +2,17 @@
 
 namespace Tests\Feature;
 
+use App\Jobs\GeneratePageJob;
+use App\Livewire\Builder\SidePanels\GenerationControls\GenerationControls;
+use App\Livewire\Builder\Workspace\Workspace;
 use App\Livewire\Projects\ProjectDashboard\ProjectDashboard;
 use App\Livewire\Projects\ProjectList\ProjectList;
 use App\Models\Page;
 use App\Models\Project;
 use App\Models\ReusableElement;
-use App\Livewire\Builder\Workspace\Workspace;
 use App\Services\Ids\IdGenerator;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
 use Tests\TestCase;
 
@@ -130,6 +133,34 @@ class BuilderShellTest extends TestCase
         Livewire::test(Workspace::class, ['project' => $project, 'page' => $page])
             ->dispatch('node-selected', nodeId: 'node_01h00000000000000000000001')
             ->assertSet('selected_node_id', 'node_01h00000000000000000000001');
+    }
+
+    public function test_generation_controls_enqueue_generate_page_job(): void
+    {
+        Queue::fake();
+
+        $project = Project::query()->create([
+            'id' => app(IdGenerator::class)->project(),
+            'name' => 'Acme',
+        ]);
+        $page = Page::query()->create([
+            'id' => app(IdGenerator::class)->page(),
+            'project_id' => $project->id,
+            'name' => 'Homepage',
+            'prompt' => '',
+            'document_json' => $this->emptyDocument(),
+            'status' => 'draft',
+        ]);
+
+        Livewire::test(GenerationControls::class, ['page' => $page])
+            ->set('prompt', 'A developer tool landing page')
+            ->call('generate')
+            ->assertDispatched('generation-started', pageId: $page->id);
+
+        $page->refresh();
+        $this->assertSame('A developer tool landing page', $page->prompt);
+        $this->assertSame('generating', $page->status);
+        Queue::assertPushed(GeneratePageJob::class, fn (GeneratePageJob $job): bool => $job->pageId === $page->id);
     }
 
     private function emptyDocument(): array

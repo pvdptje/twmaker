@@ -7,7 +7,7 @@
 M4 - LLM Provider and Generation Pipeline
 
 ## Status
-idle
+in_progress
 
 ## Completed Tasks
 - [2026-05-20] spec: `plan.md` R1 drafted as canonical V1 specification.
@@ -39,13 +39,19 @@ idle
 - [2026-05-20] M3.inspector-reactivity: marked right inspector selected-node props reactive so nested inspector components update across repeated canvas selections.
 - [2026-05-20] M3.browser-verified-selection: user verified in Herd that switching iframe nodes updates the inspector repeatedly.
 - [2026-05-20] M3.acceptance: `php artisan test`, `npm.cmd run test:js`, `npm.cmd run build:preview-css`, and `npm.cmd run build` pass; M3 is complete.
+- [2026-05-20] M4.dependencies: installed the official Anthropic PHP SDK package `anthropic-ai/sdk`.
+- [2026-05-20] M4.llm-contracts: added `LlmProvider`, `StructuredRequest`, `StructuredResponse`, and `AnthropicProvider` with tool-use structured output.
+- [2026-05-20] M4.events: added generation event recording and `GenerationEventBroadcast`; stream event list now polls persisted events.
+- [2026-05-20] M4.pipeline-scaffold: added project library loading, prompt loading, generation pipeline, core stage scaffolds, and prompt files.
+- [2026-05-20] M4.generation-controls: wired the Generate button to persist prompt/status and dispatch `GeneratePageJob`.
+- [2026-05-20] M4.tests: added structured request and fake-provider pipeline tests; `php artisan test`, `npm.cmd run test:js`, and `npm.cmd run build` pass.
 
 ## In Progress
-- None.
+- M4 foundation: LLM provider contracts, generation events, stream loading, and stage scaffolding.
 - Started: 2026-05-20
 - Last activity: 2026-05-20
-- Files touched: app/Services/Rendering/Renderer.php, app/Services/Rendering/TailwindClassMap.php, resources/views/render/*, public/preview.css, public/preview-bridge.js, resources/css/preview.css, resources/tailwind/safelist.txt, scripts/build-preview-css.mjs, app/Livewire/Builder/Canvas/*, app/Livewire/Builder/Workspace/Workspace.php, tests/Unit/Rendering/RendererTest.php, tests/Feature/BuilderShellTest.php, tests/Js/preview-bridge.test.js, package.json, package-lock.json, progress.md
-- Current state: M3 complete. Renderer and iframe preview path are working and tested. JS DOM bridge tests cover click selection, overlay class toggling, postMessage payloads, parent-driven selection sync, and replace-subtree. Preview clicks dispatch selection events directly to Livewire/Workspace. Right inspector and nested inspector controls receive selected-node changes through reactive props. User verified in Herd that switching nodes in the iframe updates the inspector repeatedly. Preview CSS builds from the checked-in safelist.
+- Files touched: app/Services/Llm/*, app/Services/Generation/*, app/Events/GenerationEventBroadcast.php, app/Jobs/GeneratePageJob.php, app/Jobs/TargetedEditJob.php, app/Providers/AppServiceProvider.php, app/Livewire/Builder/SidePanels/GenerationControls/*, app/Livewire/Builder/StreamPanel/EventList/event-list.blade.php, resources/prompts/*, composer.json, composer.lock, tests/Unit/Llm/StructuredRequestTest.php, tests/Feature/Generation/PipelineTest.php, tests/Feature/BuilderShellTest.php, progress.md
+- Current state: M4 foundation is partially complete. Provider contracts, Anthropic adapter, generation event persistence/broadcast event, queue job shell, prompt files, library loader, and pipeline scaffolding are in place. The pipeline is verified with a fake provider and validates/persists generated documents. Real Anthropic prompt quality, repair retries, Echo/Reverb live subscription, and manual three-prompt acceptance remain pending.
 
 ## Blocked
 - None.
@@ -72,6 +78,8 @@ idle
 - `TailwindClassMap` reads `resources/tailwind/safelist.txt` for debug assertions so the renderer and CSS build share one class allow-list.
 - Browser verification will be handled by the user on request; avoid ad hoc browser automation unless explicitly requested.
 - JS bridge tests stay as `npm.cmd run test:js` for now instead of being folded into `php artisan test`; revisit when a CI script exists.
+- M4 provider code depends on Anthropic's official `anthropic-ai/sdk` package and keeps it behind `LlmProvider` so tests and future providers can swap implementations.
+- Stream panel uses polling against persisted `generation_events` as a working baseline before Echo/Reverb live subscription is wired.
 
 ## Spec Change Proposals
 - None.
@@ -103,11 +111,42 @@ idle
 - `package.json`: modified: added `build:preview-css` and `test:js` scripts.
 - `package-lock.json`: modified: added Tailwind CLI, Vitest, and jsdom dev dependencies.
 - `progress.md`: modified: recorded M3 progress and handoff state.
+- `composer.json`: modified: added `anthropic-ai/sdk`.
+- `composer.lock`: modified: locked Anthropic SDK dependencies.
+- `app/Services/Llm/LlmProvider.php`: created: structured LLM provider interface.
+- `app/Services/Llm/StructuredRequest.php`: created: stage-aware structured request value object.
+- `app/Services/Llm/StructuredResponse.php`: created: structured response value object.
+- `app/Services/Llm/AnthropicProvider.php`: created: Anthropic SDK adapter using tool-use structured output.
+- `app/Services/Generation/ProjectLibraryLoader.php`: created: full library and digest loader.
+- `app/Services/Generation/GenerationEventRecorder.php`: created: persists and broadcasts generation events.
+- `app/Events/GenerationEventBroadcast.php`: created: broadcast payload for generation events.
+- `app/Services/Generation/Pipeline.php`: created: generation orchestration scaffold.
+- `app/Services/Generation/Stages/PromptBuilder.php`: created: runtime prompt file loader.
+- `app/Services/Generation/Stages/Planner.php`: created: planner stage wrapper.
+- `app/Services/Generation/Stages/SectionGenerator.php`: created: document generation stage wrapper.
+- `app/Services/Generation/Stages/ElementResolver.php`: created: library reference resolver.
+- `app/Services/Generation/Stages/Assembler.php`: created: assembler placeholder.
+- `app/Services/Generation/Stages/Validator.php`: created: schema validator stage wrapper.
+- `app/Services/Generation/Stages/Repair.php`: created: repair stage placeholder.
+- `app/Services/Generation/Stages/TargetedEdit.php`: created: targeted edit placeholder.
+- `app/Jobs/GeneratePageJob.php`: created: queued generation job.
+- `app/Jobs/TargetedEditJob.php`: created: queued targeted edit placeholder for M5.
+- `app/Providers/AppServiceProvider.php`: modified: binds `LlmProvider` to the Anthropic adapter.
+- `app/Livewire/Builder/SidePanels/GenerationControls/GenerationControls.php`: modified: persists prompts and dispatches generation jobs.
+- `app/Livewire/Builder/SidePanels/GenerationControls/generation-controls.blade.php`: modified: enabled Generate button and validation display.
+- `app/Livewire/Builder/StreamPanel/EventList/event-list.blade.php`: modified: polls persisted events.
+- `resources/prompts/planner.system.md`: created: planner prompt scaffold.
+- `resources/prompts/section_generator.system.md`: created: section/document generator prompt scaffold.
+- `resources/prompts/repair.system.md`: created: repair prompt scaffold.
+- `resources/prompts/targeted_edit.system.md`: created: targeted edit prompt scaffold.
+- `tests/Unit/Llm/StructuredRequestTest.php`: created: structured request tool definition coverage.
+- `tests/Feature/Generation/PipelineTest.php`: created: fake-provider pipeline coverage.
+- `tests/Feature/BuilderShellTest.php`: modified: added generation enqueue coverage.
 
 ## Next Up (Top 3)
-1. M4: add `LlmProvider`, `StructuredRequest`, `StructuredResponse`, and Anthropic provider skeleton.
-2. M4: add generation event broadcast model path and stream-panel event loading foundation.
-3. M4: scaffold generation stages and prompt files with non-LLM placeholder behavior for tests.
+1. M4: wire Echo/Reverb subscription for the stream panel and refresh Workspace state when generation completes.
+2. M4: implement repair retry flow and persist generation history entries into document JSON.
+3. M4: harden real Anthropic prompts and run the three manual prompt acceptance checks.
 
 ## Notes
 - Every agent: read `plan.md` Sec. 0.3 (Rules Of Engagement) before touching anything.
@@ -122,3 +161,4 @@ idle
 - `npm run build` is blocked by PowerShell execution policy for `npm.ps1` in this environment; `npm.cmd run build` works and passed.
 - If a decision in `plan.md` looks wrong while implementing, follow `plan.md` Sec. 22.5: stop and propose, do not silently change the spec.
 - Encoding rule (`plan.md` Sec. 23.7) is non-negotiable for both this file and `plan.md`. Use `->` not an arrow, `Sec.` not a section sign, straight quotes only.
+- M4 partial verification passed: `php artisan test` (89 tests, 113 assertions), `npm.cmd run test:js` (3 tests), and `npm.cmd run build`.

@@ -2,6 +2,8 @@
 
 namespace App\Providers;
 
+use App\Services\Llm\AnthropicProvider;
+use App\Services\Llm\LlmProvider;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -11,7 +13,10 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        $this->app->bind(LlmProvider::class, fn (): LlmProvider => match (config('llm.default_provider')) {
+            'anthropic' => new AnthropicProvider,
+            default => new AnthropicProvider,
+        });
     }
 
     /**
