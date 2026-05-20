@@ -7,7 +7,7 @@ use Livewire\Component;
 
 class SectionTree extends Component
 {
-    public array $document = [];
+    public array $blockIndex = [];
 
     public function render(): View
     {

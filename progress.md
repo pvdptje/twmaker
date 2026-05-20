@@ -61,13 +61,16 @@ in_progress
 - [2026-05-20] M4.sidebar-scroll-selection: sidebar-driven node selection now asks the preview iframe to smooth-scroll the selected block into view.
 - [2026-05-20] M4.selection-sync-fix: centralized selection sync through Workspace and replaced brittle section-tree parent calls with `node-selected` events so inspector and preview update together.
 - [2026-05-20] M4.selection-postmessage-fix: forced preview sync hook payloads to use a real boolean so Livewire morph DOM elements are never sent through `postMessage`.
+- [2026-05-20] M4.sidebar-scroll-intent: selection events now carry scroll intent so sidebar selections scroll the preview while iframe-originated clicks only update app selection.
+- [2026-05-20] M4.sidebar-scroll-direct-event: section-tree clicks now fire the preview scroll browser event immediately, while still dispatching Livewire selection for inspector state.
+- [2026-05-20] M4.livewire-state-slimming: removed generated HTML, full block HTML, and iframe `srcdoc` from public Livewire component state; sidebar and inspector now use a slim block index.
 
 ## In Progress
 - M5 prep: refactor targeted editing around marked block extraction and replacement.
 - Started: 2026-05-20
 - Last activity: 2026-05-20
 - Files touched: app/Livewire/Builder/Canvas/Canvas.php, app/Livewire/Builder/Workspace/Workspace.php, app/Livewire/Builder/Workspace/workspace.blade.php, app/Livewire/Builder/LeftSidebar/LeftSidebar.php, app/Livewire/Builder/LeftSidebar/left-sidebar.blade.php, app/Livewire/Projects/ProjectDashboard/ProjectDashboard.php, app/Models/Project.php, app/Services/Generation/Pipeline.php, app/Services/Generation/Stages/Planner.php, app/Services/Generation/Stages/SectionGenerator.php, app/Services/Generation/Stages/HtmlMarker.php, resources/prompts/planner.system.md, resources/prompts/section_generator.system.md, plan.md, tests/Feature/Generation/PipelineTest.php, tests/Feature/BuilderShellTest.php, progress.md
-- Current state: Element-library cleanup is verified. Next implementation target is marked-block targeted editing.
+- Current state: Sidebar selection keeps inspector and preview in sync while Livewire request snapshots stay small. Next implementation target is marked-block targeted editing.
 
 ## Blocked
 - None.
@@ -275,3 +278,6 @@ in_progress
 - M4 sidebar scroll selection verification passed: `npm.cmd run test:js`, `php artisan test --filter=BuilderShellTest`, and `npm.cmd run build`.
 - M4 selection sync fix verification passed: `php artisan test --filter=BuilderShellTest`, `npm.cmd run test:js`, and `npm.cmd run build`.
 - M4 selection postMessage fix verification passed: `php artisan test --filter=BuilderShellTest`, `npm.cmd run test:js`, and `npm.cmd run build`.
+- M4 sidebar scroll intent verification passed: `php artisan test --filter=BuilderShellTest`, `npm.cmd run test:js`, and `npm.cmd run build`.
+- M4 sidebar scroll direct-event verification passed: `php artisan test --filter=BuilderShellTest` and `npm.cmd run build`.
+- M4 Livewire state slimming verification passed: `vendor\bin\pint.bat --dirty`, `php artisan test --filter=BuilderShellTest`, `php artisan test`, `npm.cmd run test:js`, and `npm.cmd run build`.

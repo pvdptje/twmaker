@@ -134,7 +134,11 @@ class BuilderShellTest extends TestCase
 
         Livewire::test(Workspace::class, ['project' => $project, 'page' => $page])
             ->dispatch('node-selected', nodeId: 'node_01h00000000000000000000001')
-            ->assertSet('selected_node_id', 'node_01h00000000000000000000001');
+            ->assertSet('selected_node_id', 'node_01h00000000000000000000001')
+            ->assertDispatched('preview-selection-changed', nodeId: 'node_01h00000000000000000000001', scrollIntoView: true)
+            ->dispatch('node-selected', nodeId: 'node_01h00000000000000000000002', scrollIntoView: false)
+            ->assertSet('selected_node_id', 'node_01h00000000000000000000002')
+            ->assertDispatched('preview-selection-changed', nodeId: 'node_01h00000000000000000000002', scrollIntoView: false);
     }
 
     public function test_generation_controls_enqueue_generate_page_job(): void
@@ -216,8 +220,14 @@ class BuilderShellTest extends TestCase
         $component
             ->call('refreshFromPage')
             ->assertSet('generation_status', 'valid')
-            ->assertSet('document.schema_version', 2)
-            ->assertSet('document.block_index.0.id', 'block_hero');
+            ->assertSet('block_index', [
+                [
+                    'id' => 'block_hero',
+                    'type' => 'hero',
+                    'label' => 'Hero',
+                    'summary' => 'Hello',
+                ],
+            ]);
     }
 
     public function test_stream_panel_derives_status_from_page_row(): void

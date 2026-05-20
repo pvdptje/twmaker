@@ -14,7 +14,7 @@ class Workspace extends Component
 
     public ?string $selected_node_id = null;
 
-    public array $document = [];
+    public array $block_index = [];
 
     public string $generation_status = 'idle';
 
@@ -31,15 +31,15 @@ class Workspace extends Component
         $this->project = $project;
         $this->page = $page;
         $this->page_id = $page->id;
-        $this->document = $page->document_json ?? [];
+        $this->block_index = $this->slimBlockIndex($page->block_index ?? []);
         $this->preview_signature = $this->pageSignature($page);
     }
 
     #[On('node-selected')]
-    public function selectNode(?string $nodeId = null): void
+    public function selectNode(?string $nodeId = null, bool $scrollIntoView = true): void
     {
         $this->selected_node_id = $nodeId;
-        $this->dispatch('preview-selection-changed', nodeId: $nodeId, scrollIntoView: true);
+        $this->dispatch('preview-selection-changed', nodeId: $nodeId, scrollIntoView: $scrollIntoView);
     }
 
     #[On('generation-started')]
@@ -58,7 +58,7 @@ class Workspace extends Component
         }
 
         $this->page->refresh();
-        $this->document = $this->page->document_json ?? $this->document;
+        $this->block_index = $this->slimBlockIndex($this->page->block_index ?? []);
         $this->preview_signature = $this->pageSignature($this->page);
         $this->generation_status = match ($status) {
             'generating' => 'running',
@@ -74,7 +74,7 @@ class Workspace extends Component
 
         $signature = $this->pageSignature($this->page);
         if ($signature !== $this->preview_signature) {
-            $this->document = $this->page->document_json ?? $this->document;
+            $this->block_index = $this->slimBlockIndex($this->page->block_index ?? []);
             $this->preview_signature = $signature;
         }
 
@@ -101,5 +101,18 @@ class Workspace extends Component
             md5((string) ($page->html_source ?? '')),
             md5(json_encode($page->block_index ?? [], JSON_THROW_ON_ERROR)),
         ]));
+    }
+
+    private function slimBlockIndex(array $blocks): array
+    {
+        return array_map(
+            fn (array $block): array => [
+                'id' => (string) ($block['id'] ?? ''),
+                'type' => (string) ($block['type'] ?? 'block'),
+                'label' => (string) ($block['label'] ?? $block['type'] ?? 'Block'),
+                'summary' => (string) ($block['summary'] ?? ''),
+            ],
+            $blocks,
+        );
     }
 }

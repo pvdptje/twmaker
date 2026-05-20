@@ -8,8 +8,6 @@ use Livewire\Component;
 
 class NodeSummary extends Component
 {
-    public array $document = [];
-
     #[Reactive]
     public ?string $selectedNodeId = null;
 

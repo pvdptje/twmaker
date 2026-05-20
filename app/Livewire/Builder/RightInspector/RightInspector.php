@@ -8,8 +8,6 @@ use Livewire\Component;
 
 class RightInspector extends Component
 {
-    public array $document = [];
-
     #[Reactive]
     public ?string $selectedNodeId = null;
 

@@ -13,7 +13,7 @@ class LeftSidebar extends Component
 
     public Page $page;
 
-    public array $document = [];
+    public array $blockIndex = [];
 
     public function render(): View
     {
