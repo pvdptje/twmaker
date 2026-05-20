@@ -4,10 +4,10 @@
 > Encoding: pure ASCII. Do not introduce non-ASCII characters when editing.
 
 ## Current Milestone
-M3 - Renderer and Preview
+M4 - LLM Provider and Generation Pipeline
 
 ## Status
-in_progress
+idle
 
 ## Completed Tasks
 - [2026-05-20] spec: `plan.md` R1 drafted as canonical V1 specification.
@@ -38,13 +38,14 @@ in_progress
 - [2026-05-20] M3.selection-events: changed preview click handling to dispatch `node-selected` through Livewire globally, avoiding stale Canvas child component references after the first selection.
 - [2026-05-20] M3.inspector-reactivity: marked right inspector selected-node props reactive so nested inspector components update across repeated canvas selections.
 - [2026-05-20] M3.browser-verified-selection: user verified in Herd that switching iframe nodes updates the inspector repeatedly.
+- [2026-05-20] M3.acceptance: `php artisan test`, `npm.cmd run test:js`, `npm.cmd run build:preview-css`, and `npm.cmd run build` pass; M3 is complete.
 
 ## In Progress
-- M3 renderer and preview implementation.
+- None.
 - Started: 2026-05-20
 - Last activity: 2026-05-20
 - Files touched: app/Services/Rendering/Renderer.php, app/Services/Rendering/TailwindClassMap.php, resources/views/render/*, public/preview.css, public/preview-bridge.js, resources/css/preview.css, resources/tailwind/safelist.txt, scripts/build-preview-css.mjs, app/Livewire/Builder/Canvas/*, app/Livewire/Builder/Workspace/Workspace.php, tests/Unit/Rendering/RendererTest.php, tests/Feature/BuilderShellTest.php, tests/Js/preview-bridge.test.js, package.json, package-lock.json, progress.md
-- Current state: renderer and iframe preview path are working and tested. JS DOM bridge tests cover click selection, overlay class toggling, postMessage payloads, parent-driven selection sync, and replace-subtree. Preview clicks now dispatch selection events directly to Livewire/Workspace instead of through a Canvas child method. Right inspector and nested inspector controls now receive selected-node changes through reactive props. User verified in Herd that switching nodes in the iframe updates the inspector repeatedly. Preview CSS now builds from the checked-in safelist.
+- Current state: M3 complete. Renderer and iframe preview path are working and tested. JS DOM bridge tests cover click selection, overlay class toggling, postMessage payloads, parent-driven selection sync, and replace-subtree. Preview clicks dispatch selection events directly to Livewire/Workspace. Right inspector and nested inspector controls receive selected-node changes through reactive props. User verified in Herd that switching nodes in the iframe updates the inspector repeatedly. Preview CSS builds from the checked-in safelist.
 
 ## Blocked
 - None.
@@ -70,6 +71,7 @@ in_progress
 - Preview CSS generation uses `@tailwindcss/cli` through `scripts/build-preview-css.mjs`; the script injects `resources/tailwind/safelist.txt` into `resources/css/preview.css` and writes `public/preview.css`.
 - `TailwindClassMap` reads `resources/tailwind/safelist.txt` for debug assertions so the renderer and CSS build share one class allow-list.
 - Browser verification will be handled by the user on request; avoid ad hoc browser automation unless explicitly requested.
+- JS bridge tests stay as `npm.cmd run test:js` for now instead of being folded into `php artisan test`; revisit when a CI script exists.
 
 ## Spec Change Proposals
 - None.
@@ -103,9 +105,9 @@ in_progress
 - `progress.md`: modified: recorded M3 progress and handoff state.
 
 ## Next Up (Top 3)
-1. M3: ask the user to browser-verify the iframe click path and rendered layout when a check is useful.
-2. M3: review per-section render layouts against the hand-crafted fixture and polish obvious spacing/structure issues.
-3. M3: decide whether `test:js` should be folded into the default CI/test command before closing M3.
+1. M4: add `LlmProvider`, `StructuredRequest`, `StructuredResponse`, and Anthropic provider skeleton.
+2. M4: add generation event broadcast model path and stream-panel event loading foundation.
+3. M4: scaffold generation stages and prompt files with non-LLM placeholder behavior for tests.
 
 ## Notes
 - Every agent: read `plan.md` Sec. 0.3 (Rules Of Engagement) before touching anything.
@@ -116,6 +118,7 @@ in_progress
 - M2 acceptance is complete as of 2026-05-20.
 - M3 partial verification passed after the `srcdoc` fix: `php artisan test` (86 tests, 104 assertions) and `npm.cmd run build`.
 - M3 continuation verification passed: `php artisan test` (86 tests, 104 assertions), `npm.cmd run test:js` (2 tests), `npm.cmd run build:preview-css`, and `npm.cmd run build`.
+- M3 final verification passed: `php artisan test` (86 tests, 104 assertions), `npm.cmd run test:js` (3 tests), `npm.cmd run build:preview-css`, and `npm.cmd run build`.
 - `npm run build` is blocked by PowerShell execution policy for `npm.ps1` in this environment; `npm.cmd run build` works and passed.
 - If a decision in `plan.md` looks wrong while implementing, follow `plan.md` Sec. 22.5: stop and propose, do not silently change the spec.
 - Encoding rule (`plan.md` Sec. 23.7) is non-negotiable for both this file and `plan.md`. Use `->` not an arrow, `Sec.` not a section sign, straight quotes only.
