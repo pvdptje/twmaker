@@ -5,6 +5,7 @@ namespace Tests\Feature\Generation;
 use App\Models\Page;
 use App\Models\Project;
 use App\Services\Generation\Pipeline;
+use App\Services\Html\BlockIndexer;
 use App\Services\Ids\IdGenerator;
 use App\Services\Llm\LlmProvider;
 use App\Services\Llm\StructuredRequest;
@@ -73,6 +74,52 @@ class PipelineTest extends TestCase
         $this->expectExceptionMessage('script tags');
 
         app(Pipeline::class)->generate($page);
+    }
+
+    public function test_pipeline_targeted_edit_can_replace_one_block_with_multiple_blocks(): void
+    {
+        [$project, $page] = $this->makePage('A developer tool landing page');
+        $artifact = $this->htmlArtifact();
+        $blockIndex = app(BlockIndexer::class)->index($artifact['marked_html']);
+
+        $page->forceFill([
+            'document_json' => ['schema_version' => 2, 'page_metadata' => ['title' => 'Acme DevTools'], 'html_source' => $artifact['marked_html'], 'block_index' => $blockIndex, 'generation_history' => []],
+            'html_source' => $artifact['marked_html'],
+            'block_index' => $blockIndex,
+            'status' => 'valid',
+        ])->save();
+
+        $replacement = <<<'HTML'
+<!-- tw:block id="draft_about" type="content" label="About" -->
+<section data-node-id="draft_about" data-node-type="content" data-tw-block="draft_about" class="bg-white px-6 py-20">
+  <div class="mx-auto max-w-4xl"><h2 class="text-4xl font-bold">Built for calm launches</h2></div>
+</section>
+<!-- /tw:block -->
+<!-- tw:block id="draft_proof" type="proof" label="Proof" -->
+<section data-node-id="draft_proof" data-node-type="proof" data-tw-block="draft_proof" class="bg-cyan-50 px-6 py-16">
+  <div class="mx-auto grid max-w-5xl gap-6 md:grid-cols-3"><p>Fast drafts</p><p>Clean markers</p><p>Focused edits</p></div>
+</section>
+<!-- /tw:block -->
+HTML;
+
+        $this->app->instance(LlmProvider::class, new FakeTargetedEditProvider($replacement));
+
+        app(Pipeline::class)->edit($page, 'block_hero', 'Remove this hero and add an about section plus a proof section.');
+
+        $page->refresh();
+
+        $this->assertSame('valid', $page->status);
+        $this->assertCount(3, $page->block_index);
+        $this->assertSame('block_hero', $page->block_index[0]['id']);
+        $this->assertStringStartsWith('sec_', $page->block_index[1]['id']);
+        $this->assertSame('block_features', $page->block_index[2]['id']);
+        $this->assertStringContainsString('Editable block index', $page->block_index[2]['html']);
+        $this->assertDatabaseHas('generation_events', [
+            'page_id' => $page->id,
+            'kind' => 'edit_applied',
+            'stage' => 'targeted_edit',
+            'level' => 'success',
+        ]);
     }
 
     private function makePage(string $prompt): array
@@ -174,5 +221,18 @@ class FakeHtmlGenerationProvider implements LlmProvider
         };
 
         return new StructuredResponse($request->stage, $request->model, $output);
+    }
+}
+
+class FakeTargetedEditProvider implements LlmProvider
+{
+    public function __construct(private readonly string $replacement) {}
+
+    public function sendStructured(StructuredRequest $request): StructuredResponse
+    {
+        return new StructuredResponse($request->stage, $request->model, [
+            'html_source' => $this->replacement,
+            'explanation' => 'Replaced the selected block with two focused sections.',
+        ]);
     }
 }

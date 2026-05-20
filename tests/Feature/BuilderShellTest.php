@@ -3,6 +3,8 @@
 namespace Tests\Feature;
 
 use App\Jobs\GeneratePageJob;
+use App\Jobs\TargetedEditJob;
+use App\Livewire\Builder\Inspector\EditForm\EditForm;
 use App\Livewire\Builder\SidePanels\GenerationControls\GenerationControls;
 use App\Livewire\Builder\StreamPanel\StreamPanel;
 use App\Livewire\Builder\Workspace\Workspace;
@@ -170,6 +172,36 @@ class BuilderShellTest extends TestCase
         Queue::assertPushed(GeneratePageJob::class, fn (GeneratePageJob $job): bool => $job->pageId === $page->id);
     }
 
+    public function test_edit_form_enqueues_targeted_edit_job_for_selected_node(): void
+    {
+        Queue::fake();
+
+        $project = Project::query()->create([
+            'id' => app(IdGenerator::class)->project(),
+            'name' => 'Acme',
+        ]);
+        $page = Page::query()->create([
+            'id' => app(IdGenerator::class)->page(),
+            'project_id' => $project->id,
+            'name' => 'Homepage',
+            'prompt' => '',
+            'document_json' => $this->emptyDocument(),
+            'status' => 'valid',
+        ]);
+
+        Livewire::test(EditForm::class, ['page' => $page, 'selectedNodeId' => 'block_hero'])
+            ->set('instruction', 'Replace this with a stronger intro')
+            ->call('applyEdit')
+            ->assertSet('instruction', '')
+            ->assertDispatched('generation-started', pageId: $page->id);
+
+        $this->assertSame('generating', $page->refresh()->status);
+
+        Queue::assertPushed(TargetedEditJob::class, fn (TargetedEditJob $job): bool => $job->pageId === $page->id
+            && $job->targetId === 'block_hero'
+            && $job->instruction === 'Replace this with a stronger intro');
+    }
+
     public function test_workspace_updates_generation_status_from_generation_events(): void
     {
         $project = Project::query()->create([
@@ -230,6 +262,35 @@ class BuilderShellTest extends TestCase
             ]);
     }
 
+    public function test_workspace_resyncs_selected_preview_after_generated_html_changes(): void
+    {
+        $project = Project::query()->create([
+            'id' => app(IdGenerator::class)->project(),
+            'name' => 'Acme',
+        ]);
+        $page = Page::query()->create([
+            'id' => app(IdGenerator::class)->page(),
+            'project_id' => $project->id,
+            'name' => 'Homepage',
+            'prompt' => '',
+            'document_json' => $this->emptyDocument(),
+            'status' => 'valid',
+        ]);
+
+        $component = Livewire::test(Workspace::class, ['project' => $project, 'page' => $page])
+            ->dispatch('node-selected', nodeId: 'block_hero')
+            ->assertSet('selected_node_id', 'block_hero');
+
+        $page->forceFill([
+            'html_source' => '<!-- tw:block id="block_hero" type="hero" label="Hero" --><section data-node-id="block_hero" data-node-type="hero" data-tw-block="block_hero">Updated</section><!-- /tw:block -->',
+            'block_index' => [['id' => 'block_hero', 'type' => 'hero', 'label' => 'Hero', 'start_offset' => 0, 'end_offset' => 1, 'html' => 'Updated', 'summary' => 'Updated']],
+        ])->save();
+
+        $component
+            ->call('refreshFromPage')
+            ->assertDispatched('preview-selection-changed', nodeId: 'block_hero', scrollIntoView: true);
+    }
+
     public function test_stream_panel_derives_status_from_page_row(): void
     {
         $project = Project::query()->create([
@@ -247,6 +308,27 @@ class BuilderShellTest extends TestCase
 
         Livewire::test(StreamPanel::class, ['page' => $page])
             ->assertSee('error');
+    }
+
+    public function test_stream_panel_shows_loader_while_running(): void
+    {
+        $project = Project::query()->create([
+            'id' => app(IdGenerator::class)->project(),
+            'name' => 'Acme',
+        ]);
+        $page = Page::query()->create([
+            'id' => app(IdGenerator::class)->page(),
+            'project_id' => $project->id,
+            'name' => 'Homepage',
+            'prompt' => '',
+            'document_json' => $this->emptyDocument(),
+            'status' => 'generating',
+        ]);
+
+        Livewire::test(StreamPanel::class, ['page' => $page])
+            ->assertSee('running')
+            ->assertSee('animate-bounce', false)
+            ->assertSee('bg-gradient-to-r', false);
     }
 
     private function emptyDocument(): array

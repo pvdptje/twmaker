@@ -12,6 +12,7 @@ return [
                 'repair' => env('ANTHROPIC_REPAIR_MODEL', 'claude-sonnet-4-5'),
                 'targeted_edit' => env('ANTHROPIC_EDIT_MODEL', 'claude-sonnet-4-5'),
             ],
+            'edit_max_tokens' => env('ANTHROPIC_EDIT_MAX_TOKENS', 8000),
         ],
     ],
 ];

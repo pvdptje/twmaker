@@ -6,6 +6,7 @@ use App\Models\Page;
 use App\Services\Generation\Stages\HtmlMarker;
 use App\Services\Generation\Stages\Planner;
 use App\Services\Generation\Stages\SectionGenerator;
+use App\Services\Generation\Stages\TargetedEdit;
 use App\Services\Html\BlockIndexer;
 use App\Services\Html\HtmlDocumentValidator;
 use App\Services\Rendering\Renderer;
@@ -18,6 +19,7 @@ class Pipeline
         private readonly Planner $planner,
         private readonly SectionGenerator $sections,
         private readonly HtmlMarker $htmlMarker,
+        private readonly TargetedEdit $targetedEdit,
         private readonly HtmlDocumentValidator $htmlValidator,
         private readonly BlockIndexer $blockIndexer,
         private readonly Renderer $renderer,
@@ -69,6 +71,49 @@ class Pipeline
         }
     }
 
+    public function edit(Page $page, string $targetId, string $instruction): array
+    {
+        $this->events->record($page, 'edit_requested', 'targeted_edit', 'info', 'Editing selected block.', $targetId, [
+            'instruction' => $instruction,
+        ]);
+
+        try {
+            $result = $this->targetedEdit->edit($page, $targetId, $instruction);
+            $htmlSource = $this->blockIndexer->replaceBlock(
+                (string) ($page->html_source ?? ''),
+                $targetId,
+                $result['html_source'],
+            );
+
+            $this->htmlValidator->assertValid($htmlSource);
+            $blockIndex = $this->blockIndexer->index($htmlSource);
+            $document = $this->htmlArtifact(
+                $this->editArtifact($page, $instruction),
+                $htmlSource,
+                $blockIndex,
+            );
+
+            $page->forceFill([
+                'document_json' => $document,
+                'html_source' => $htmlSource,
+                'block_index' => $blockIndex,
+                'rendered_html_cache' => $this->renderer->renderPreviewHtml($htmlSource, $page->name),
+                'status' => 'valid',
+                'last_generation_summary' => $document['page_metadata']['prompt_summary'] ?? null,
+            ])->save();
+
+            $this->events->record($page, 'edit_applied', 'targeted_edit', 'success', $result['explanation'], $targetId, [
+                'blocks' => $result['blocks'] ?? [],
+            ]);
+
+            return $document;
+        } catch (Throwable $exception) {
+            $this->events->record($page, 'edit_rejected', 'targeted_edit', 'error', $exception->getMessage(), $targetId);
+
+            throw $exception;
+        }
+    }
+
     private function htmlArtifact(array $artifact, string $htmlSource, array $blockIndex): array
     {
         $now = now('UTC')->format('Y-m-d\TH:i:s\Z');
@@ -100,5 +145,18 @@ class Pipeline
         }
 
         return '';
+    }
+
+    private function editArtifact(Page $page, string $instruction): array
+    {
+        $metadata = $page->document_json['page_metadata'] ?? [];
+
+        return [
+            'title' => $metadata['title'] ?? $page->name,
+            'page_type' => $metadata['page_type'] ?? 'generic',
+            'goal' => $metadata['goal'] ?? 'Edited from builder instruction.',
+            'audience' => $metadata['audience'] ?? 'Visitors',
+            'prompt_summary' => 'Targeted edit: '.str($instruction)->limit(120),
+        ];
     }
 }

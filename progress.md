@@ -64,13 +64,15 @@ in_progress
 - [2026-05-20] M4.sidebar-scroll-intent: selection events now carry scroll intent so sidebar selections scroll the preview while iframe-originated clicks only update app selection.
 - [2026-05-20] M4.sidebar-scroll-direct-event: section-tree clicks now fire the preview scroll browser event immediately, while still dispatching Livewire selection for inspector state.
 - [2026-05-20] M4.livewire-state-slimming: removed generated HTML, full block HTML, and iframe `srcdoc` from public Livewire component state; sidebar and inspector now use a slim block index.
+- [2026-05-20] M5.flexible-targeted-edit-baseline: inspector edits now dispatch queued targeted edits; the pipeline can replace one selected marked block with one or more validated marked blocks, then regenerate `html_source`, `block_index`, rendered cache, and stream events.
+- [2026-05-20] M5.stream-panel-polish: stream status now shows a running loader, success/error/info event rows have clearer visual states, and completed page refreshes re-sync the selected preview block.
 
 ## In Progress
 - M5 prep: refactor targeted editing around marked block extraction and replacement.
 - Started: 2026-05-20
 - Last activity: 2026-05-20
 - Files touched: app/Livewire/Builder/Canvas/Canvas.php, app/Livewire/Builder/Workspace/Workspace.php, app/Livewire/Builder/Workspace/workspace.blade.php, app/Livewire/Builder/LeftSidebar/LeftSidebar.php, app/Livewire/Builder/LeftSidebar/left-sidebar.blade.php, app/Livewire/Projects/ProjectDashboard/ProjectDashboard.php, app/Models/Project.php, app/Services/Generation/Pipeline.php, app/Services/Generation/Stages/Planner.php, app/Services/Generation/Stages/SectionGenerator.php, app/Services/Generation/Stages/HtmlMarker.php, resources/prompts/planner.system.md, resources/prompts/section_generator.system.md, plan.md, tests/Feature/Generation/PipelineTest.php, tests/Feature/BuilderShellTest.php, progress.md
-- Current state: Sidebar selection keeps inspector and preview in sync while Livewire request snapshots stay small. Next implementation target is marked-block targeted editing.
+- Current state: Flexible block-level targeted editing is wired through the inspector and pipeline, with livelier stream/status feedback. Next implementation target is live token/progress streaming for long LLM calls.
 
 ## Blocked
 - None.
@@ -245,9 +247,9 @@ in_progress
 - `tests/Feature/BuilderShellTest.php`: modified: expects empty R3 page shape on page creation.
 
 ## Next Up (Top 3)
-1. M4: manually browser-test live preview refresh after generation completes without a hard refresh.
-2. M4: decide whether to implement true queued job chaining or provider streaming for progress during a single long LLM call.
-3. M5: refactor targeted edit to extract one marked block, prompt for replacement HTML, validate it, and replace only that block.
+1. M5: add live streamed LLM draft/code output for long generation and edit calls without weakening final validation.
+2. M5: add stale-selection and malformed-edit UX handling in the inspector.
+3. M5: manually browser-test targeted edit with a real provider call.
 
 ## Notes
 - Every agent: read `plan.md` Sec. 0.3 (Rules Of Engagement) before touching anything.
@@ -281,3 +283,5 @@ in_progress
 - M4 sidebar scroll intent verification passed: `php artisan test --filter=BuilderShellTest`, `npm.cmd run test:js`, and `npm.cmd run build`.
 - M4 sidebar scroll direct-event verification passed: `php artisan test --filter=BuilderShellTest` and `npm.cmd run build`.
 - M4 Livewire state slimming verification passed: `vendor\bin\pint.bat --dirty`, `php artisan test --filter=BuilderShellTest`, `php artisan test`, `npm.cmd run test:js`, and `npm.cmd run build`.
+- M5 flexible targeted edit baseline verification passed: `vendor\bin\pint.bat --dirty`, `php artisan test --filter=PipelineTest`, `php artisan test --filter=BuilderShellTest`, `php artisan test`, `npm.cmd run test:js`, and `npm.cmd run build`.
+- M5 stream panel polish verification passed: `vendor\bin\pint.bat --dirty`, `php artisan test --filter=BuilderShellTest`, `php artisan test --filter=PipelineTest`, `npm.cmd run test:js`, and `npm.cmd run build`.

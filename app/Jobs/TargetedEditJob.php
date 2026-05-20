@@ -2,8 +2,11 @@
 
 namespace App\Jobs;
 
+use App\Models\Page;
+use App\Services\Generation\Pipeline;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
+use Throwable;
 
 class TargetedEditJob implements ShouldQueue
 {
@@ -15,8 +18,17 @@ class TargetedEditJob implements ShouldQueue
         public readonly string $instruction,
     ) {}
 
-    public function handle(): void
+    public function handle(Pipeline $pipeline): void
     {
-        // M5 wires targeted editing. This placeholder reserves the queued contract.
+        try {
+            $pipeline->edit(
+                Page::query()->findOrFail($this->pageId),
+                $this->targetId,
+                $this->instruction,
+            );
+        } catch (Throwable $exception) {
+            // Pipeline records edit_rejected. Keep sync queue mode from surfacing a Livewire 500 overlay.
+            report($exception);
+        }
     }
 }

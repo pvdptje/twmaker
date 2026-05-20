@@ -8,7 +8,7 @@
     </section>
 
     <aside class="row-span-2 border-l border-neutral-800 bg-neutral-900">
-        <livewire:builder.right-inspector.right-inspector :selected-node-id="$selected_node_id" :key="'inspector-'.$page->id.'-'.$preview_signature" />
+        <livewire:builder.right-inspector.right-inspector :page="$page" :selected-node-id="$selected_node_id" :key="'inspector-'.$page->id.'-'.$preview_signature" />
     </aside>
 
     <section class="border-t border-neutral-800 bg-neutral-900">

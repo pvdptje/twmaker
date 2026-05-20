@@ -5,7 +5,7 @@
     </div>
     <div class="min-h-0 flex-1 overflow-y-auto">
         <livewire:builder.inspector.node-summary.node-summary :selected-node-id="$selectedNodeId" />
-        <livewire:builder.inspector.edit-form.edit-form :selected-node-id="$selectedNodeId" />
+        <livewire:builder.inspector.edit-form.edit-form :page="$page" :selected-node-id="$selectedNodeId" />
         <livewire:builder.inspector.lock-toggles.lock-toggles :selected-node-id="$selectedNodeId" />
     </div>
 </div>

@@ -76,6 +76,10 @@ class Workspace extends Component
         if ($signature !== $this->preview_signature) {
             $this->block_index = $this->slimBlockIndex($this->page->block_index ?? []);
             $this->preview_signature = $signature;
+
+            if ($this->selected_node_id !== null) {
+                $this->dispatch('preview-selection-changed', nodeId: $this->selected_node_id, scrollIntoView: true);
+            }
         }
 
         $this->generation_status = match ($this->page->status) {
