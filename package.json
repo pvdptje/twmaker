@@ -4,14 +4,19 @@
     "type": "module",
     "scripts": {
         "build": "vite build",
-        "dev": "vite"
+        "build:preview-css": "node scripts/build-preview-css.mjs",
+        "dev": "vite",
+        "test:js": "vitest run tests/Js"
     },
     "devDependencies": {
+        "@tailwindcss/cli": "^4.3.0",
         "@tailwindcss/vite": "^4.0.0",
         "axios": "^1.11.0",
         "concurrently": "^9.0.1",
+        "jsdom": "^29.1.1",
         "laravel-vite-plugin": "^2.0.0",
         "tailwindcss": "^4.0.0",
-        "vite": "^7.0.7"
+        "vite": "^7.0.7",
+        "vitest": "^4.1.7"
     }
 }

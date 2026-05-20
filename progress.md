@@ -32,13 +32,15 @@ in_progress
 - [2026-05-20] M3.canvas: replaced the placeholder iframe with renderer-generated `srcdoc` and wired preview `node-selected` postMessage events into workspace selection state.
 - [2026-05-20] M3.srcdoc-fix: fixed iframe `srcdoc` escaping so rendered HTML is parsed by the iframe instead of shown as plain text.
 - [2026-05-20] M3.tests: added renderer unit tests and workspace feature tests for rendered fixture HTML, preview bridge inclusion, safe class rejection, and Livewire selection events.
+- [2026-05-20] M3.bridge-tests: added JS DOM coverage for preview bridge click selection, selection overlay class toggling, parent postMessage payloads, and replace-subtree behavior.
+- [2026-05-20] M3.preview-css-pipeline: added `npm run build:preview-css`, Tailwind CLI generation for `public/preview.css`, and a single shared safelist source for CSS output and renderer debug assertions.
 
 ## In Progress
 - M3 renderer and preview implementation.
 - Started: 2026-05-20
 - Last activity: 2026-05-20
-- Files touched: app/Services/Rendering/Renderer.php, app/Services/Rendering/TailwindClassMap.php, resources/views/render/*, public/preview.css, public/preview-bridge.js, resources/tailwind/safelist.txt, app/Livewire/Builder/Canvas/*, app/Livewire/Builder/Workspace/Workspace.php, tests/Unit/Rendering/RendererTest.php, tests/Feature/BuilderShellTest.php, progress.md
-- Current state: renderer and iframe preview path are working and tested; remaining M3 work is richer per-section layouts, formal replace-subtree test coverage, fuller preview CSS build pipeline, and browser-level click verification.
+- Files touched: app/Services/Rendering/Renderer.php, app/Services/Rendering/TailwindClassMap.php, resources/views/render/*, public/preview.css, public/preview-bridge.js, resources/css/preview.css, resources/tailwind/safelist.txt, scripts/build-preview-css.mjs, app/Livewire/Builder/Canvas/*, app/Livewire/Builder/Workspace/Workspace.php, tests/Unit/Rendering/RendererTest.php, tests/Feature/BuilderShellTest.php, tests/Js/preview-bridge.test.js, package.json, package-lock.json, progress.md
+- Current state: renderer and iframe preview path are working and tested. JS DOM bridge tests cover click selection, overlay class toggling, postMessage payloads, and replace-subtree. Preview CSS now builds from the checked-in safelist. Remaining M3 work is browser smoke verification in a real browser and any layout polish found there.
 
 ## Blocked
 - None.
@@ -60,6 +62,9 @@ in_progress
 - M3 renderer uses Blade partials and a service-level class map rather than hand-building HTML in the canvas, keeping export and preview on the same path later.
 - Preview bridge currently supports click selection and `replace-subtree` messages in plain JS. Browser-level verification is still pending.
 - Blade must escape iframe `srcdoc` exactly once. Double escaping causes the iframe to render the HTML source as visible text.
+- Preview bridge tests use Vitest + jsdom because the bridge is framework-independent plain JS. This gives fast DOM behavior coverage without introducing a full browser automation stack yet.
+- Preview CSS generation uses `@tailwindcss/cli` through `scripts/build-preview-css.mjs`; the script injects `resources/tailwind/safelist.txt` into `resources/css/preview.css` and writes `public/preview.css`.
+- `TailwindClassMap` reads `resources/tailwind/safelist.txt` for debug assertions so the renderer and CSS build share one class allow-list.
 
 ## Spec Change Proposals
 - None.
@@ -74,17 +79,22 @@ in_progress
 - `public/preview-bridge.js`: created: iframe click selection and subtree replacement bridge.
 - `public/preview.css`: created: minimal preview baseline and selection outline.
 - `resources/tailwind/safelist.txt`: created: initial preview safelist placeholder.
+- `resources/css/preview.css`: created: Tailwind v4 preview CSS source with safelist injection token and builder selection styles.
+- `scripts/build-preview-css.mjs`: created: reads safelist and builds `public/preview.css` through Tailwind CLI.
 - `app/Livewire/Builder/Canvas/Canvas.php`: modified: renders iframe `srcdoc` through `Renderer` and dispatches selected node events.
 - `app/Livewire/Builder/Canvas/canvas.blade.php`: modified: uses renderer output and listens for preview bridge messages.
 - `app/Livewire/Builder/Workspace/Workspace.php`: modified: listens for `node-selected` events.
 - `tests/Unit/Rendering/RendererTest.php`: created: renderer and class-map tests.
 - `tests/Feature/BuilderShellTest.php`: modified: added rendered preview and selection event coverage.
+- `tests/Js/preview-bridge.test.js`: created: preview bridge DOM behavior tests.
+- `package.json`: modified: added `build:preview-css` and `test:js` scripts.
+- `package-lock.json`: modified: added Tailwind CLI, Vitest, and jsdom dev dependencies.
 - `progress.md`: modified: recorded M3 progress and handoff state.
 
 ## Next Up (Top 3)
-1. M3: add browser-level preview verification for clicking rendered nodes and selection overlay behavior.
-2. M3: add formal `replace-subtree` bridge coverage and connect it to future subtree re-rendering.
-3. M3: expand `preview.css` build pipeline from `resources/tailwind/safelist.txt` instead of the current minimal checked-in baseline.
+1. M3: run a real-browser smoke check of the iframe click path and rendered layout.
+2. M3: review per-section render layouts against the hand-crafted fixture and polish obvious spacing/structure issues.
+3. M3: decide whether `test:js` should be folded into the default CI/test command before closing M3.
 
 ## Notes
 - Every agent: read `plan.md` Sec. 0.3 (Rules Of Engagement) before touching anything.
@@ -94,6 +104,7 @@ in_progress
 - Completed M1 foundations and the requested agent-instruction update are ready to commit after successful verification.
 - M2 acceptance is complete as of 2026-05-20.
 - M3 partial verification passed after the `srcdoc` fix: `php artisan test` (86 tests, 104 assertions) and `npm.cmd run build`.
+- M3 continuation verification passed: `php artisan test` (86 tests, 104 assertions), `npm.cmd run test:js` (2 tests), `npm.cmd run build:preview-css`, and `npm.cmd run build`.
 - `npm run build` is blocked by PowerShell execution policy for `npm.ps1` in this environment; `npm.cmd run build` works and passed.
 - If a decision in `plan.md` looks wrong while implementing, follow `plan.md` Sec. 22.5: stop and propose, do not silently change the spec.
 - Encoding rule (`plan.md` Sec. 23.7) is non-negotiable for both this file and `plan.md`. Use `->` not an arrow, `Sec.` not a section sign, straight quotes only.
