@@ -14,6 +14,15 @@ class StreamPanel extends Component
 
     public function render(): View
     {
-        return view()->file(__DIR__.'/stream-panel.blade.php');
+        $this->page->refresh();
+
+        return view()->file(__DIR__.'/stream-panel.blade.php', [
+            'statusLabel' => match ($this->page->status) {
+                'generating' => 'running',
+                'valid' => 'valid',
+                'error' => 'error',
+                default => $this->generationStatus,
+            },
+        ]);
     }
 }

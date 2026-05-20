@@ -47,13 +47,14 @@ in_progress
 - [2026-05-20] M4.tests: added structured request and fake-provider pipeline tests; `php artisan test`, `npm.cmd run test:js`, and `npm.cmd run build` pass.
 - [2026-05-20] M4.stream-dom-cap: added Alpine pruning to cap browser-rendered generation event rows while preserving persisted event history.
 - [2026-05-20] M4.validation-hardening: schema validator now reports malformed section column counts instead of throwing PHP type errors; pipeline attempts deterministic repair for recoverable column-count drift.
+- [2026-05-20] M4.browser-sync-ux: sync queue generation failures no longer surface as Livewire 500 overlays; stream status now derives from page status and prompt guidance avoids impossible fresh-library sections.
 
 ## In Progress
 - None.
 - Started: 2026-05-20
 - Last activity: 2026-05-20
-- Files touched: app/Services/Schema/SchemaValidator.php, app/Services/Generation/Pipeline.php, app/Services/Generation/Stages/Repair.php, tests/Unit/Schema/SchemaValidatorTest.php, tests/Feature/Generation/PipelineTest.php, progress.md
-- Current state: Browser generation failed because `SchemaValidator::validateFooter()` received malformed `columns` props as an array from LLM output. The validator now records errors for malformed footer/stats column counts, and the pipeline applies a deterministic repair pass before re-validating.
+- Files touched: app/Jobs/GeneratePageJob.php, app/Livewire/Builder/SidePanels/GenerationControls/GenerationControls.php, app/Livewire/Builder/Workspace/Workspace.php, app/Livewire/Builder/StreamPanel/StreamPanel.php, app/Livewire/Builder/StreamPanel/stream-panel.blade.php, resources/prompts/planner.system.md, resources/prompts/section_generator.system.md, tests/Feature/BuilderShellTest.php, tests/Feature/Generation/GeneratePageJobTest.php, progress.md
+- Current state: Sync queue mode no longer bubbles pipeline failures into Livewire. Stream status is derived from the page row and updates through lifecycle events/polling. Planner and section generator prompts now avoid impossible element-instance sections when the project library is empty.
 
 ## Blocked
 - None.
@@ -84,6 +85,8 @@ in_progress
 - Stream panel uses polling against persisted `generation_events` as a working baseline before Echo/Reverb live subscription is wired.
 - Do not use `wire:stream` for queued generation worker output. Livewire streaming is request-scoped; queued worker updates should continue through persisted events plus broadcast/polling. Alpine can still prune browser-side rows.
 - Add deterministic repair before LLM repair is fully implemented so small schema drifts, such as `columns` returned as an array, do not block local browser testing.
+- In sync queue mode, `GeneratePageJob` swallows pipeline exceptions because `Pipeline` already records the error event and page status. This keeps local browser testing from showing Laravel's 500 overlay.
+- Fresh projects currently have no reusable element library, so prompts must avoid sections that require element instances until default library seeding is implemented.
 
 ## Spec Change Proposals
 - None.
@@ -153,11 +156,19 @@ in_progress
 - `app/Services/Generation/Stages/Repair.php`: modified: repairs malformed footer/stats `columns` values deterministically.
 - `tests/Unit/Schema/SchemaValidatorTest.php`: modified: covers malformed column-count validation without type errors.
 - `tests/Feature/Generation/PipelineTest.php`: modified: covers deterministic repair of malformed footer columns.
+- `app/Jobs/GeneratePageJob.php`: modified: prevents recorded pipeline failures from bubbling through sync dispatch.
+- `app/Livewire/Builder/SidePanels/GenerationControls/GenerationControls.php`: modified: dispatches generation lifecycle events around job dispatch.
+- `app/Livewire/Builder/Workspace/Workspace.php`: modified: listens for generation lifecycle events and refreshes document/status.
+- `app/Livewire/Builder/StreamPanel/StreamPanel.php`: modified: derives displayed status from the page row.
+- `app/Livewire/Builder/StreamPanel/stream-panel.blade.php`: modified: polls stream status.
+- `resources/prompts/planner.system.md`: modified: planner avoids element-instance sections when library types are missing.
+- `resources/prompts/section_generator.system.md`: modified: stronger section child-order and empty-library guidance.
+- `tests/Feature/Generation/GeneratePageJobTest.php`: created: verifies sync dispatch does not bubble pipeline failures.
 
 ## Next Up (Top 3)
-1. M4: wire Echo/Reverb subscription for the stream panel and refresh Workspace state when generation completes.
-2. M4: implement repair retry flow and persist generation history entries into document JSON.
-3. M4: harden real Anthropic prompts and run the three manual prompt acceptance checks.
+1. M4: seed default project reusable elements or otherwise generate required element definitions before planning element-heavy sections.
+2. M4: wire Echo/Reverb subscription for the stream panel and decide whether a separate Livewire `wire:stream` debug path is useful for sync-only local generation.
+3. M4: implement LLM repair retry flow and persist generation history entries into document JSON.
 
 ## Notes
 - Every agent: read `plan.md` Sec. 0.3 (Rules Of Engagement) before touching anything.
@@ -175,3 +186,4 @@ in_progress
 - M4 partial verification passed: `php artisan test` (89 tests, 113 assertions), `npm.cmd run test:js` (3 tests), and `npm.cmd run build`.
 - M4 stream DOM cap verification passed: `php artisan test --filter=BuilderShellTest` and `npm.cmd run build`.
 - M4 validation hardening verification passed: `vendor\bin\pint.bat`, `php artisan test` (91 tests, 120 assertions), `npm.cmd run test:js`, and `npm.cmd run build`.
+- M4 browser sync UX verification passed: `vendor\bin\pint.bat`, `php artisan test` (94 tests, 126 assertions), `npm.cmd run test:js`, and `npm.cmd run build`.

@@ -29,9 +29,11 @@ class GenerationControls extends Component
             'status' => 'generating',
         ])->save();
 
+        $this->dispatch('generation-started', pageId: $this->page->id);
+
         GeneratePageJob::dispatch($this->page->id);
 
-        $this->dispatch('generation-started', pageId: $this->page->id);
+        $this->dispatch('generation-finished', pageId: $this->page->id, status: $this->page->refresh()->status);
     }
 
     public function render(): View

@@ -50,6 +50,31 @@ class Workspace extends Component
         $this->selected_node_id = $nodeId;
     }
 
+    #[On('generation-started')]
+    public function generationStarted(string $pageId): void
+    {
+        if ($pageId === $this->page_id) {
+            $this->generation_status = 'running';
+        }
+    }
+
+    #[On('generation-finished')]
+    public function generationFinished(string $pageId, string $status): void
+    {
+        if ($pageId !== $this->page_id) {
+            return;
+        }
+
+        $this->page->refresh();
+        $this->document = $this->page->document_json ?? $this->document;
+        $this->generation_status = match ($status) {
+            'generating' => 'running',
+            'valid' => 'valid',
+            'error' => 'error',
+            default => 'idle',
+        };
+    }
+
     public function render(): View
     {
         return view()->file(__DIR__.'/workspace.blade.php')->layout('components.layouts.app', [

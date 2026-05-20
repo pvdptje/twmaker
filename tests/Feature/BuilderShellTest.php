@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Jobs\GeneratePageJob;
 use App\Livewire\Builder\SidePanels\GenerationControls\GenerationControls;
+use App\Livewire\Builder\StreamPanel\StreamPanel;
 use App\Livewire\Builder\Workspace\Workspace;
 use App\Livewire\Projects\ProjectDashboard\ProjectDashboard;
 use App\Livewire\Projects\ProjectList\ProjectList;
@@ -156,12 +157,54 @@ class BuilderShellTest extends TestCase
         Livewire::test(GenerationControls::class, ['page' => $page])
             ->set('prompt', 'A developer tool landing page')
             ->call('generate')
-            ->assertDispatched('generation-started', pageId: $page->id);
+            ->assertDispatched('generation-started', pageId: $page->id)
+            ->assertDispatched('generation-finished', pageId: $page->id, status: 'generating');
 
         $page->refresh();
         $this->assertSame('A developer tool landing page', $page->prompt);
         $this->assertSame('generating', $page->status);
         Queue::assertPushed(GeneratePageJob::class, fn (GeneratePageJob $job): bool => $job->pageId === $page->id);
+    }
+
+    public function test_workspace_updates_generation_status_from_generation_events(): void
+    {
+        $project = Project::query()->create([
+            'id' => app(IdGenerator::class)->project(),
+            'name' => 'Acme',
+        ]);
+        $page = Page::query()->create([
+            'id' => app(IdGenerator::class)->page(),
+            'project_id' => $project->id,
+            'name' => 'Homepage',
+            'prompt' => '',
+            'document_json' => $this->emptyDocument(),
+            'status' => 'draft',
+        ]);
+
+        Livewire::test(Workspace::class, ['project' => $project, 'page' => $page])
+            ->dispatch('generation-started', pageId: $page->id)
+            ->assertSet('generation_status', 'running')
+            ->dispatch('generation-finished', pageId: $page->id, status: 'error')
+            ->assertSet('generation_status', 'error');
+    }
+
+    public function test_stream_panel_derives_status_from_page_row(): void
+    {
+        $project = Project::query()->create([
+            'id' => app(IdGenerator::class)->project(),
+            'name' => 'Acme',
+        ]);
+        $page = Page::query()->create([
+            'id' => app(IdGenerator::class)->page(),
+            'project_id' => $project->id,
+            'name' => 'Homepage',
+            'prompt' => '',
+            'document_json' => $this->emptyDocument(),
+            'status' => 'error',
+        ]);
+
+        Livewire::test(StreamPanel::class, ['page' => $page])
+            ->assertSee('error');
     }
 
     private function emptyDocument(): array
