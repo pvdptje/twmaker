@@ -6,8 +6,10 @@ use App\Models\Page;
 use App\Services\Generation\Stages\Assembler;
 use App\Services\Generation\Stages\ElementResolver;
 use App\Services\Generation\Stages\Planner;
+use App\Services\Generation\Stages\Repair;
 use App\Services\Generation\Stages\SectionGenerator;
 use App\Services\Generation\Stages\Validator;
+use App\Services\Schema\SchemaValidationException;
 use Throwable;
 
 class Pipeline
@@ -20,6 +22,7 @@ class Pipeline
         private readonly ElementResolver $elementResolver,
         private readonly Assembler $assembler,
         private readonly Validator $validator,
+        private readonly Repair $repair,
     ) {}
 
     public function generate(Page $page): array
@@ -40,7 +43,7 @@ class Pipeline
 
             $document = $this->assembler->assemble($document);
             $this->elementResolver->assertReferencesResolve($document, $library);
-            $this->validator->assertValidDocument($document);
+            $document = $this->validateWithRepair($page, $document);
 
             $page->forceFill([
                 'document_json' => $document,
@@ -57,5 +60,29 @@ class Pipeline
 
             throw $exception;
         }
+    }
+
+    private function validateWithRepair(Page $page, array $document): array
+    {
+        try {
+            $this->validator->assertValidDocument($document);
+
+            return $document;
+        } catch (SchemaValidationException $exception) {
+            $this->events->record(
+                $page,
+                'validation_failed',
+                'validation',
+                'warning',
+                'Document failed validation; attempting deterministic repair.',
+                payload: ['errors' => $exception->errors],
+            );
+        }
+
+        $repaired = $this->repair->repairDocument($document, $exception->errors);
+        $this->events->record($page, 'repair_attempt', 'repair', 'info', 'Applied deterministic document repair.');
+        $this->validator->assertValidDocument($repaired);
+
+        return $repaired;
     }
 }

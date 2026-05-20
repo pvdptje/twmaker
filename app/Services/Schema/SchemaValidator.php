@@ -234,7 +234,7 @@ class SchemaValidator
         }
     }
 
-    private function validateFooter(array $children, ?int $columns, string $path): void
+    private function validateFooter(array $children, mixed $columns, string $path): void
     {
         $this->expectType($children, 0, 'image', $path);
         $index = 1;
@@ -246,8 +246,12 @@ class SchemaValidator
             $instances++;
             $index++;
         }
+        if (! is_int($columns)) {
+            $this->errors[] = "{$path}: footer columns must be an integer";
+            $columns = null;
+        }
         if ($instances !== $columns) {
-            $this->errors[] = "{$path}: footer expects {$columns} nav_link_group instances";
+            $this->errors[] = "{$path}: footer expects {$this->describeExpectedCount($columns)} nav_link_group instances";
         }
         if (isset($children[$index]) && ($children[$index]['type'] ?? null) === 'text') {
             $index++;
@@ -305,16 +309,25 @@ class SchemaValidator
         }
     }
 
-    private function validateOptionalHeadingThenExactInstances(array $children, ?int $expected, string $path): void
+    private function validateOptionalHeadingThenExactInstances(array $children, mixed $expected, string $path): void
     {
         $index = isset($children[0]) && ($children[0]['type'] ?? null) === 'heading' ? 1 : 0;
         $count = count($children) - $index;
+        if (! is_int($expected)) {
+            $this->errors[] = "{$path}: expected element instance count must be an integer";
+            $expected = null;
+        }
         if ($count !== $expected) {
-            $this->errors[] = "{$path}: expects exactly {$expected} element instances";
+            $this->errors[] = "{$path}: expects exactly {$this->describeExpectedCount($expected)} element instances";
         }
         for ($i = $index; $i < count($children); $i++) {
             $this->expectType($children, $i, 'element_instance', $path);
         }
+    }
+
+    private function describeExpectedCount(?int $expected): string
+    {
+        return $expected === null ? 'a valid number of' : (string) $expected;
     }
 
     private function validateSequence(array $children, array $expectedTypes, string $path): void

@@ -67,6 +67,21 @@ class SchemaValidatorTest extends TestCase
         $this->assertFalse($this->validator()->validateDocument($fixture));
     }
 
+    public function test_rejects_malformed_section_counts_without_type_error(): void
+    {
+        $stats = self::section('stats_band');
+        $stats['props']['columns'] = ['three'];
+
+        $footer = self::section('footer');
+        $footer['props']['columns'] = ['two'];
+
+        $validator = $this->validator();
+
+        $this->assertFalse($validator->validateDocument(self::document([$stats, $footer])));
+        $this->assertContains('document_tree.0: expected element instance count must be an integer', $validator->errors());
+        $this->assertContains('document_tree.1: footer columns must be an integer', $validator->errors());
+    }
+
     public static function sectionProvider(): array
     {
         $cases = [];

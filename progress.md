@@ -46,13 +46,14 @@ in_progress
 - [2026-05-20] M4.generation-controls: wired the Generate button to persist prompt/status and dispatch `GeneratePageJob`.
 - [2026-05-20] M4.tests: added structured request and fake-provider pipeline tests; `php artisan test`, `npm.cmd run test:js`, and `npm.cmd run build` pass.
 - [2026-05-20] M4.stream-dom-cap: added Alpine pruning to cap browser-rendered generation event rows while preserving persisted event history.
+- [2026-05-20] M4.validation-hardening: schema validator now reports malformed section column counts instead of throwing PHP type errors; pipeline attempts deterministic repair for recoverable column-count drift.
 
 ## In Progress
 - None.
 - Started: 2026-05-20
 - Last activity: 2026-05-20
-- Files touched: app/Livewire/Builder/StreamPanel/EventList/event-list.blade.php, tests/Feature/BuilderShellTest.php, progress.md
-- Current state: Stream panel still uses queued persisted events and polling, but now includes an Alpine `MutationObserver` cap that keeps only the newest 80 event rows in the browser DOM. `wire:stream` is intentionally not used for the queued job path because Livewire streaming only streams during the active Livewire request.
+- Files touched: app/Services/Schema/SchemaValidator.php, app/Services/Generation/Pipeline.php, app/Services/Generation/Stages/Repair.php, tests/Unit/Schema/SchemaValidatorTest.php, tests/Feature/Generation/PipelineTest.php, progress.md
+- Current state: Browser generation failed because `SchemaValidator::validateFooter()` received malformed `columns` props as an array from LLM output. The validator now records errors for malformed footer/stats column counts, and the pipeline applies a deterministic repair pass before re-validating.
 
 ## Blocked
 - None.
@@ -82,6 +83,7 @@ in_progress
 - M4 provider code depends on Anthropic's official `anthropic-ai/sdk` package and keeps it behind `LlmProvider` so tests and future providers can swap implementations.
 - Stream panel uses polling against persisted `generation_events` as a working baseline before Echo/Reverb live subscription is wired.
 - Do not use `wire:stream` for queued generation worker output. Livewire streaming is request-scoped; queued worker updates should continue through persisted events plus broadcast/polling. Alpine can still prune browser-side rows.
+- Add deterministic repair before LLM repair is fully implemented so small schema drifts, such as `columns` returned as an array, do not block local browser testing.
 
 ## Spec Change Proposals
 - None.
@@ -146,6 +148,11 @@ in_progress
 - `tests/Feature/BuilderShellTest.php`: modified: added generation enqueue coverage.
 - `app/Livewire/Builder/StreamPanel/EventList/event-list.blade.php`: modified: added Alpine DOM pruning cap for generation event rows.
 - `tests/Feature/BuilderShellTest.php`: modified: asserts stream panel includes the DOM cap behavior.
+- `app/Services/Schema/SchemaValidator.php`: modified: makes stats/footer column-count validation type-safe.
+- `app/Services/Generation/Pipeline.php`: modified: retries validation once through the repair stage.
+- `app/Services/Generation/Stages/Repair.php`: modified: repairs malformed footer/stats `columns` values deterministically.
+- `tests/Unit/Schema/SchemaValidatorTest.php`: modified: covers malformed column-count validation without type errors.
+- `tests/Feature/Generation/PipelineTest.php`: modified: covers deterministic repair of malformed footer columns.
 
 ## Next Up (Top 3)
 1. M4: wire Echo/Reverb subscription for the stream panel and refresh Workspace state when generation completes.
@@ -167,3 +174,4 @@ in_progress
 - Encoding rule (`plan.md` Sec. 23.7) is non-negotiable for both this file and `plan.md`. Use `->` not an arrow, `Sec.` not a section sign, straight quotes only.
 - M4 partial verification passed: `php artisan test` (89 tests, 113 assertions), `npm.cmd run test:js` (3 tests), and `npm.cmd run build`.
 - M4 stream DOM cap verification passed: `php artisan test --filter=BuilderShellTest` and `npm.cmd run build`.
+- M4 validation hardening verification passed: `vendor\bin\pint.bat`, `php artisan test` (91 tests, 120 assertions), `npm.cmd run test:js`, and `npm.cmd run build`.

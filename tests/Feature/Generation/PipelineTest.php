@@ -4,6 +4,7 @@ namespace Tests\Feature\Generation;
 
 use App\Models\Page;
 use App\Models\Project;
+use App\Models\ReusableElement;
 use App\Services\Generation\Pipeline;
 use App\Services\Ids\IdGenerator;
 use App\Services\Llm\LlmProvider;
@@ -51,6 +52,48 @@ class PipelineTest extends TestCase
             'kind' => 'generation_completed',
             'stage' => 'validation',
             'level' => 'success',
+        ]);
+    }
+
+    public function test_pipeline_repairs_malformed_section_column_counts(): void
+    {
+        $ids = app(IdGenerator::class);
+        $project = Project::query()->create([
+            'id' => $ids->project(),
+            'name' => 'Acme',
+        ]);
+        ReusableElement::query()->create([
+            'id' => 'elem_01h00000000000000000000001',
+            'project_id' => $project->id,
+            'name' => 'Footer links',
+            'type' => 'nav_link_group',
+            'default_props' => [
+                'links' => [['label' => 'Home', 'href' => '#', 'active' => true]],
+                'layout' => 'horizontal',
+            ],
+        ]);
+        $page = Page::query()->create([
+            'id' => $ids->page(),
+            'project_id' => $project->id,
+            'name' => 'Homepage',
+            'prompt' => 'A developer tool landing page',
+            'document_json' => $this->emptyDocument(),
+            'status' => 'draft',
+        ]);
+        $document = $this->generatedDocument();
+        $document['document_tree'][] = $this->footerWithMalformedColumns();
+
+        $this->app->instance(LlmProvider::class, new FakeGenerationProvider($document));
+
+        app(Pipeline::class)->generate($page);
+
+        $page->refresh();
+        $this->assertSame('valid', $page->status);
+        $this->assertSame(1, $page->document_json['document_tree'][1]['props']['columns']);
+        $this->assertDatabaseHas('generation_events', [
+            'page_id' => $page->id,
+            'kind' => 'repair_attempt',
+            'stage' => 'repair',
         ]);
     }
 
@@ -143,6 +186,50 @@ class PipelineTest extends TestCase
                 ],
             ],
             'generation_history' => [],
+        ];
+    }
+
+    private function footerWithMalformedColumns(): array
+    {
+        return [
+            'id' => 'sec_01h00000000000000000000002',
+            'type' => 'footer',
+            'props' => [
+                'background' => 'default',
+                'padding' => 'lg',
+                'max_width' => 'default',
+                'alignment' => 'left',
+                'variant' => 'simple',
+                'columns' => ['Main'],
+            ],
+            'children' => [
+                [
+                    'id' => 'node_01h00000000000000000000003',
+                    'type' => 'image',
+                    'props' => [
+                        'src' => 'placeholder:logo',
+                        'alt' => 'Acme',
+                        'width' => null,
+                        'height' => null,
+                        'fit' => 'contain',
+                        'radius' => 'none',
+                    ],
+                    'locks' => $this->locks(),
+                    'metadata' => $this->metadata(),
+                ],
+                [
+                    'id' => 'inst_01h00000000000000000000001',
+                    'type' => 'element_instance',
+                    'props' => [
+                        'library_id' => 'elem_01h00000000000000000000001',
+                        'overrides' => [],
+                    ],
+                    'locks' => $this->locks(),
+                    'metadata' => $this->metadata(),
+                ],
+            ],
+            'locks' => $this->locks(),
+            'metadata' => $this->metadata(),
         ];
     }
 
