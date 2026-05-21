@@ -6,6 +6,8 @@ use App\Events\GenerationEventBroadcast;
 use App\Models\GenerationEvent;
 use App\Models\Page;
 use App\Services\Ids\IdGenerator;
+use Illuminate\Support\Facades\Log;
+use Throwable;
 
 class GenerationEventRecorder
 {
@@ -32,7 +34,17 @@ class GenerationEventRecorder
             'occurred_at' => now('UTC'),
         ]);
 
-        broadcast(new GenerationEventBroadcast($event))->toOthers();
+        try {
+            broadcast(new GenerationEventBroadcast($event))->toOthers();
+        } catch (Throwable $exception) {
+            Log::warning('Generation event broadcast failed.', [
+                'page_id' => $page->id,
+                'event_id' => $event->id,
+                'kind' => $kind,
+                'stage' => $stage,
+                'message' => $exception->getMessage(),
+            ]);
+        }
 
         return $event;
     }

@@ -12,6 +12,7 @@ use App\Services\Ids\IdGenerator;
 use App\Services\Llm\LlmProvider;
 use App\Services\Llm\StructuredRequest;
 use Illuminate\Support\Facades\Log;
+use Throwable;
 
 class TargetedEdit
 {
@@ -125,7 +126,7 @@ class TargetedEdit
                 $rawOutput .= $outputChunk;
 
                 $this->streamBuffer->appendOutput($page->id, $stage, $outputChunk, $outputPosition);
-                broadcast(new GenerationStreamChunk($page->id, $stage, $outputChunk, $outputPosition, 'output'));
+                $this->broadcastChunk(new GenerationStreamChunk($page->id, $stage, $outputChunk, $outputPosition, 'output'), $page);
             }
 
             $html = $this->partialJsonStringValue($partialJson, 'html_source');
@@ -147,8 +148,23 @@ class TargetedEdit
 
             $this->streamBuffer->append($page->id, $stage, $chunk, $position);
 
-            broadcast(new GenerationStreamChunk($page->id, $stage, $chunk, $position));
+            $this->broadcastChunk(new GenerationStreamChunk($page->id, $stage, $chunk, $position), $page);
         };
+    }
+
+    private function broadcastChunk(GenerationStreamChunk $event, Page $page): void
+    {
+        try {
+            broadcast($event);
+        } catch (Throwable $exception) {
+            Log::warning('Generation stream broadcast failed.', [
+                'page_id' => $page->id,
+                'stage' => $event->stage,
+                'stream' => $event->stream,
+                'position' => $event->position,
+                'message' => $exception->getMessage(),
+            ]);
+        }
     }
 
     private function partialJsonStringValue(string $json, string $field): ?string
