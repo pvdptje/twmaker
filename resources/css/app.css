@@ -9,3 +9,38 @@
     --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
         'Segoe UI Symbol', 'Noto Color Emoji';
 }
+
+@layer base {
+    * {
+        scrollbar-width: thin;
+        scrollbar-color: #525252 #171717;
+    }
+
+    *::-webkit-scrollbar {
+        width: 0.75rem;
+        height: 0.75rem;
+    }
+
+    *::-webkit-scrollbar-track {
+        background: #171717;
+    }
+
+    *::-webkit-scrollbar-thumb {
+        min-height: 2.5rem;
+        border: 0.1875rem solid #171717;
+        border-radius: 9999px;
+        background: #525252;
+    }
+
+    *::-webkit-scrollbar-thumb:hover {
+        background: #737373;
+    }
+
+    *::-webkit-scrollbar-thumb:active {
+        background: #06b6d4;
+    }
+
+    *::-webkit-scrollbar-corner {
+        background: #171717;
+    }
+}
