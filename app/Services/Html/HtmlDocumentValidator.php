@@ -17,8 +17,11 @@ class HtmlDocumentValidator
             $errors[] = 'HTML source is empty.';
         }
 
-        if (preg_match('/<\s*script\b/i', $html)) {
-            $errors[] = 'HTML source must not contain script tags.';
+        foreach ($this->scriptTags($html) as $scriptTag) {
+            if (! $this->isAllowedScriptTag($scriptTag)) {
+                $errors[] = 'HTML source must not contain script tags except the approved Tailwind and Alpine CDN tags.';
+                break;
+            }
         }
 
         if (preg_match('/\son[a-z]+\s*=/i', $html)) {
@@ -61,6 +64,35 @@ class HtmlDocumentValidator
         }
 
         return array_values(array_unique($errors));
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function scriptTags(string $html): array
+    {
+        preg_match_all('/<\s*script\b[^>]*>(.*?)<\s*\/\s*script\s*>|<\s*script\b[^>]*\/?>/is', $html, $matches);
+
+        return $matches[0] ?? [];
+    }
+
+    private function isAllowedScriptTag(string $scriptTag): bool
+    {
+        if (! preg_match('/\ssrc\s*=\s*["\']([^"\']+)["\']/i', $scriptTag, $match)) {
+            return false;
+        }
+
+        $src = $match[1];
+        if (! in_array($src, [
+            'https://cdn.tailwindcss.com',
+            'https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js',
+        ], true)) {
+            return false;
+        }
+
+        $inner = preg_replace('/^<\s*script\b[^>]*>|<\s*\/\s*script\s*>$/is', '', $scriptTag) ?? '';
+
+        return trim($inner) === '';
     }
 
     public function assertValid(string $html): void

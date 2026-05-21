@@ -3,6 +3,7 @@
 namespace App\Livewire\Builder\StreamPanel;
 
 use App\Models\Page;
+use App\Services\Generation\GenerationStreamBuffer;
 use Illuminate\Contracts\View\View;
 use Livewire\Component;
 
@@ -24,6 +25,7 @@ class StreamPanel extends Component
                 default => $this->generationStatus,
             },
             'usageTotals' => $this->usageTotals(),
+            'streamSnapshot' => app(GenerationStreamBuffer::class)->latestSectionSnapshot($this->page->id),
         ]);
     }
 

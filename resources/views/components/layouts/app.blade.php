@@ -7,6 +7,7 @@
         @unless (app()->environment('testing'))
             @vite(['resources/css/app.css', 'resources/js/app.js'])
         @endunless
+        <style>[x-cloak] { display: none !important; }</style>
         @livewireStyles
     </head>
     <body class="min-h-screen bg-neutral-950 font-sans text-neutral-100 antialiased">

@@ -4,10 +4,10 @@ namespace App\Events;
 
 use App\Models\GenerationEvent;
 use Illuminate\Broadcasting\Channel;
-use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
+use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Queue\SerializesModels;
 
-class GenerationEventBroadcast implements ShouldBroadcast
+class GenerationEventBroadcast implements ShouldBroadcastNow
 {
     use SerializesModels;
 

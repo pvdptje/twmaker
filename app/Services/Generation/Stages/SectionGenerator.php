@@ -2,15 +2,19 @@
 
 namespace App\Services\Generation\Stages;
 
+use App\Events\GenerationStreamChunk;
 use App\Models\Page;
+use App\Services\Generation\GenerationStreamBuffer;
 use App\Services\Llm\LlmProvider;
 use App\Services\Llm\StructuredRequest;
+use Illuminate\Support\Facades\Log;
 
 class SectionGenerator
 {
     public function __construct(
         private readonly LlmProvider $provider,
         private readonly PromptBuilder $prompts,
+        private readonly GenerationStreamBuffer $streamBuffer,
     ) {}
 
     public function generate(Page $page, ?string $provider = null, ?string $model = null, ?string $apiKey = null): array
@@ -25,8 +29,8 @@ class SectionGenerator
         $artifact = $this->send(
             $page,
             'section_generator_retry',
-            $this->prompts->system('section_generator')."\n\nCritical recovery instruction: the previous response returned empty HTML. You must fill `raw_html` with complete body HTML containing multiple Tailwind-styled sections. Do not leave `raw_html` blank.",
-            "Generate the full Tailwind HTML page now. Original prompt: {$page->prompt}",
+            $this->prompts->system('section_generator')."\n\nCritical recovery instruction: the previous response returned empty HTML. Return one complete standalone HTML document with balanced tw:block markers. Do not leave the response blank.",
+            "Generate the complete marked Tailwind HTML document now. Original prompt: {$page->prompt}",
             0.4,
             $provider,
             $model,
@@ -42,11 +46,13 @@ class SectionGenerator
 
     private function send(Page $page, string $stage, string $systemPrompt, string $userPrompt, float $temperature, string $provider, ?string $model, ?string $apiKey): array
     {
-        $response = $this->provider->sendStructured(new StructuredRequest(
+        $this->streamBuffer->reset($page->id, $stage);
+
+        $request = new StructuredRequest(
             stage: $stage,
             provider: $provider,
             model: $model ?: (string) config("llm.providers.{$provider}.models.section_generator"),
-            systemPrompt: $systemPrompt,
+            systemPrompt: $systemPrompt."\n\nStreaming instruction: return the complete HTML document directly as plain text. Do not use JSON, markdown, or code fences.",
             userPrompt: $userPrompt,
             toolName: 'submit_raw_html_document',
             schema: $this->schema(),
@@ -57,13 +63,37 @@ class SectionGenerator
             maxTokens: (int) config("llm.providers.{$provider}.section_max_tokens", 8000),
             temperature: $temperature,
             apiKey: $apiKey,
-        ));
+        );
+
+        $response = method_exists($this->provider, 'sendTextStream')
+            ? $this->provider->sendTextStream($request, $this->streamHtml($page, $stage))
+            : $this->provider->sendStructured($request);
 
         return $response->output + ['_llm' => [
             'provider' => $provider,
             'model' => $response->model,
             'usage' => $response->usage,
         ]];
+    }
+
+    private function streamHtml(Page $page, string $stage): callable
+    {
+        return function (string $chunk, int $position) use ($page, $stage): void {
+            if ($chunk === '') {
+                return;
+            }
+
+            Log::debug('Broadcasting generation stream chunk.', [
+                'page_id' => $page->id,
+                'stage' => $stage,
+                'position' => $position,
+                'bytes' => strlen($chunk),
+            ]);
+
+            $this->streamBuffer->append($page->id, $stage, $chunk, $position);
+
+            broadcast(new GenerationStreamChunk($page->id, $stage, $chunk, $position));
+        };
     }
 
     private function hasRawHtml(array $artifact): bool
@@ -147,13 +177,8 @@ HTML;
         return [
             'type' => 'object',
             'additionalProperties' => false,
-            'required' => ['title', 'page_type', 'goal', 'audience', 'prompt_summary', 'raw_html'],
+            'required' => ['raw_html'],
             'properties' => [
-                'title' => ['type' => 'string', 'minLength' => 1, 'maxLength' => 120],
-                'page_type' => ['type' => 'string'],
-                'goal' => ['type' => 'string'],
-                'audience' => ['type' => 'string'],
-                'prompt_summary' => ['type' => 'string'],
                 'raw_html' => ['type' => 'string', 'minLength' => 1],
             ],
         ];

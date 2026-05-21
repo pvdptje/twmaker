@@ -55,6 +55,10 @@ HTML;
 
     public function renderPreviewHtml(string $htmlSource, string $title = 'Preview'): string
     {
+        if ($this->isFullHtmlDocument($htmlSource)) {
+            return $this->injectPreviewBridge($htmlSource);
+        }
+
         $title = e($title);
 
         return <<<HTML
@@ -78,6 +82,10 @@ HTML;
 
     public function renderDownloadHtml(string $htmlSource, string $title = 'Preview'): string
     {
+        if ($this->isFullHtmlDocument($htmlSource)) {
+            return $htmlSource;
+        }
+
         $title = e($title);
 
         return <<<HTML
@@ -175,5 +183,26 @@ HTML;
         $label = rawurlencode(Arr::last(explode(':', $src)) ?: 'image');
 
         return "https://placehold.co/960x540/f5f5f5/404040?text={$label}";
+    }
+
+    private function isFullHtmlDocument(string $html): bool
+    {
+        return preg_match('/<\s*html\b/i', $html) === 1
+            && preg_match('/<\s*body\b/i', $html) === 1;
+    }
+
+    private function injectPreviewBridge(string $html): string
+    {
+        if (str_contains($html, '/preview-bridge.js')) {
+            return $html;
+        }
+
+        $bridge = "\n".'<script src="/preview-bridge.js"></script>'."\n";
+
+        if (preg_match('/<\s*\/\s*body\s*>/i', $html)) {
+            return preg_replace('/<\s*\/\s*body\s*>/i', $bridge.'</body>', $html, 1) ?? $html;
+        }
+
+        return $html.$bridge;
     }
 }

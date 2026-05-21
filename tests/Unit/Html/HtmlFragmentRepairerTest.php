@@ -8,12 +8,12 @@ use PHPUnit\Framework\TestCase;
 
 class HtmlFragmentRepairerTest extends TestCase
 {
-    public function test_extracts_body_from_full_document(): void
+    public function test_preserves_full_document(): void
     {
         $html = '<!doctype html><html><head><title>Demo</title></head><body><main><section>Hi</section></main></body></html>';
 
         $this->assertSame(
-            '<main><section>Hi</section></main>',
+            $html,
             (new HtmlFragmentRepairer)->repair($html),
         );
     }

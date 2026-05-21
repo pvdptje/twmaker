@@ -266,7 +266,7 @@ class Pipeline
 
     private function providedMarkedHtml(array $artifact): ?string
     {
-        foreach (['marked_html', 'html_source'] as $key) {
+        foreach (['marked_html', 'html_source', 'raw_html'] as $key) {
             if (! array_key_exists($key, $artifact)) {
                 continue;
             }

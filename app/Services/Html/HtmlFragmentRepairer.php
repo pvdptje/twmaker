@@ -24,7 +24,6 @@ class HtmlFragmentRepairer
     public function repair(string $html): string
     {
         $html = $this->stripCodeFence(trim($html));
-        $html = $this->bodyFragment($html);
 
         return $this->closeOpenTags($html);
     }
@@ -36,23 +35,6 @@ class HtmlFragmentRepairer
         }
 
         return $html;
-    }
-
-    private function bodyFragment(string $html): string
-    {
-        if (preg_match('/<\s*body\b[^>]*>(.*?)<\s*\/\s*body\s*>/is', $html, $match)) {
-            return trim($match[1]);
-        }
-
-        if (! preg_match('/<\s*html\b/i', $html)) {
-            return $html;
-        }
-
-        $html = preg_replace('/<!doctype[^>]*>/i', '', $html) ?? $html;
-        $html = preg_replace('/<\s*head\b.*?<\s*\/\s*head\s*>/is', '', $html) ?? $html;
-        $html = preg_replace('/<\/?\s*html\b[^>]*>/i', '', $html) ?? $html;
-
-        return trim($html);
     }
 
     private function closeOpenTags(string $html): string

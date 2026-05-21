@@ -55,7 +55,7 @@ return [
                 ],
             ],
             'request_timeout' => (float) env('ANTHROPIC_REQUEST_TIMEOUT', 600),
-            'section_max_tokens' => (int) env('ANTHROPIC_SECTION_MAX_TOKENS', 10000),
+            'section_max_tokens' => (int) env('ANTHROPIC_SECTION_MAX_TOKENS', 64000),
             'marker_max_tokens' => (int) env('ANTHROPIC_MARKER_MAX_TOKENS', 8000),
             'edit_max_tokens' => env('ANTHROPIC_EDIT_MAX_TOKENS', 8000),
         ],
