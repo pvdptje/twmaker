@@ -70,13 +70,16 @@ in_progress
 - [2026-05-21] ops.deploy-hook-secret-handling: documented that approved agents may commit, push, and deploy, while keeping Forge deploy hook secrets only in ignored local files.
 - [2026-05-21] M5.empty-html-boundary-hardening: generation now rejects empty raw drafts before marker completion and wraps nonempty raw drafts as a single editable block when marker output is empty.
 - [2026-05-21] M5.empty-section-rescue: section generation now retries empty raw HTML with a stricter prompt and creates a conservative plan-based fallback draft if both LLM attempts are empty.
+- [2026-05-21] M5.model-provider-settings: added provider/model selection, per-provider local API key storage, encrypted queued job payloads, provider-aware LLM routing, and per-model token totals in the stream panel.
+- [2026-05-21] M5.dynamic-model-catalog: added provider model discovery through Anthropic `/v1/models`, day-long server caching, UI refresh actions, stale model cache eviction, and fallback retry on provider model-not-found errors.
+- [2026-05-21] M5.lock-removal: removed unused lock controls from the inspector and dropped legacy `locks` fields from schema, assembler normalization, and fixtures.
 
 ## In Progress
 - M5 prep: refactor targeted editing around marked block extraction and replacement.
 - Started: 2026-05-20
-- Last activity: 2026-05-20
+- Last activity: 2026-05-21
 - Files touched: app/Livewire/Builder/Canvas/Canvas.php, app/Livewire/Builder/Workspace/Workspace.php, app/Livewire/Builder/Workspace/workspace.blade.php, app/Livewire/Builder/LeftSidebar/LeftSidebar.php, app/Livewire/Builder/LeftSidebar/left-sidebar.blade.php, app/Livewire/Projects/ProjectDashboard/ProjectDashboard.php, app/Models/Project.php, app/Services/Generation/Pipeline.php, app/Services/Generation/Stages/Planner.php, app/Services/Generation/Stages/SectionGenerator.php, app/Services/Generation/Stages/HtmlMarker.php, resources/prompts/planner.system.md, resources/prompts/section_generator.system.md, plan.md, tests/Feature/Generation/PipelineTest.php, tests/Feature/BuilderShellTest.php, progress.md
-- Current state: Flexible block-level targeted editing is wired through the inspector and pipeline, with livelier stream/status feedback. Production generation now logs each LLM request boundary, uses explicit long-running job/request limits, retries empty section output, and falls back to a conservative plan-derived draft instead of leaving the canvas empty. Deploy hook handling is documented and `.forge-deploy-hook` is ignored. Next implementation target is live token/progress streaming for long LLM calls.
+- Current state: Flexible block-level targeted editing is wired through the inspector and pipeline, with livelier stream/status feedback. Provider/model selection is now UI-driven, keys are stored locally per provider, model catalogs can be fetched and cached from the provider, stale rejected models are pruned, and token totals are shown per model. Unused lock UI/schema fields have been removed. Deploy hook handling is documented and `.forge-deploy-hook` is ignored. Next implementation target is live token/progress streaming for long LLM calls.
 
 ## Blocked
 - None.
@@ -293,3 +296,5 @@ in_progress
 - Ops deploy hook secret handling verification passed: `vendor\bin\pint.bat --dirty`.
 - M5 empty HTML boundary hardening verification passed: `vendor\bin\pint.bat --dirty`, `php artisan test --filter=PipelineTest`, `php artisan test`, and `npm.cmd run test:js`.
 - M5 empty section rescue verification passed: `vendor\bin\pint.bat --dirty`, `php artisan test --filter=PipelineTest`, `php artisan test`, and `npm.cmd run test:js`.
+- M5 provider/model settings and lock removal verification passed: `php artisan test`, `npm.cmd run build`, and `npm.cmd run test:js`.
+- M5 stale Anthropic model fix verification passed: `php artisan config:clear`, `php artisan cache:clear`, and `php artisan test` (111 tests, 192 assertions).

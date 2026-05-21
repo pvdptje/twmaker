@@ -13,9 +13,10 @@ class SectionGenerator
         private readonly PromptBuilder $prompts,
     ) {}
 
-    public function generate(Page $page, array $plan): array
+    public function generate(Page $page, array $plan, ?string $provider = null, ?string $model = null, ?string $apiKey = null): array
     {
-        $artifact = $this->send($page, $plan, 'section_generator', $this->prompts->system('section_generator'), $page->prompt, 0.7);
+        $provider ??= (string) config('llm.default_provider', 'anthropic');
+        $artifact = $this->send($page, $plan, 'section_generator', $this->prompts->system('section_generator'), $page->prompt, 0.7, $provider, $model, $apiKey);
 
         if ($this->hasRawHtml($artifact)) {
             return $artifact;
@@ -28,6 +29,9 @@ class SectionGenerator
             $this->prompts->system('section_generator')."\n\nCritical recovery instruction: the previous response returned empty HTML. You must fill `raw_html` with complete body HTML containing multiple Tailwind-styled sections. Do not leave `raw_html` blank.",
             "Generate the full Tailwind HTML page now. Original prompt: {$page->prompt}",
             0.4,
+            $provider,
+            $model,
+            $apiKey,
         );
 
         if ($this->hasRawHtml($artifact)) {
@@ -37,11 +41,12 @@ class SectionGenerator
         return ['_recovered' => 'deterministic_fallback'] + $this->fallbackArtifact($page, $plan);
     }
 
-    private function send(Page $page, array $plan, string $stage, string $systemPrompt, string $userPrompt, float $temperature): array
+    private function send(Page $page, array $plan, string $stage, string $systemPrompt, string $userPrompt, float $temperature, string $provider, ?string $model, ?string $apiKey): array
     {
         $response = $this->provider->sendStructured(new StructuredRequest(
             stage: $stage,
-            model: (string) config('llm.providers.anthropic.models.section_generator'),
+            provider: $provider,
+            model: $model ?: (string) config("llm.providers.{$provider}.models.section_generator"),
             systemPrompt: $systemPrompt,
             userPrompt: $userPrompt,
             toolName: 'submit_raw_html_document',
@@ -50,11 +55,16 @@ class SectionGenerator
                 'page_id' => $page->id,
                 'plan' => $plan,
             ],
-            maxTokens: (int) config('llm.providers.anthropic.section_max_tokens', 8000),
+            maxTokens: (int) config("llm.providers.{$provider}.section_max_tokens", 8000),
             temperature: $temperature,
+            apiKey: $apiKey,
         ));
 
-        return $response->output;
+        return $response->output + ['_llm' => [
+            'provider' => $provider,
+            'model' => $response->model,
+            'usage' => $response->usage,
+        ]];
     }
 
     private function hasRawHtml(array $artifact): bool

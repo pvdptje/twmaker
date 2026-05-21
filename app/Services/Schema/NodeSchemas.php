@@ -17,13 +17,12 @@ class NodeSchemas
         return [
             'type' => 'object',
             'additionalProperties' => false,
-            'required' => ['id', 'type', 'props', 'locks', 'metadata'],
+            'required' => ['id', 'type', 'props', 'metadata'],
             'properties' => [
                 'id' => ['type' => 'string', 'pattern' => '^(node_|inst_)[0-9a-hjkmnp-tv-z]{26}$', 'maxLength' => 32],
                 'type' => ['enum' => self::TYPES],
                 'props' => ['type' => 'object'],
                 'children' => ['type' => 'array'],
-                'locks' => self::locks(),
                 'metadata' => self::metadata(),
             ],
         ];
@@ -118,15 +117,6 @@ class NodeSchemas
             ], ['library_id', 'overrides']),
             default => false,
         };
-    }
-
-    public static function locks(): array
-    {
-        return self::object([
-            'content_locked' => ['type' => 'boolean'],
-            'style_locked' => ['type' => 'boolean'],
-            'layout_locked' => ['type' => 'boolean'],
-        ], ['content_locked', 'style_locked', 'layout_locked']);
     }
 
     public static function metadata(): array

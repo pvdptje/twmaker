@@ -20,8 +20,9 @@ class TargetedEdit
         private readonly IdGenerator $ids,
     ) {}
 
-    public function edit(Page $page, string $targetId, string $instruction): array
+    public function edit(Page $page, string $targetId, string $instruction, ?string $provider = null, ?string $model = null, ?string $apiKey = null): array
     {
+        $provider ??= (string) config('llm.default_provider', 'anthropic');
         $htmlSource = (string) ($page->html_source ?? '');
         $blockIndex = $this->blocks->index($htmlSource);
         $targetBlock = collect($blockIndex)->firstWhere('id', $targetId);
@@ -32,7 +33,8 @@ class TargetedEdit
 
         $response = $this->provider->sendStructured(new StructuredRequest(
             stage: 'targeted_edit',
-            model: (string) config('llm.providers.anthropic.models.targeted_edit'),
+            provider: $provider,
+            model: $model ?: (string) config("llm.providers.{$provider}.models.targeted_edit"),
             systemPrompt: $this->prompts->system('targeted_edit'),
             userPrompt: $instruction,
             toolName: 'submit_targeted_edit',
@@ -50,8 +52,9 @@ class TargetedEdit
                     'Do not include script tags, inline event handlers, or javascript: URLs.',
                 ],
             ],
-            maxTokens: (int) config('llm.providers.anthropic.edit_max_tokens', 8000),
+            maxTokens: (int) config("llm.providers.{$provider}.edit_max_tokens", 8000),
             temperature: 0.4,
+            apiKey: $apiKey,
         ));
 
         $replacement = $this->normalizeReplacementIds(
@@ -65,6 +68,11 @@ class TargetedEdit
             'html_source' => $replacement,
             'explanation' => (string) ($response->output['explanation'] ?? 'Edited selected block.'),
             'blocks' => $this->compactBlockIndex($this->blocks->index($replacement)),
+            '_llm' => [
+                'provider' => $provider,
+                'model' => $response->model,
+                'usage' => $response->usage,
+            ],
         ];
     }
 

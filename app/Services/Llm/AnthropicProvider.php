@@ -15,9 +15,9 @@ class AnthropicProvider implements LlmProvider
     public function sendStructured(StructuredRequest $request): StructuredResponse
     {
         $client = $this->client ?? new Client(
-            apiKey: (string) config('llm.providers.anthropic.api_key'),
+            apiKey: $request->apiKey ?: (string) config("llm.providers.{$request->provider}.api_key"),
             requestOptions: RequestOptions::with(
-                timeout: (float) config('llm.providers.anthropic.request_timeout', 600),
+                timeout: (float) config("llm.providers.{$request->provider}.request_timeout", 600),
             ),
         );
 
@@ -45,6 +45,23 @@ class AnthropicProvider implements LlmProvider
                 tools: [$request->toolDefinition()],
             );
         } catch (Throwable $exception) {
+            if ($this->isModelNotFound($exception)) {
+                app(ProviderModelCatalog::class)->forgetModel($request->provider, $request->apiKey, $request->model);
+
+                $fallbackRequest = $this->fallbackRequest($request);
+
+                if ($fallbackRequest !== null) {
+                    Log::warning('LLM model was rejected by provider. Retrying with fallback model.', [
+                        'stage' => $request->stage,
+                        'provider' => $request->provider,
+                        'model' => $request->model,
+                        'fallback_model' => $fallbackRequest->model,
+                    ]);
+
+                    return $this->sendStructured($fallbackRequest);
+                }
+            }
+
             Log::error('LLM structured request failed.', [
                 'stage' => $request->stage,
                 'model' => $request->model,
@@ -96,5 +113,36 @@ class AnthropicProvider implements LlmProvider
         }
 
         throw new RuntimeException("Anthropic response did not include expected tool_use [{$toolName}].");
+    }
+
+    private function isModelNotFound(Throwable $exception): bool
+    {
+        $message = $exception->getMessage();
+
+        return str_contains($message, 'not_found_error')
+            && str_contains($message, 'model:');
+    }
+
+    private function fallbackRequest(StructuredRequest $request): ?StructuredRequest
+    {
+        $fallbackModel = app(LlmRegistry::class)->defaultModel($request->provider, $request->stage, $request->apiKey);
+
+        if ($fallbackModel === '' || $fallbackModel === $request->model) {
+            return null;
+        }
+
+        return new StructuredRequest(
+            stage: $request->stage,
+            provider: $request->provider,
+            model: $fallbackModel,
+            systemPrompt: $request->systemPrompt,
+            userPrompt: $request->userPrompt,
+            toolName: $request->toolName,
+            schema: $request->schema,
+            context: $request->context,
+            maxTokens: $request->maxTokens,
+            temperature: $request->temperature,
+            apiKey: $request->apiKey,
+        );
     }
 }

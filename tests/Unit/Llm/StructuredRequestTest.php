@@ -11,7 +11,8 @@ class StructuredRequestTest extends TestCase
     {
         $request = new StructuredRequest(
             stage: 'planner',
-            model: 'claude-sonnet-4-5',
+            provider: 'anthropic',
+            model: 'claude-sonnet-4-20250514',
             systemPrompt: 'Plan with V1 vocabulary.',
             userPrompt: 'Build a page.',
             toolName: 'submit_page_plan',

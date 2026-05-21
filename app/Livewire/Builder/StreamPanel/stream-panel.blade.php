@@ -22,6 +22,20 @@
                 <span class="h-1.5 w-1.5 animate-bounce rounded-full bg-emerald-300 [animation-delay:240ms]"></span>
             </div>
         @endif
+
+        <div class="mt-4 border-t border-neutral-800 pt-3">
+            <div class="text-xs font-semibold uppercase tracking-normal text-neutral-500">Tokens</div>
+            @forelse ($usageTotals as $model => $usage)
+                <div class="mt-2 rounded-md border border-neutral-800 bg-neutral-950 px-2 py-1.5">
+                    <div class="truncate text-xs font-medium text-neutral-200" title="{{ $model }}">{{ $model }}</div>
+                    <div class="mt-1 text-xs text-neutral-500">
+                        {{ number_format($usage['total']) }} total
+                    </div>
+                </div>
+            @empty
+                <div class="mt-2 text-xs text-neutral-500">No token usage yet.</div>
+            @endforelse
+        </div>
     </div>
     <livewire:builder.stream-panel.event-list.event-list :page="$page" />
 </div>

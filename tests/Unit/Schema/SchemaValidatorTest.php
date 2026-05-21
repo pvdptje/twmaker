@@ -188,7 +188,6 @@ class SchemaValidatorTest extends TestCase
             'type' => $type,
             'props' => self::sectionProps($type),
             'children' => self::sectionChildren($type),
-            'locks' => self::locks(),
             'metadata' => self::metadata(),
         ];
     }
@@ -239,7 +238,6 @@ class SchemaValidatorTest extends TestCase
             'id' => $type === 'element_instance' ? self::id('inst_') : self::id('node_'),
             'type' => $type,
             'props' => self::nodeProps($type, $propOverrides),
-            'locks' => self::locks(),
             'metadata' => self::metadata($type === 'element_instance' ? 'library_instance' : 'generator'),
         ];
 
@@ -306,11 +304,6 @@ class SchemaValidatorTest extends TestCase
             'nav_link_group' => ['links' => [['label' => 'Home', 'href' => '#', 'active' => true]], 'layout' => 'horizontal'],
             'cta_group' => ['primary' => ['label' => 'Start', 'href' => '#'], 'secondary' => null, 'alignment' => 'left'],
         };
-    }
-
-    private static function locks(): array
-    {
-        return ['content_locked' => false, 'style_locked' => false, 'layout_locked' => false];
     }
 
     private static function metadata(string $createdBy = 'generator'): array

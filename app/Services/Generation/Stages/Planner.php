@@ -13,11 +13,14 @@ class Planner
         private readonly PromptBuilder $prompts,
     ) {}
 
-    public function plan(Page $page): array
+    public function plan(Page $page, ?string $provider = null, ?string $model = null, ?string $apiKey = null): array
     {
+        $provider ??= (string) config('llm.default_provider', 'anthropic');
+
         $response = $this->provider->sendStructured(new StructuredRequest(
             stage: 'planner',
-            model: (string) config('llm.providers.anthropic.models.planner'),
+            provider: $provider,
+            model: $model ?: (string) config("llm.providers.{$provider}.models.planner"),
             systemPrompt: $this->prompts->system('planner'),
             userPrompt: $page->prompt,
             toolName: 'submit_page_plan',
@@ -25,9 +28,19 @@ class Planner
             context: [
                 'page_id' => $page->id,
             ],
+            apiKey: $apiKey,
         ));
 
-        return $response->output;
+        return $response->output + ['_llm' => $this->llmPayload($provider, $response->model, $response->usage)];
+    }
+
+    private function llmPayload(string $provider, string $model, array $usage): array
+    {
+        return [
+            'provider' => $provider,
+            'model' => $model,
+            'usage' => $usage,
+        ];
     }
 
     private function schema(): array

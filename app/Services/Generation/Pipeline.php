@@ -26,17 +26,18 @@ class Pipeline
         private readonly Renderer $renderer,
     ) {}
 
-    public function generate(Page $page): array
+    public function generate(Page $page, ?string $provider = null, ?string $model = null, ?string $apiKey = null): array
     {
+        $provider ??= (string) config('llm.default_provider', 'anthropic');
         $page->forceFill(['status' => 'generating'])->save();
         $this->events->record($page, 'stage_started', 'planner', 'info', 'Planning page structure.');
 
         try {
-            $plan = $this->planner->plan($page);
-            $this->events->record($page, 'stage_completed', 'planner', 'success', 'Planner produced a page outline.', payload: $plan);
+            $plan = $this->planner->plan($page, $provider, $model, $apiKey);
+            $this->events->record($page, 'stage_completed', 'planner', 'success', 'Planner produced a page outline.', payload: $this->payloadWithUsage($plan, $this->withoutLlm($plan)));
 
             $this->events->record($page, 'stage_started', 'section_generator', 'info', 'Generating raw Tailwind HTML.');
-            $artifact = $this->sections->generate($page, $plan);
+            $artifact = $this->sections->generate($page, $plan, $provider, $model, $apiKey);
             $rawHtml = $this->rawHtml($artifact);
             if ($rawHtml === '') {
                 throw new HtmlValidationException(['Section generator returned empty HTML.']);
@@ -45,10 +46,10 @@ class Pipeline
             $this->events->record($page, 'stage_completed', 'section_generator', $recovery === null ? 'success' : 'warning', $this->sectionGeneratorSummary($recovery), payload: [
                 'html_bytes' => strlen($rawHtml),
                 'recovery' => $recovery,
-            ]);
+            ] + $this->payloadWithUsage($artifact));
 
             $this->events->record($page, 'stage_started', 'html_marker', 'info', 'Adding editable block markers.');
-            $marked = $this->htmlMarker->mark($page, $plan, $artifact);
+            $marked = $this->htmlMarker->mark($page, $plan, $artifact, $provider, $model, $apiKey);
             $htmlSource = $this->markedHtml($marked);
 
             if ($htmlSource === '') {
@@ -56,11 +57,11 @@ class Pipeline
                 $this->events->record($page, 'stage_completed', 'html_marker', 'warning', 'Marker returned empty HTML, so the raw draft was wrapped as one editable block.', payload: [
                     'html_bytes' => strlen($htmlSource),
                     'fallback' => true,
-                ]);
+                ] + $this->payloadWithUsage($marked));
             } else {
                 $this->events->record($page, 'stage_completed', 'html_marker', 'success', 'Editable block markers added.', payload: [
                     'html_bytes' => strlen($htmlSource),
-                ]);
+                ] + $this->payloadWithUsage($marked));
             }
 
             $this->events->record($page, 'stage_started', 'validation', 'info', 'Validating marked HTML.');
@@ -91,14 +92,15 @@ class Pipeline
         }
     }
 
-    public function edit(Page $page, string $targetId, string $instruction): array
+    public function edit(Page $page, string $targetId, string $instruction, ?string $provider = null, ?string $model = null, ?string $apiKey = null): array
     {
+        $provider ??= (string) config('llm.default_provider', 'anthropic');
         $this->events->record($page, 'edit_requested', 'targeted_edit', 'info', 'Editing selected block.', $targetId, [
             'instruction' => $instruction,
         ]);
 
         try {
-            $result = $this->targetedEdit->edit($page, $targetId, $instruction);
+            $result = $this->targetedEdit->edit($page, $targetId, $instruction, $provider, $model, $apiKey);
             $htmlSource = $this->blockIndexer->replaceBlock(
                 (string) ($page->html_source ?? ''),
                 $targetId,
@@ -124,7 +126,7 @@ class Pipeline
 
             $this->events->record($page, 'edit_applied', 'targeted_edit', 'success', $result['explanation'], $targetId, [
                 'blocks' => $result['blocks'] ?? [],
-            ]);
+            ] + $this->payloadWithUsage($result));
 
             return $document;
         } catch (Throwable $exception) {
@@ -154,6 +156,24 @@ class Pipeline
             'block_index' => $blockIndex,
             'generation_history' => [],
         ];
+    }
+
+    private function payloadWithUsage(array $value, array $payload = []): array
+    {
+        $llm = $value['_llm'] ?? null;
+
+        if (! is_array($llm)) {
+            return $payload;
+        }
+
+        return $payload + ['llm' => $llm];
+    }
+
+    private function withoutLlm(array $value): array
+    {
+        unset($value['_llm']);
+
+        return $value;
     }
 
     private function rawHtml(array $artifact): string

@@ -14,6 +14,8 @@ use App\Models\Page;
 use App\Models\Project;
 use App\Services\Ids\IdGenerator;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
 use Tests\TestCase;
@@ -162,6 +164,9 @@ class BuilderShellTest extends TestCase
 
         Livewire::test(GenerationControls::class, ['page' => $page])
             ->set('prompt', 'A developer tool landing page')
+            ->set('provider', 'anthropic')
+            ->set('model', 'claude-haiku-4-5-20251001')
+            ->set('apiKey', 'test-generation-key')
             ->call('generate')
             ->assertDispatched('generation-started', pageId: $page->id)
             ->assertDispatched('generation-finished', pageId: $page->id, status: 'generating');
@@ -169,7 +174,48 @@ class BuilderShellTest extends TestCase
         $page->refresh();
         $this->assertSame('A developer tool landing page', $page->prompt);
         $this->assertSame('generating', $page->status);
-        Queue::assertPushed(GeneratePageJob::class, fn (GeneratePageJob $job): bool => $job->pageId === $page->id);
+        Queue::assertPushed(GeneratePageJob::class, fn (GeneratePageJob $job): bool => $job->pageId === $page->id
+            && $job->provider === 'anthropic'
+            && $job->model === 'claude-haiku-4-5-20251001'
+            && $job->apiKey === 'test-generation-key');
+    }
+
+    public function test_generation_controls_refresh_provider_models(): void
+    {
+        Cache::flush();
+        Http::fake([
+            'https://api.anthropic.com/v1/models*' => Http::response([
+                'data' => [
+                    [
+                        'id' => 'claude-fresh-20260521',
+                        'display_name' => 'Claude Fresh',
+                    ],
+                ],
+                'has_more' => false,
+            ]),
+        ]);
+
+        $project = Project::query()->create([
+            'id' => app(IdGenerator::class)->project(),
+            'name' => 'Acme',
+        ]);
+        $page = Page::query()->create([
+            'id' => app(IdGenerator::class)->page(),
+            'project_id' => $project->id,
+            'name' => 'Homepage',
+            'prompt' => '',
+            'document_json' => $this->emptyDocument(),
+            'status' => 'draft',
+        ]);
+
+        Livewire::test(GenerationControls::class, ['page' => $page])
+            ->set('apiKey', 'test-model-key')
+            ->call('refreshModels')
+            ->assertSet('model', 'claude-fresh-20260521')
+            ->assertSee('Claude Fresh')
+            ->assertSee('1 models refreshed.');
+
+        Http::assertSentCount(1);
     }
 
     public function test_edit_form_enqueues_targeted_edit_job_for_selected_node(): void
@@ -191,6 +237,9 @@ class BuilderShellTest extends TestCase
 
         Livewire::test(EditForm::class, ['page' => $page, 'selectedNodeId' => 'block_hero'])
             ->set('instruction', 'Replace this with a stronger intro')
+            ->set('provider', 'anthropic')
+            ->set('model', 'claude-haiku-4-5-20251001')
+            ->set('apiKey', 'test-edit-key')
             ->call('applyEdit')
             ->assertSet('instruction', '')
             ->assertDispatched('generation-started', pageId: $page->id);
@@ -199,7 +248,10 @@ class BuilderShellTest extends TestCase
 
         Queue::assertPushed(TargetedEditJob::class, fn (TargetedEditJob $job): bool => $job->pageId === $page->id
             && $job->targetId === 'block_hero'
-            && $job->instruction === 'Replace this with a stronger intro');
+            && $job->instruction === 'Replace this with a stronger intro'
+            && $job->provider === 'anthropic'
+            && $job->model === 'claude-haiku-4-5-20251001'
+            && $job->apiKey === 'test-edit-key');
     }
 
     public function test_workspace_updates_generation_status_from_generation_events(): void
@@ -329,6 +381,58 @@ class BuilderShellTest extends TestCase
             ->assertSee('running')
             ->assertSee('animate-bounce', false)
             ->assertSee('bg-gradient-to-r', false);
+    }
+
+    public function test_stream_panel_shows_token_totals_per_model(): void
+    {
+        $project = Project::query()->create([
+            'id' => app(IdGenerator::class)->project(),
+            'name' => 'Acme',
+        ]);
+        $page = Page::query()->create([
+            'id' => app(IdGenerator::class)->page(),
+            'project_id' => $project->id,
+            'name' => 'Homepage',
+            'prompt' => '',
+            'document_json' => $this->emptyDocument(),
+            'status' => 'valid',
+        ]);
+
+        $page->generationEvents()->create([
+            'id' => app(IdGenerator::class)->generationEvent(),
+            'kind' => 'stage_completed',
+            'stage' => 'planner',
+            'level' => 'success',
+            'summary' => 'Planner produced a page outline.',
+            'payload' => [
+                'llm' => [
+                    'provider' => 'anthropic',
+                    'model' => 'claude-sonnet-4-20250514',
+                    'usage' => ['input_tokens' => 100, 'output_tokens' => 50],
+                ],
+            ],
+            'occurred_at' => now('UTC'),
+        ]);
+        $page->generationEvents()->create([
+            'id' => app(IdGenerator::class)->generationEvent(),
+            'kind' => 'edit_applied',
+            'stage' => 'targeted_edit',
+            'level' => 'success',
+            'summary' => 'Edited selected block.',
+            'payload' => [
+                'llm' => [
+                    'provider' => 'anthropic',
+                    'model' => 'claude-sonnet-4-20250514',
+                    'usage' => ['input_tokens' => 25, 'output_tokens' => 25],
+                ],
+            ],
+            'occurred_at' => now('UTC'),
+        ]);
+
+        Livewire::test(StreamPanel::class, ['page' => $page])
+            ->assertSee('Tokens')
+            ->assertSee('claude-sonnet-4-20250514')
+            ->assertSee('200 total');
     }
 
     private function emptyDocument(): array

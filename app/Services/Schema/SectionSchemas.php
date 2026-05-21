@@ -23,13 +23,12 @@ class SectionSchemas
         return [
             'type' => 'object',
             'additionalProperties' => false,
-            'required' => ['id', 'type', 'props', 'children', 'locks', 'metadata'],
+            'required' => ['id', 'type', 'props', 'children', 'metadata'],
             'properties' => [
                 'id' => ['type' => 'string', 'pattern' => '^sec_[0-9a-hjkmnp-tv-z]{26}$', 'maxLength' => 32],
                 'type' => ['enum' => self::TYPES],
                 'props' => ['type' => 'object'],
                 'children' => ['type' => 'array'],
-                'locks' => NodeSchemas::locks(),
                 'metadata' => NodeSchemas::metadata(),
             ],
         ];

@@ -51,7 +51,6 @@ class Assembler
             'type' => $type,
             'props' => $this->sectionProps($type, is_array($section['props'] ?? null) ? $section['props'] : [], $children),
             'children' => $this->sectionChildren($type, $children),
-            'locks' => $this->locks($section['locks'] ?? []),
             'metadata' => $this->metadata($section['metadata'] ?? [], 'generator'),
         ];
     }
@@ -75,7 +74,6 @@ class Assembler
             'id' => $this->validId($node['id'] ?? null, $idPrefix) ? $node['id'] : ($type === 'element_instance' ? $this->ids->elementInstance() : $this->ids->node()),
             'type' => $type,
             'props' => $this->nodeProps($type, $props, $node),
-            'locks' => $this->locks($node['locks'] ?? []),
             'metadata' => $this->metadata($node['metadata'] ?? [], $type === 'element_instance' ? 'library_instance' : 'generator'),
         ];
 
@@ -369,7 +367,6 @@ class Assembler
             'id' => $this->ids->node(),
             'type' => 'heading',
             'props' => ['level' => $level, 'text' => $text, 'alignment' => 'left', 'emphasis' => 'default'],
-            'locks' => $this->locks([]),
             'metadata' => $this->metadata([], 'generator'),
         ];
     }
@@ -380,7 +377,6 @@ class Assembler
             'id' => $this->ids->node(),
             'type' => 'text',
             'props' => ['text' => $text, 'size' => 'base', 'alignment' => 'left', 'emphasis' => 'default'],
-            'locks' => $this->locks([]),
             'metadata' => $this->metadata([], 'generator'),
         ];
     }
@@ -391,7 +387,6 @@ class Assembler
             'id' => $this->ids->node(),
             'type' => 'image',
             'props' => ['src' => $src, 'alt' => $alt, 'width' => null, 'height' => null, 'fit' => 'contain', 'radius' => 'none'],
-            'locks' => $this->locks([]),
             'metadata' => $this->metadata([], 'generator'),
         ];
     }
@@ -406,17 +401,6 @@ class Assembler
         }
 
         return $fallback;
-    }
-
-    private function locks(mixed $locks): array
-    {
-        $locks = is_array($locks) ? $locks : [];
-
-        return [
-            'content_locked' => (bool) ($locks['content_locked'] ?? false),
-            'style_locked' => (bool) ($locks['style_locked'] ?? false),
-            'layout_locked' => (bool) ($locks['layout_locked'] ?? false),
-        ];
     }
 
     private function metadata(mixed $metadata, string $createdBy): array

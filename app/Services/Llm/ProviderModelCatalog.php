@@ -1,0 +1,164 @@
+<?php
+
+namespace App\Services\Llm;
+
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
+use Throwable;
+
+class ProviderModelCatalog
+{
+    public function models(string $provider, ?string $apiKey = null): ?array
+    {
+        $apiKey = $this->apiKey($provider, $apiKey);
+
+        if ($apiKey === null) {
+            return null;
+        }
+
+        return Cache::get($this->cacheKey($provider, $apiKey));
+    }
+
+    public function refresh(string $provider, ?string $apiKey = null): ?array
+    {
+        $apiKey = $this->apiKey($provider, $apiKey);
+
+        if ($apiKey === null) {
+            return null;
+        }
+
+        $models = $this->fetch($provider, $apiKey);
+
+        if ($models !== null) {
+            Cache::put(
+                $this->cacheKey($provider, $apiKey),
+                $models,
+                now()->addSeconds((int) config('llm.model_cache_ttl_seconds', 86400)),
+            );
+        }
+
+        return $models;
+    }
+
+    public function forgetModel(string $provider, ?string $apiKey, string $model): void
+    {
+        $apiKey = $this->apiKey($provider, $apiKey);
+
+        if ($apiKey === null) {
+            return;
+        }
+
+        $cacheKey = $this->cacheKey($provider, $apiKey);
+        $models = Cache::get($cacheKey);
+
+        if (! is_array($models)) {
+            return;
+        }
+
+        $models = array_values(array_filter(
+            $models,
+            fn (mixed $candidate): bool => (string) ($candidate['id'] ?? $candidate) !== $model,
+        ));
+
+        if ($models === []) {
+            Cache::forget($cacheKey);
+
+            return;
+        }
+
+        Cache::put(
+            $cacheKey,
+            $models,
+            now()->addSeconds((int) config('llm.model_cache_ttl_seconds', 86400)),
+        );
+    }
+
+    private function fetch(string $provider, string $apiKey): ?array
+    {
+        return match (config("llm.providers.{$provider}.driver")) {
+            'anthropic' => $this->fetchAnthropic($apiKey),
+            default => null,
+        };
+    }
+
+    private function fetchAnthropic(string $apiKey): ?array
+    {
+        try {
+            $models = [];
+            $afterId = null;
+
+            for ($page = 0; $page < 10; $page++) {
+                $response = Http::withHeaders([
+                    'anthropic-version' => '2023-06-01',
+                    'x-api-key' => $apiKey,
+                ])
+                    ->timeout(15)
+                    ->get('https://api.anthropic.com/v1/models', array_filter([
+                        'after_id' => $afterId,
+                        'limit' => 100,
+                    ]));
+
+                if (! $response->successful()) {
+                    Log::warning('Failed to fetch Anthropic models.', [
+                        'status' => $response->status(),
+                    ]);
+
+                    return null;
+                }
+
+                $body = $response->json();
+
+                foreach ($body['data'] ?? [] as $model) {
+                    $id = (string) ($model['id'] ?? '');
+
+                    if ($id === '') {
+                        continue;
+                    }
+
+                    $models[] = [
+                        'id' => $id,
+                        'label' => (string) ($model['display_name'] ?? $id),
+                    ];
+                }
+
+                if (! (bool) ($body['has_more'] ?? false)) {
+                    break;
+                }
+
+                $afterId = $body['last_id'] ?? null;
+
+                if (! is_string($afterId) || $afterId === '') {
+                    break;
+                }
+            }
+
+            return $models === [] ? null : $models;
+        } catch (Throwable $exception) {
+            Log::warning('Failed to fetch Anthropic models.', [
+                'exception' => $exception::class,
+                'message' => $exception->getMessage(),
+            ]);
+
+            return null;
+        }
+    }
+
+    private function apiKey(string $provider, ?string $apiKey): ?string
+    {
+        $apiKey = trim((string) $apiKey);
+
+        if ($apiKey !== '') {
+            return $apiKey;
+        }
+
+        $configured = trim((string) config("llm.providers.{$provider}.api_key"));
+
+        return $configured === '' ? null : $configured;
+    }
+
+    private function cacheKey(string $provider, string $apiKey): string
+    {
+        return "llm:models:{$provider}:".hash('sha256', $apiKey);
+    }
+}

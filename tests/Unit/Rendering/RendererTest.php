@@ -45,7 +45,6 @@ class RendererTest extends TestCase
                 $this->elementInstance('inst_01h00000000000000000000003', 'elem_01h00000000000000000000002'),
                 $this->elementInstance('inst_01h00000000000000000000004', 'elem_01h00000000000000000000002'),
             ],
-            'locks' => $this->locks(),
             'metadata' => $this->metadata(),
         ];
         $document['document_tree'][] = [
@@ -56,7 +55,6 @@ class RendererTest extends TestCase
                 $this->node('node_01h00000000000000000000005', 'heading', ['level' => 2, 'text' => 'Ready to make it less bland?', 'alignment' => 'center', 'emphasis' => 'default']),
                 $this->elementInstance('inst_01h00000000000000000000005', 'elem_01h00000000000000000000001'),
             ],
-            'locks' => $this->locks(),
             'metadata' => $this->metadata(),
         ];
 
@@ -120,7 +118,6 @@ class RendererTest extends TestCase
                         $this->node('node_01h00000000000000000000002', 'text', ['text' => 'A renderer turns page JSON into selectable HTML.', 'size' => 'lg', 'alignment' => 'center', 'emphasis' => 'muted']),
                         $this->elementInstance('inst_01h00000000000000000000001', 'elem_01h00000000000000000000001'),
                     ],
-                    'locks' => $this->locks(),
                     'metadata' => $this->metadata(),
                 ],
             ],
@@ -159,7 +156,6 @@ class RendererTest extends TestCase
             'id' => $id,
             'type' => $type,
             'props' => $props,
-            'locks' => $this->locks(),
             'metadata' => $this->metadata(),
         ];
     }
@@ -170,14 +166,8 @@ class RendererTest extends TestCase
             'id' => $id,
             'type' => 'element_instance',
             'props' => ['library_id' => $libraryId, 'overrides' => []],
-            'locks' => $this->locks(),
             'metadata' => $this->metadata('library_instance'),
         ];
-    }
-
-    private function locks(): array
-    {
-        return ['content_locked' => false, 'style_locked' => false, 'layout_locked' => false];
     }
 
     private function metadata(string $createdBy = 'generator'): array
