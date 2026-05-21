@@ -17,6 +17,7 @@
     data-stream-snapshot="{{ base64_encode($streamHtml) }}"
     data-stream-stage="{{ $streamStage }}"
     data-stream-position="{{ $streamPosition }}"
+    x-on:generation-started.window="if (!$event.detail?.pageId || $event.detail.pageId === pageId) resetForStage('section_generator')"
     x-data="{
         pageId: @js($page->id),
         open: @js($statusLabel === 'running'),
@@ -45,6 +46,15 @@
             document.addEventListener('livewire:navigated', () => this.subscribe());
             document.addEventListener('livewire:init', () => this.subscribe());
             window.addEventListener('focus', () => this.subscribe());
+        },
+        resetForStage(stage = 'section_generator') {
+            this.open = true;
+            this.dismissed = false;
+            this.terminal = false;
+            this.html = '';
+            this.stage = stage;
+            this.lastChunkAt = Date.now();
+            this.scrollToBottom();
         },
         syncSnapshot() {
             const encoded = this.$el.dataset.streamSnapshot || '';
@@ -105,7 +115,8 @@
             }
             this.channel = window.Echo.channel(`pages.${this.pageId}.generation`)
                 .listen('.GenerationStreamChunk', (event) => {
-                    if (!event?.chunk || !String(event.stage || '').startsWith('section_generator')) return;
+                    const eventStage = String(event?.stage || '');
+                    if (!event?.chunk || (!eventStage.startsWith('section_generator') && !eventStage.startsWith('targeted_edit'))) return;
 
                     const chunk = String(event.chunk);
                     const position = Number(event.position ?? this.html.length);
@@ -129,14 +140,10 @@
                 })
                 .listen('.GenerationEventBroadcast', (event) => {
                     if (!event) return;
-                    if (event.kind === 'stage_started' && event.stage === 'section_generator') {
-                        this.open = true;
-                        this.dismissed = false;
-                        this.terminal = false;
-                        this.html = '';
-                        this.lastChunkAt = Date.now();
+                    if ((event.kind === 'stage_started' && event.stage === 'section_generator') || (event.kind === 'edit_requested' && event.stage === 'targeted_edit')) {
+                        this.resetForStage(event.stage);
                     }
-                    if (event.kind === 'generation_completed' || event.kind === 'generation_failed') {
+                    if (event.kind === 'generation_completed' || event.kind === 'generation_failed' || event.kind === 'edit_applied' || event.kind === 'edit_rejected') {
                         this.terminal = true;
                     }
                 });
@@ -207,7 +214,7 @@
             <pre
                 x-ref="streamedCode"
                 class="min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-words bg-neutral-950 p-4 font-mono text-xs leading-5 text-cyan-50"
-                x-text="html || 'Waiting for streamed HTML...'"
+                x-text="html"
             ></pre>
         </div>
     </div>

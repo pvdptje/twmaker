@@ -73,13 +73,14 @@ in_progress
 - [2026-05-21] M5.model-provider-settings: added provider/model selection, per-provider local API key storage, encrypted queued job payloads, provider-aware LLM routing, and per-model token totals in the stream panel.
 - [2026-05-21] M5.dynamic-model-catalog: added provider model discovery through Anthropic `/v1/models`, day-long server caching, UI refresh actions, stale model cache eviction, and fallback retry on provider model-not-found errors.
 - [2026-05-21] M5.lock-removal: removed unused lock controls from the inspector and dropped legacy `locks` fields from schema, assembler normalization, and fixtures.
+- [2026-05-21] M5.live-stream-modal-reset: stream modal now clears stale DOM at run start, reopens with an empty code pane, and streams targeted edit `html_source` chunks through the same buffer and broadcast path as full page generation.
 
 ## In Progress
 - M5 prep: refactor targeted editing around marked block extraction and replacement.
 - Started: 2026-05-20
 - Last activity: 2026-05-21
-- Files touched: app/Livewire/Builder/Canvas/Canvas.php, app/Livewire/Builder/Workspace/Workspace.php, app/Livewire/Builder/Workspace/workspace.blade.php, app/Livewire/Builder/LeftSidebar/LeftSidebar.php, app/Livewire/Builder/LeftSidebar/left-sidebar.blade.php, app/Livewire/Projects/ProjectDashboard/ProjectDashboard.php, app/Models/Project.php, app/Services/Generation/Pipeline.php, app/Services/Generation/Stages/Planner.php, app/Services/Generation/Stages/SectionGenerator.php, app/Services/Generation/Stages/HtmlMarker.php, resources/prompts/planner.system.md, resources/prompts/section_generator.system.md, plan.md, tests/Feature/Generation/PipelineTest.php, tests/Feature/BuilderShellTest.php, progress.md
-- Current state: Flexible block-level targeted editing is wired through the inspector and pipeline, with livelier stream/status feedback. Provider/model selection is now UI-driven, keys are stored locally per provider, model catalogs can be fetched and cached from the provider, stale rejected models are pruned, and token totals are shown per model. Unused lock UI/schema fields have been removed. Deploy hook handling is documented and `.forge-deploy-hook` is ignored. Next implementation target is live token/progress streaming for long LLM calls.
+- Files touched: app/Livewire/Builder/Canvas/Canvas.php, app/Livewire/Builder/Workspace/Workspace.php, app/Livewire/Builder/Workspace/workspace.blade.php, app/Livewire/Builder/LeftSidebar/LeftSidebar.php, app/Livewire/Builder/LeftSidebar/left-sidebar.blade.php, app/Livewire/Projects/ProjectDashboard/ProjectDashboard.php, app/Models/Project.php, app/Services/Generation/Pipeline.php, app/Services/Generation/Stages/Planner.php, app/Services/Generation/Stages/SectionGenerator.php, app/Services/Generation/Stages/HtmlMarker.php, app/Services/Generation/Stages/TargetedEdit.php, app/Services/Generation/GenerationStreamBuffer.php, app/Livewire/Builder/StreamPanel/stream-panel.blade.php, resources/prompts/planner.system.md, resources/prompts/section_generator.system.md, plan.md, tests/Feature/Generation/PipelineTest.php, tests/Feature/BuilderShellTest.php, progress.md
+- Current state: Flexible block-level targeted editing is wired through the inspector and pipeline, with livelier stream/status feedback. Provider/model selection is now UI-driven, keys are stored locally per provider, model catalogs can be fetched and cached from the provider, stale rejected models are pruned, and token totals are shown per model. Unused lock UI/schema fields have been removed. Streamed HTML now appears for both full generation and targeted edits, and each new run clears the modal stream before fresh output arrives. Deploy hook handling is documented and `.forge-deploy-hook` is ignored.
 
 ## Blocked
 - None.
@@ -254,9 +255,9 @@ in_progress
 - `tests/Feature/BuilderShellTest.php`: modified: expects empty R3 page shape on page creation.
 
 ## Next Up (Top 3)
-1. M5: add live streamed LLM draft/code output for long generation and edit calls without weakening final validation.
-2. M5: add stale-selection and malformed-edit UX handling in the inspector.
-3. M5: manually browser-test targeted edit with a real provider call.
+1. M5: add stale-selection and malformed-edit UX handling in the inspector.
+2. M5: manually browser-test targeted edit with a real provider call.
+3. M5: consider streaming progress for non-HTML LLM fields such as edit explanations or usage summaries.
 
 ## Notes
 - Every agent: read `plan.md` Sec. 0.3 (Rules Of Engagement) before touching anything.
@@ -298,3 +299,4 @@ in_progress
 - M5 empty section rescue verification passed: `vendor\bin\pint.bat --dirty`, `php artisan test --filter=PipelineTest`, `php artisan test`, and `npm.cmd run test:js`.
 - M5 provider/model settings and lock removal verification passed: `php artisan test`, `npm.cmd run build`, and `npm.cmd run test:js`.
 - M5 stale Anthropic model fix verification passed: `php artisan config:clear`, `php artisan cache:clear`, and `php artisan test` (111 tests, 192 assertions).
+- M5 live stream modal reset verification passed: `vendor\bin\pint.bat --dirty`, `php artisan test --filter=PipelineTest`, `php artisan test --filter=BuilderShellTest`, and `npm.cmd run build`.

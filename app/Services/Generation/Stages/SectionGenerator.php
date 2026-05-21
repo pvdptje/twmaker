@@ -46,7 +46,7 @@ class SectionGenerator
 
     private function send(Page $page, string $stage, string $systemPrompt, string $userPrompt, float $temperature, string $provider, ?string $model, ?string $apiKey): array
     {
-        $this->streamBuffer->reset($page->id, $stage);
+        $this->streamBuffer->resetRun($page->id, $stage);
 
         $request = new StructuredRequest(
             stage: $stage,

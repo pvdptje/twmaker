@@ -4,6 +4,7 @@ namespace Tests\Feature\Generation;
 
 use App\Models\Page;
 use App\Models\Project;
+use App\Services\Generation\GenerationStreamBuffer;
 use App\Services\Generation\Pipeline;
 use App\Services\Html\BlockIndexer;
 use App\Services\Ids\IdGenerator;
@@ -244,6 +245,37 @@ HTML;
         ]);
     }
 
+    public function test_pipeline_streams_targeted_edit_html_source(): void
+    {
+        [$project, $page] = $this->makePage('A developer tool landing page');
+        $artifact = $this->htmlArtifact();
+        $blockIndex = app(BlockIndexer::class)->index($artifact['marked_html']);
+
+        $page->forceFill([
+            'document_json' => ['schema_version' => 2, 'page_metadata' => ['title' => 'Acme DevTools'], 'html_source' => $artifact['marked_html'], 'block_index' => $blockIndex, 'generation_history' => []],
+            'html_source' => $artifact['marked_html'],
+            'block_index' => $blockIndex,
+            'status' => 'valid',
+        ])->save();
+
+        $replacement = <<<'HTML'
+<!-- tw:block id="draft_story" type="story" label="Story" -->
+<section data-node-id="draft_story" data-node-type="story" data-tw-block="draft_story" class="bg-white px-6 py-24">
+  <div class="mx-auto max-w-4xl"><h2 class="text-4xl font-bold">Streamed edit result</h2></div>
+</section>
+<!-- /tw:block -->
+HTML;
+
+        $this->app->instance(LlmProvider::class, new FakeStreamingTargetedEditProvider($replacement));
+
+        app(Pipeline::class)->edit($page, 'block_hero', 'Stream this edit into the modal.');
+
+        $snapshot = app(GenerationStreamBuffer::class)->latestSectionSnapshot($page->id);
+
+        $this->assertSame('targeted_edit', $snapshot['stage']);
+        $this->assertStringContainsString('Streamed edit result', $snapshot['html']);
+    }
+
     private function makePage(string $prompt): array
     {
         $ids = app(IdGenerator::class);
@@ -348,6 +380,30 @@ class FakeTargetedEditProvider implements LlmProvider
         return new StructuredResponse($request->stage, $request->model, [
             'html_source' => $this->replacement,
             'explanation' => 'Replaced the selected block with two focused sections.',
+        ]);
+    }
+}
+
+class FakeStreamingTargetedEditProvider extends FakeTargetedEditProvider
+{
+    public function __construct(private readonly string $streamedReplacement)
+    {
+        parent::__construct($streamedReplacement);
+    }
+
+    public function sendStructuredStream(StructuredRequest $request, callable $onPartialJson): StructuredResponse
+    {
+        $json = json_encode([
+            'html_source' => $this->streamedReplacement,
+            'explanation' => 'Streamed the selected edit.',
+        ], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+
+        $onPartialJson(substr($json, 0, 90));
+        $onPartialJson($json);
+
+        return new StructuredResponse($request->stage, $request->model, [
+            'html_source' => $this->streamedReplacement,
+            'explanation' => 'Streamed the selected edit.',
         ]);
     }
 }

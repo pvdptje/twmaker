@@ -2,13 +2,16 @@
 
 namespace App\Services\Generation\Stages;
 
+use App\Events\GenerationStreamChunk;
 use App\Models\Page;
+use App\Services\Generation\GenerationStreamBuffer;
 use App\Services\Html\BlockIndexer;
 use App\Services\Html\HtmlDocumentValidator;
 use App\Services\Html\HtmlValidationException;
 use App\Services\Ids\IdGenerator;
 use App\Services\Llm\LlmProvider;
 use App\Services\Llm\StructuredRequest;
+use Illuminate\Support\Facades\Log;
 
 class TargetedEdit
 {
@@ -18,6 +21,7 @@ class TargetedEdit
         private readonly BlockIndexer $blocks,
         private readonly HtmlDocumentValidator $validator,
         private readonly IdGenerator $ids,
+        private readonly GenerationStreamBuffer $streamBuffer,
     ) {}
 
     public function edit(Page $page, string $targetId, string $instruction, ?string $provider = null, ?string $model = null, ?string $apiKey = null): array
@@ -38,7 +42,10 @@ class TargetedEdit
 
         $this->assertContiguous($targetBlocks);
 
-        $response = $this->provider->sendStructured(new StructuredRequest(
+        $stage = 'targeted_edit';
+        $this->streamBuffer->resetRun($page->id, $stage);
+
+        $request = new StructuredRequest(
             stage: 'targeted_edit',
             provider: $provider,
             model: $model ?: (string) config("llm.providers.{$provider}.models.targeted_edit"),
@@ -67,7 +74,11 @@ class TargetedEdit
             maxTokens: (int) config("llm.providers.{$provider}.edit_max_tokens", 8000),
             temperature: 0.4,
             apiKey: $apiKey,
-        ));
+        );
+
+        $response = method_exists($this->provider, 'sendStructuredStream')
+            ? $this->provider->sendStructuredStream($request, $this->streamHtmlSource($page, $stage))
+            : $this->provider->sendStructured($request);
 
         $replacement = $this->normalizeReplacementIds(
             (string) ($response->output['html_source'] ?? ''),
@@ -99,6 +110,88 @@ class TargetedEdit
                 'explanation' => ['type' => 'string', 'minLength' => 1, 'maxLength' => 300],
             ],
         ];
+    }
+
+    private function streamHtmlSource(Page $page, string $stage): callable
+    {
+        $streamed = '';
+
+        return function (string $partialJson) use ($page, $stage, &$streamed): void {
+            $html = $this->partialJsonStringValue($partialJson, 'html_source');
+
+            if (! is_string($html) || strlen($html) <= strlen($streamed)) {
+                return;
+            }
+
+            $position = strlen($streamed);
+            $chunk = substr($html, $position);
+            $streamed = $html;
+
+            Log::debug('Broadcasting targeted edit stream chunk.', [
+                'page_id' => $page->id,
+                'stage' => $stage,
+                'position' => $position,
+                'bytes' => strlen($chunk),
+            ]);
+
+            $this->streamBuffer->append($page->id, $stage, $chunk, $position);
+
+            broadcast(new GenerationStreamChunk($page->id, $stage, $chunk, $position));
+        };
+    }
+
+    private function partialJsonStringValue(string $json, string $field): ?string
+    {
+        if (! preg_match('/"'.preg_quote($field, '/').'"\s*:\s*"/', $json, $matches, PREG_OFFSET_CAPTURE)) {
+            return null;
+        }
+
+        $offset = $matches[0][1] + strlen($matches[0][0]);
+        $value = '';
+        $length = strlen($json);
+
+        for ($i = $offset; $i < $length; $i++) {
+            $char = $json[$i];
+
+            if ($char === '"') {
+                break;
+            }
+
+            if ($char !== '\\') {
+                $value .= $char;
+
+                continue;
+            }
+
+            if ($i + 1 >= $length) {
+                break;
+            }
+
+            $next = $json[++$i];
+            $value .= match ($next) {
+                '"', '\\', '/' => $next,
+                'b' => "\b",
+                'f' => "\f",
+                'n' => "\n",
+                'r' => "\r",
+                't' => "\t",
+                'u' => $this->decodeUnicodeEscape(substr($json, $i + 1, 4), $i),
+                default => $next,
+            };
+        }
+
+        return $value;
+    }
+
+    private function decodeUnicodeEscape(string $hex, int &$index): string
+    {
+        if (! preg_match('/^[0-9a-fA-F]{4}$/', $hex)) {
+            return '';
+        }
+
+        $index += 4;
+
+        return json_decode('"\\u'.$hex.'"', true, 512, JSON_THROW_ON_ERROR);
     }
 
     private function compactBlockIndex(array $blocks): array
