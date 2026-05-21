@@ -25,6 +25,7 @@
         connected: false,
         socketState: 'connecting',
         terminal: false,
+        dismissed: false,
         channel: null,
         lastChunkAt: Date.now(),
         now: Date.now(),
@@ -74,7 +75,7 @@
                 this.html = snapshot;
                 this.stage = stage;
                 this.lastChunkAt = Date.now();
-                this.open = true;
+                this.open = !this.dismissed;
                 this.scrollToBottom();
             }
         },
@@ -121,7 +122,7 @@
                         this.html += chunk;
                     }
 
-                    this.open = true;
+                    this.open = !this.dismissed;
                     this.lastChunkAt = Date.now();
 
                     this.scrollToBottom();
@@ -130,6 +131,7 @@
                     if (!event) return;
                     if (event.kind === 'stage_started' && event.stage === 'section_generator') {
                         this.open = true;
+                        this.dismissed = false;
                         this.terminal = false;
                         this.html = '';
                         this.lastChunkAt = Date.now();
@@ -143,7 +145,13 @@
             return this.open && !this.terminal && this.html !== '' && this.now - this.lastChunkAt > 2500;
         },
         close() {
+            this.dismissed = true;
             this.open = false;
+        },
+        reopen() {
+            this.dismissed = false;
+            this.open = true;
+            this.scrollToBottom();
         },
     }"
 >
@@ -161,20 +169,14 @@
                 <span class="h-1.5 w-1.5 animate-bounce rounded-full bg-emerald-300 [animation-delay:240ms]"></span>
             </div>
         @endif
-
-        <div class="mt-4 border-t border-neutral-800 pt-3">
-            <div class="text-xs font-semibold uppercase tracking-normal text-neutral-500">Tokens</div>
-            @forelse ($usageTotals as $model => $usage)
-                <div class="mt-2 rounded-md border border-neutral-800 bg-neutral-950 px-2 py-1.5">
-                    <div class="truncate text-xs font-medium text-neutral-200" title="{{ $model }}">{{ $model }}</div>
-                    <div class="mt-1 text-xs text-neutral-500">
-                        {{ number_format($usage['total']) }} total
-                    </div>
-                </div>
-            @empty
-                <div class="mt-2 text-xs text-neutral-500">No token usage yet.</div>
-            @endforelse
-        </div>
+        <button
+            type="button"
+            class="mt-4 w-full rounded-md border border-cyan-400/40 bg-cyan-400/10 px-3 py-2 text-xs font-semibold text-cyan-100 transition-colors hover:border-cyan-300 hover:bg-cyan-400/15 disabled:cursor-not-allowed disabled:border-neutral-800 disabled:bg-neutral-950 disabled:text-neutral-600"
+            x-on:click="reopen()"
+            x-bind:disabled="open || (html === '' && !@js($statusLabel === 'running'))"
+        >
+            Open stream
+        </button>
     </div>
     <livewire:builder.stream-panel.event-list.event-list :page="$page" />
 

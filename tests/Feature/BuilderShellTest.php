@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Jobs\GeneratePageJob;
 use App\Jobs\TargetedEditJob;
 use App\Livewire\Builder\Inspector\EditForm\EditForm;
+use App\Livewire\Builder\RightInspector\RightInspector;
 use App\Livewire\Builder\SidePanels\GenerationControls\GenerationControls;
 use App\Livewire\Builder\StreamPanel\StreamPanel;
 use App\Livewire\Builder\Workspace\Workspace;
@@ -493,7 +494,7 @@ class BuilderShellTest extends TestCase
             ->assertSee('bg-gradient-to-r', false);
     }
 
-    public function test_stream_panel_shows_token_totals_per_model(): void
+    public function test_right_inspector_shows_token_totals_per_model(): void
     {
         $project = Project::query()->create([
             'id' => app(IdGenerator::class)->project(),
@@ -539,7 +540,7 @@ class BuilderShellTest extends TestCase
             'occurred_at' => now('UTC'),
         ]);
 
-        Livewire::test(StreamPanel::class, ['page' => $page])
+        Livewire::test(RightInspector::class, ['page' => $page])
             ->assertSee('Tokens')
             ->assertSee('claude-sonnet-4-20250514')
             ->assertSee('200 total');
