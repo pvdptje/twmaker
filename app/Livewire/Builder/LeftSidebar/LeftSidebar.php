@@ -12,8 +12,10 @@ class LeftSidebar extends Component
 {
     public Project $project;
 
+    #[Reactive]
     public Page $page;
 
+    #[Reactive]
     public array $blockIndex = [];
 
     #[Reactive]

@@ -425,6 +425,49 @@ class BuilderShellTest extends TestCase
             ]);
     }
 
+    public function test_workspace_section_browser_prefers_current_html_blocks_over_stale_saved_index(): void
+    {
+        $project = Project::query()->create([
+            'id' => app(IdGenerator::class)->project(),
+            'name' => 'Acme',
+        ]);
+        $page = Page::query()->create([
+            'id' => app(IdGenerator::class)->page(),
+            'project_id' => $project->id,
+            'name' => 'Homepage',
+            'prompt' => '',
+            'document_json' => $this->emptyDocument(),
+            'html_source' => <<<'HTML'
+<!-- tw:block id="block_hero" type="hero" label="Hero" -->
+<section data-node-id="block_hero" data-node-type="hero" data-tw-block="block_hero">Hero</section>
+<!-- /tw:block -->
+<!-- tw:block id="block_features" type="features" label="Features" -->
+<section data-node-id="block_features" data-node-type="features" data-tw-block="block_features">Features</section>
+<!-- /tw:block -->
+HTML,
+            'block_index' => [
+                ['id' => 'block_hero', 'type' => 'hero', 'label' => 'Hero', 'summary' => 'Hero'],
+            ],
+            'status' => 'valid',
+        ]);
+
+        Livewire::test(Workspace::class, ['project' => $project, 'page' => $page])
+            ->assertSet('block_index', [
+                [
+                    'id' => 'block_hero',
+                    'type' => 'hero',
+                    'label' => 'Hero',
+                    'summary' => 'Hero',
+                ],
+                [
+                    'id' => 'block_features',
+                    'type' => 'features',
+                    'label' => 'Features',
+                    'summary' => 'Features',
+                ],
+            ]);
+    }
+
     public function test_workspace_resyncs_selected_preview_after_generated_html_changes(): void
     {
         $project = Project::query()->create([

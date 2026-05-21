@@ -4,6 +4,7 @@ namespace App\Livewire\Builder\Workspace;
 
 use App\Models\Page;
 use App\Models\Project;
+use App\Services\Html\BlockIndexer;
 use Illuminate\Contracts\View\View;
 use Livewire\Attributes\On;
 use Livewire\Component;
@@ -33,7 +34,7 @@ class Workspace extends Component
         $this->project = $project;
         $this->page = $page;
         $this->page_id = $page->id;
-        $this->block_index = $this->slimBlockIndex($page->block_index ?? []);
+        $this->block_index = $this->slimBlockIndex($this->currentBlockIndex($page));
         $this->preview_signature = $this->pageSignature($page);
     }
 
@@ -76,7 +77,7 @@ class Workspace extends Component
         }
 
         $this->page->refresh();
-        $this->block_index = $this->slimBlockIndex($this->page->block_index ?? []);
+        $this->block_index = $this->slimBlockIndex($this->currentBlockIndex($this->page));
         $this->preview_signature = $this->pageSignature($this->page);
         $this->generation_status = match ($status) {
             'generating' => 'running',
@@ -92,7 +93,7 @@ class Workspace extends Component
 
         $signature = $this->pageSignature($this->page);
         if ($signature !== $this->preview_signature) {
-            $this->block_index = $this->slimBlockIndex($this->page->block_index ?? []);
+            $this->block_index = $this->slimBlockIndex($this->currentBlockIndex($this->page));
             $this->selected_block_ids = $this->validSelectedBlockIds($this->selected_block_ids);
             $this->preview_signature = $signature;
 
@@ -137,6 +138,14 @@ class Workspace extends Component
             ],
             $blocks,
         );
+    }
+
+    private function currentBlockIndex(Page $page): array
+    {
+        $html = (string) ($page->html_source ?? '');
+        $blocks = trim($html) === '' ? [] : app(BlockIndexer::class)->index($html);
+
+        return $blocks !== [] ? $blocks : ($page->block_index ?? []);
     }
 
     private function validSelectedBlockIds(array $selectedBlockIds): array

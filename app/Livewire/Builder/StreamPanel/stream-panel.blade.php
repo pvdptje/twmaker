@@ -29,6 +29,8 @@
         open: @js($statusLabel === 'running'),
         html: @js($streamHtml),
         output: @js($outputText),
+        targetHtml: @js($streamHtml),
+        targetOutput: @js($outputText),
         stage: @js($streamStage),
         outputStage: @js($outputStage),
         connected: false,
@@ -40,6 +42,11 @@
         now: Date.now(),
         pollTimer: null,
         observer: null,
+        revealFrame: null,
+        lastRevealAt: 0,
+        revealCarry: 0,
+        baseCharsPerSecond: 180,
+        maxFrameChars: 48,
         init() {
             this.syncSnapshot();
             this.observer = new MutationObserver(() => this.syncSnapshot());
@@ -61,9 +68,12 @@
             this.terminal = false;
             this.html = '';
             this.output = '';
+            this.targetHtml = '';
+            this.targetOutput = '';
             this.stage = stage;
             this.outputStage = stage;
             this.lastChunkAt = Date.now();
+            this.cancelReveal();
             this.scrollToBottom();
         },
         decodeSnapshot(encoded) {
@@ -86,33 +96,118 @@
             const outputPosition = Number(this.$el.dataset.outputPosition || outputSnapshot.length);
             const outputStage = this.$el.dataset.outputStage || this.outputStage;
 
-            if (position === 0 && this.html !== '') {
+            if (position === 0 && this.targetHtml !== '') {
+                this.targetHtml = '';
                 this.html = '';
                 this.stage = stage;
                 this.lastChunkAt = Date.now();
             }
 
-            if (stage !== this.stage || snapshot.length > this.html.length) {
+            if (stage !== this.stage) {
+                this.targetHtml = snapshot;
                 this.html = snapshot;
+                this.cancelReveal();
                 this.stage = stage;
                 this.lastChunkAt = Date.now();
                 this.open = !this.dismissed;
                 this.scrollToBottom();
+            } else if (snapshot.length > this.targetHtml.length) {
+                this.targetHtml = snapshot;
+                this.stage = stage;
+                this.lastChunkAt = Date.now();
+                this.open = !this.dismissed;
+                this.queueReveal();
             }
 
-            if (outputPosition === 0 && this.output !== '') {
+            if (outputPosition === 0 && this.targetOutput !== '') {
+                this.targetOutput = '';
                 this.output = '';
                 this.outputStage = outputStage;
                 this.lastChunkAt = Date.now();
             }
 
-            if (outputStage !== this.outputStage || outputSnapshot.length > this.output.length) {
+            if (outputStage !== this.outputStage) {
+                this.targetOutput = outputSnapshot;
                 this.output = outputSnapshot;
+                this.cancelReveal();
                 this.outputStage = outputStage;
                 this.lastChunkAt = Date.now();
                 this.open = !this.dismissed;
                 this.scrollToBottom();
+            } else if (outputSnapshot.length > this.targetOutput.length) {
+                this.targetOutput = outputSnapshot;
+                this.outputStage = outputStage;
+                this.lastChunkAt = Date.now();
+                this.open = !this.dismissed;
+                this.queueReveal();
             }
+        },
+        cancelReveal() {
+            if (this.revealFrame) cancelAnimationFrame(this.revealFrame);
+            this.revealFrame = null;
+            this.lastRevealAt = 0;
+            this.revealCarry = 0;
+        },
+        queueReveal() {
+            if (this.revealFrame) return;
+
+            this.revealFrame = requestAnimationFrame((timestamp) => this.revealText(timestamp));
+        },
+        revealText(timestamp) {
+            this.revealFrame = null;
+
+            if (!this.lastRevealAt) this.lastRevealAt = timestamp;
+
+            const elapsed = Math.max(16, timestamp - this.lastRevealAt);
+            const backlog = Math.max(
+                this.targetHtml.length - this.html.length,
+                this.targetOutput.length - this.output.length,
+            );
+            const charsPerSecond = this.baseCharsPerSecond + Math.min(1800, backlog * 3);
+
+            this.lastRevealAt = timestamp;
+            this.revealCarry += (elapsed / 1000) * charsPerSecond;
+
+            const count = Math.max(1, Math.min(this.maxFrameChars, Math.floor(this.revealCarry)));
+            this.revealCarry = Math.max(0, this.revealCarry - count);
+
+            let changed = false;
+
+            if (this.html.length < this.targetHtml.length) {
+                this.html += this.targetHtml.slice(this.html.length, this.html.length + count);
+                changed = true;
+            } else if (this.html.length > this.targetHtml.length) {
+                this.html = this.targetHtml;
+                changed = true;
+            }
+
+            if (this.output.length < this.targetOutput.length) {
+                this.output += this.targetOutput.slice(this.output.length, this.output.length + count);
+                changed = true;
+            } else if (this.output.length > this.targetOutput.length) {
+                this.output = this.targetOutput;
+                changed = true;
+            }
+
+            if (changed) this.scrollToBottom();
+
+            if (this.html.length < this.targetHtml.length || this.output.length < this.targetOutput.length) {
+                this.queueReveal();
+            } else {
+                this.lastRevealAt = 0;
+                this.revealCarry = 0;
+            }
+        },
+        applyChunk(text, chunk, position) {
+            if (position < text.length) {
+                if (text.slice(position, position + chunk.length) === chunk) {
+                    return text;
+                }
+
+                return text.slice(0, position) + chunk;
+            }
+
+            return text + chunk;
         },
         scrollToBottom() {
             this.$nextTick(() => {
@@ -149,43 +244,29 @@
                     const stream = String(event.stream || 'html');
 
                     if (stream === 'output') {
-                        const position = Number(event.position ?? this.output.length);
+                        const position = Number(event.position ?? this.targetOutput.length);
                         this.outputStage = event.stage || this.outputStage;
+                        const nextOutput = this.applyChunk(this.targetOutput, chunk, position);
+                        if (nextOutput === this.targetOutput) return;
 
-                        if (position < this.output.length) {
-                            if (this.output.slice(position, position + chunk.length) === chunk) {
-                                return;
-                            }
-
-                            this.output = this.output.slice(0, position) + chunk;
-                        } else {
-                            this.output += chunk;
-                        }
-
+                        this.targetOutput = nextOutput;
                         this.open = !this.dismissed;
                         this.lastChunkAt = Date.now();
-                        this.scrollToBottom();
+                        this.queueReveal();
 
                         return;
                     }
 
-                    const position = Number(event.position ?? this.html.length);
+                    const position = Number(event.position ?? this.targetHtml.length);
                     this.stage = event.stage || this.stage;
+                    const nextHtml = this.applyChunk(this.targetHtml, chunk, position);
+                    if (nextHtml === this.targetHtml) return;
 
-                    if (position < this.html.length) {
-                        if (this.html.slice(position, position + chunk.length) === chunk) {
-                            return;
-                        }
-
-                        this.html = this.html.slice(0, position) + chunk;
-                    } else {
-                        this.html += chunk;
-                    }
-
+                    this.targetHtml = nextHtml;
                     this.open = !this.dismissed;
                     this.lastChunkAt = Date.now();
 
-                    this.scrollToBottom();
+                    this.queueReveal();
                 })
                 .listen('.GenerationEventBroadcast', (event) => {
                     if (!event) return;
@@ -198,7 +279,7 @@
                 });
         },
         isThinking() {
-            return this.open && !this.terminal && (this.html === '' || this.now - this.lastChunkAt > 2500);
+            return this.open && !this.terminal && (this.targetHtml === '' || this.now - this.lastChunkAt > 2500);
         },
         close() {
             this.dismissed = true;
@@ -229,7 +310,7 @@
             type="button"
             class="mt-4 w-full rounded-md border border-cyan-400/40 bg-cyan-400/10 px-3 py-2 text-xs font-semibold text-cyan-100 transition-colors hover:border-cyan-300 hover:bg-cyan-400/15 disabled:cursor-not-allowed disabled:border-neutral-800 disabled:bg-neutral-950 disabled:text-neutral-600"
             x-on:click="reopen()"
-            x-bind:disabled="open || (html === '' && !@js($statusLabel === 'running'))"
+            x-bind:disabled="open || (targetHtml === '' && !@js($statusLabel === 'running'))"
         >
             Open stream
         </button>
@@ -256,7 +337,7 @@
             </div>
             <div class="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[minmax(0,1fr)_19rem]">
                 <div class="flex min-h-0 flex-col border-r border-neutral-800">
-                    <div class="border-b border-neutral-800 px-4 py-2 text-xs text-neutral-400" x-show="!terminal && html === ''">
+                    <div class="border-b border-neutral-800 px-4 py-2 text-xs text-neutral-400" x-show="!terminal && targetHtml === ''">
                         <span class="inline-flex items-center gap-2">
                             <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-300"></span>
                             <span>Waiting for the first HTML tokens.</span>
@@ -273,7 +354,7 @@
                         <div class="text-xs font-semibold text-neutral-300">LLM output</div>
                         <div class="mt-1 text-xs text-neutral-500" x-text="`${outputStage} / provider-visible stream`"></div>
                     </div>
-                    <div class="border-b border-neutral-800 px-3 py-2 text-xs text-neutral-500" x-show="!terminal && output === ''">
+                    <div class="border-b border-neutral-800 px-3 py-2 text-xs text-neutral-500" x-show="!terminal && targetOutput === ''">
                         <div class="inline-flex items-center gap-2">
                             <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-300"></span>
                             <span>Waiting for visible model output.</span>

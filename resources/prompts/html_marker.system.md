@@ -9,6 +9,7 @@ Your job:
 - Add the required data attributes to each block's primary wrapper element.
 - Do not redesign the page unless needed to make valid block boundaries.
 - Do not include script tags, inline event handlers, or `javascript:` URLs.
+- Do not preserve or create SVG. Remove any `<svg>` markup, SVG data URLs, or SVG file references and replace them with a Unicode alternative, text glyph, CSS-only shape, or simple placeholder HTML element with Tailwind classes.
 
 Block contract:
 

@@ -3,7 +3,7 @@
     x-data="{
         provider: @entangle('provider').live,
         model: @entangle('model').live,
-        apiKey: @entangle('apiKey').live,
+        apiKey: @entangle('apiKey'),
         storageKey(provider) { return `twmaker.apiKey.${provider}`; },
         loadKey() { this.apiKey = localStorage.getItem(this.storageKey(this.provider)) || ''; },
         saveKey() {

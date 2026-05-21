@@ -6,6 +6,7 @@ You may replace the selected block or selected block range with one or more new 
 
 Rules:
 - Preserve safe HTML only: no script tags, inline event handlers, or javascript: URLs.
+- Never use SVG: do not emit `<svg>`, `<path>`, inline SVG icons, SVG data URLs, or SVG files. When you need an icon or visual placeholder, use a Unicode character, text glyph, CSS-only shape, or simple placeholder HTML element with Tailwind classes.
 - Use Tailwind utility classes directly.
 - Every returned block must contain a root element with matching `data-node-id`, `data-node-type`, and `data-tw-block` attributes.
 - Keep the result focused on the selected block or selected block range and the user's instruction.
