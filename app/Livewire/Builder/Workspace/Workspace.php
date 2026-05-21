@@ -5,6 +5,8 @@ namespace App\Livewire\Builder\Workspace;
 use App\Models\Page;
 use App\Models\Project;
 use App\Services\Html\BlockIndexer;
+use App\Services\Html\HtmlValidationException;
+use App\Services\Html\QuickElementEditor;
 use Illuminate\Contracts\View\View;
 use Livewire\Attributes\On;
 use Livewire\Component;
@@ -23,6 +25,8 @@ class Workspace extends Component
 
     public string $preview_signature = '';
 
+    public string $preview_mount_key = '';
+
     public Project $project;
 
     public Page $page;
@@ -36,6 +40,7 @@ class Workspace extends Component
         $this->page_id = $page->id;
         $this->block_index = $this->slimBlockIndex($this->currentBlockIndex($page));
         $this->preview_signature = $this->pageSignature($page);
+        $this->preview_mount_key = $this->preview_signature;
     }
 
     #[On('node-selected')]
@@ -43,6 +48,41 @@ class Workspace extends Component
     {
         $this->selected_node_id = $nodeId;
         $this->dispatch('preview-selection-changed', nodeId: $nodeId, scrollIntoView: $scrollIntoView);
+    }
+
+    #[On('quick-edit-save')]
+    public function saveQuickEdit(string $editId, string $html, QuickElementEditor $editor): void
+    {
+        try {
+            $updatedHtml = $editor->replace((string) ($this->page->html_source ?? ''), $editId, $html);
+        } catch (HtmlValidationException $exception) {
+            $this->dispatch('quick-edit-failed', errors: $exception->errors);
+
+            return;
+        }
+
+        $blockIndex = app(BlockIndexer::class)->index($updatedHtml);
+        $document = $this->page->document_json ?? [];
+        if (($document['schema_version'] ?? null) === 2) {
+            $document['html_source'] = $updatedHtml;
+            $document['block_index'] = $blockIndex;
+            $document['page_metadata']['updated_at'] = now('UTC')->format('Y-m-d\TH:i:s\Z');
+        }
+
+        $this->page->forceFill([
+            'html_source' => $updatedHtml,
+            'block_index' => $blockIndex,
+            'document_json' => $document,
+            'status' => 'valid',
+            'rendered_html_cache' => null,
+        ])->save();
+
+        $this->page->refresh();
+        $this->block_index = $this->slimBlockIndex($this->currentBlockIndex($this->page));
+        $this->selected_block_ids = $this->validSelectedBlockIds($this->selected_block_ids);
+        $this->preview_signature = $this->pageSignature($this->page);
+
+        $this->dispatch('quick-edit-saved', editId: $editId, html: $html);
     }
 
     #[On('block-selection-toggled')]
@@ -79,6 +119,7 @@ class Workspace extends Component
         $this->page->refresh();
         $this->block_index = $this->slimBlockIndex($this->currentBlockIndex($this->page));
         $this->preview_signature = $this->pageSignature($this->page);
+        $this->preview_mount_key = $this->preview_signature;
         $this->generation_status = match ($status) {
             'generating' => 'running',
             'valid' => 'valid',
@@ -96,6 +137,7 @@ class Workspace extends Component
             $this->block_index = $this->slimBlockIndex($this->currentBlockIndex($this->page));
             $this->selected_block_ids = $this->validSelectedBlockIds($this->selected_block_ids);
             $this->preview_signature = $signature;
+            $this->preview_mount_key = $signature;
 
             if ($this->selected_node_id !== null) {
                 $this->dispatch('preview-selection-changed', nodeId: $this->selected_node_id, scrollIntoView: true);

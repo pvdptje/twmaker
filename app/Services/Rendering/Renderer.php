@@ -47,7 +47,7 @@ class Renderer
 </head>
 <body>
 {$body}
-<script src="/preview-bridge.js"></script>
+<script src="{$this->previewBridgeSrc()}"></script>
 </body>
 </html>
 HTML;
@@ -74,7 +74,7 @@ HTML;
 </head>
 <body>
 {$htmlSource}
-<script src="/preview-bridge.js"></script>
+<script src="{$this->previewBridgeSrc()}"></script>
 </body>
 </html>
 HTML;
@@ -194,15 +194,27 @@ HTML;
     private function injectPreviewBridge(string $html): string
     {
         if (str_contains($html, '/preview-bridge.js')) {
-            return $html;
+            return preg_replace(
+                '/<script\s+src=["\']\/preview-bridge\.js(?:\?[^"\']*)?["\']\s*><\/script>/i',
+                '<script src="'.$this->previewBridgeSrc().'"></script>',
+                $html,
+            ) ?? $html;
         }
 
-        $bridge = "\n".'<script src="/preview-bridge.js"></script>'."\n";
+        $bridge = "\n".'<script src="'.$this->previewBridgeSrc().'"></script>'."\n";
 
         if (preg_match('/<\s*\/\s*body\s*>/i', $html)) {
             return preg_replace('/<\s*\/\s*body\s*>/i', $bridge.'</body>', $html, 1) ?? $html;
         }
 
         return $html.$bridge;
+    }
+
+    private function previewBridgeSrc(): string
+    {
+        $path = public_path('preview-bridge.js');
+        $version = is_file($path) ? filemtime($path) : time();
+
+        return "/preview-bridge.js?v={$version}";
     }
 }

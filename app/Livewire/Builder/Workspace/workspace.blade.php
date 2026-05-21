@@ -4,7 +4,7 @@
     </aside>
 
     <section class="min-h-0 bg-neutral-950">
-        <livewire:builder.canvas.canvas :page="$page" :selected-node-id="$selected_node_id" :key="'canvas-'.$page->id.'-'.$preview_signature" />
+        <livewire:builder.canvas.canvas :page="$page" :selected-node-id="$selected_node_id" :key="'canvas-'.$page->id.'-'.$preview_mount_key" />
     </section>
 
     <aside class="row-span-2 border-l border-neutral-800 bg-neutral-900">

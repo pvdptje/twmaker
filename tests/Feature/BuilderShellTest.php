@@ -497,6 +497,41 @@ HTML,
             ->assertDispatched('preview-selection-changed', nodeId: 'block_hero', scrollIntoView: true);
     }
 
+    public function test_workspace_saves_quick_dom_element_edits(): void
+    {
+        $project = Project::query()->create([
+            'id' => app(IdGenerator::class)->project(),
+            'name' => 'Acme',
+        ]);
+        $page = Page::query()->create([
+            'id' => app(IdGenerator::class)->page(),
+            'project_id' => $project->id,
+            'name' => 'Homepage',
+            'prompt' => '',
+            'document_json' => $this->markedHtmlDocument(),
+            'html_source' => '<!-- tw:block id="block_hero" type="hero" label="Hero" --><section data-node-id="block_hero" data-node-type="hero" data-tw-block="block_hero" class="px-6 py-24"><h1>Ship pages</h1><p class="mt-4">Fast</p></section><!-- /tw:block -->',
+            'block_index' => [],
+            'status' => 'valid',
+        ]);
+
+        $component = Livewire::test(Workspace::class, ['project' => $project, 'page' => $page]);
+        $previewMountKey = $component->get('preview_mount_key');
+
+        $component
+            ->dispatch('quick-edit-save', editId: 'block_hero:1', html: '<p class="mt-8 text-lg text-neutral-600">Better website copy here.</p>')
+            ->assertDispatched('quick-edit-saved')
+            ->assertSet('preview_mount_key', $previewMountKey);
+
+        $page->refresh();
+
+        $this->assertStringContainsString('<!-- tw:block id="block_hero" type="hero" label="Hero" -->', $page->html_source);
+        $this->assertStringContainsString('<h1>Ship pages</h1>', $page->html_source);
+        $this->assertStringContainsString('<p class="mt-8 text-lg text-neutral-600">Better website copy here.</p>', $page->html_source);
+        $this->assertStringContainsString('<!-- /tw:block -->', $page->html_source);
+        $this->assertStringContainsString('Better website copy here.', $page->block_index[0]['summary']);
+        $this->assertSame($page->html_source, $page->document_json['html_source']);
+    }
+
     public function test_stream_panel_derives_status_from_page_row(): void
     {
         $project = Project::query()->create([

@@ -45,16 +45,20 @@ describe('preview bridge', () => {
 
         expect(document.querySelector('h1').classList.contains('builder-selected')).toBe(true);
         expect(document.querySelector('section').classList.contains('builder-selected')).toBe(false);
-        expect(messages).toEqual([
-            {
-                payload: {
-                    type: 'builder:node-selected',
-                    nodeId: 'node_01h00000000000000000000001',
-                    nodeType: 'heading',
-                },
-                targetOrigin: '*',
+        expect(messages).toHaveLength(1);
+        expect(messages[0].targetOrigin).toBe('*');
+        expect(messages[0].payload).toMatchObject({
+            type: 'builder:node-selected',
+            nodeId: 'node_01h00000000000000000000001',
+            nodeType: 'heading',
+            quickEdit: {
+                editId: 'node_01h00000000000000000000001:',
+                blockId: 'node_01h00000000000000000000001',
+                tagName: 'h1',
             },
-        ]);
+        });
+        expect(messages[0].payload.quickEdit.outerHTML).toContain('<h1');
+        expect(messages[0].payload.quickEdit.outerHTML).toContain('<span>Ship pages</span>');
 
         document.querySelector('p').dispatchEvent(new window.MouseEvent('click', {
             bubbles: true,
@@ -63,6 +67,37 @@ describe('preview bridge', () => {
 
         expect(document.querySelector('h1').classList.contains('builder-selected')).toBe(false);
         expect(document.querySelector('p').classList.contains('builder-selected')).toBe(true);
+    });
+
+    it('reports a stable edit path inside a marked block', () => {
+        const { document, messages, window } = bootPreview(`
+            <section data-node-id="block_hero" data-node-type="hero" data-tw-block="block_hero">
+                <h1>Ship pages</h1>
+                <div><p>Fast</p></div>
+            </section>
+        `);
+
+        document.querySelector('p').dispatchEvent(new window.MouseEvent('click', {
+            bubbles: true,
+            cancelable: true,
+            clientX: 12,
+            clientY: 24,
+        }));
+
+        expect(messages[0].payload).toMatchObject({
+            type: 'builder:node-selected',
+            nodeId: 'block_hero',
+            quickEdit: {
+                editId: 'block_hero:1.0',
+                blockId: 'block_hero',
+                tagName: 'p',
+                outerHTML: '<p>Fast</p>',
+                click: {
+                    x: 12,
+                    y: 24,
+                },
+            },
+        });
     });
 
     it('replaces a rendered subtree by node id', () => {
@@ -82,6 +117,28 @@ describe('preview bridge', () => {
 
         expect(document.querySelector('[data-node-id="node_01h00000000000000000000001"]')).toBeNull();
         expect(document.querySelector('[data-node-id="node_01h00000000000000000000002"]').textContent).toBe('New copy');
+    });
+
+    it('replaces a quick-edited element by edit path without reloading the preview', () => {
+        const { document, window } = bootPreview(`
+            <section data-node-id="block_hero" data-node-type="hero" data-tw-block="block_hero">
+                <h1>Ship pages</h1>
+                <p class="mt-4">Fast</p>
+            </section>
+        `);
+
+        window.dispatchEvent(new window.MessageEvent('message', {
+            data: {
+                type: 'replace-quick-edit',
+                editId: 'block_hero:1',
+                html: '<p class="mt-8 text-lg text-neutral-600">Better website copy here.</p>',
+            },
+        }));
+
+        expect(document.querySelector('h1').textContent).toBe('Ship pages');
+        expect(document.querySelector('p').className).toContain('mt-8');
+        expect(document.querySelector('p').classList.contains('builder-selected')).toBe(true);
+        expect(document.querySelector('p').textContent).toBe('Better website copy here.');
     });
 
     it('applies a selection sent by the parent frame', () => {
