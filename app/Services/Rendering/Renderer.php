@@ -74,6 +74,34 @@ HTML;
 HTML;
     }
 
+    public function renderDownloadHtml(string $htmlSource, string $title = 'Preview'): string
+    {
+        $title = e($title);
+
+        return <<<HTML
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{$title}</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+body {
+    margin: 0;
+    background: #fff;
+    color: #171717;
+    font-family: ui-sans-serif, system-ui, sans-serif;
+}
+</style>
+</head>
+<body>
+{$htmlSource}
+</body>
+</html>
+HTML;
+    }
+
     public function renderSection(array $section, array $library): string
     {
         return $this->views->make('render.sections.'.$section['type'], [

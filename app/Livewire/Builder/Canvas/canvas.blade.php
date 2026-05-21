@@ -4,7 +4,21 @@
             <div class="text-sm font-medium text-white">Canvas</div>
             <div class="text-xs text-neutral-500">{{ count($page->block_index ?? []) }} sections</div>
         </div>
-        <span class="rounded bg-neutral-900 px-2 py-1 text-xs text-neutral-400">Live preview</span>
+        <div class="flex items-center gap-2">
+            <span class="rounded bg-neutral-900 px-2 py-1 text-xs text-neutral-400">Live preview</span>
+            @if (filled($page->html_source))
+                <a
+                    href="{{ route('builder.pages.download-html', [$page->project_id, $page]) }}"
+                    class="rounded-md border border-cyan-500/40 bg-cyan-500/10 px-3 py-1.5 text-xs font-medium text-cyan-200 transition hover:border-cyan-400 hover:bg-cyan-500/20 hover:text-white focus:outline-none focus:ring-2 focus:ring-cyan-400/40"
+                >
+                    Download HTML
+                </a>
+            @else
+                <span class="cursor-not-allowed rounded-md border border-neutral-800 bg-neutral-900 px-3 py-1.5 text-xs font-medium text-neutral-600">
+                    Download HTML
+                </span>
+            @endif
+        </div>
     </div>
 
     <div class="min-h-0 flex-1 bg-neutral-950 p-6">

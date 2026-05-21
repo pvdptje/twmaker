@@ -116,8 +116,62 @@ class BuilderShellTest extends TestCase
         $this->get(route('builder.workspace', [$project, $page]))
             ->assertOk()
             ->assertSee('Ship pages with marked blocks')
+            ->assertSee('Download HTML')
             ->assertSee('data-node-id=&quot;block_hero&quot;', false)
             ->assertSee('/preview-bridge.js', false);
+    }
+
+    public function test_page_html_download_returns_current_html_as_attachment(): void
+    {
+        $project = Project::query()->create([
+            'id' => app(IdGenerator::class)->project(),
+            'name' => 'Acme',
+        ]);
+
+        $page = Page::query()->create([
+            'id' => app(IdGenerator::class)->page(),
+            'project_id' => $project->id,
+            'name' => 'Homepage',
+            'prompt' => '',
+            'document_json' => $this->markedHtmlDocument(),
+            'html_source' => $this->markedHtmlSource(),
+            'block_index' => $this->markedHtmlDocument()['block_index'],
+            'status' => 'valid',
+        ]);
+
+        $this->get(route('builder.pages.download-html', [$project, $page]))
+            ->assertOk()
+            ->assertHeader('Content-Type', 'text/html; charset=UTF-8')
+            ->assertDownload('homepage.html')
+            ->assertSee('<!doctype html>', false)
+            ->assertSee('Ship pages with marked blocks')
+            ->assertSee('https://cdn.tailwindcss.com', false)
+            ->assertDontSee('/preview-bridge.js', false);
+    }
+
+    public function test_page_html_download_requires_page_to_belong_to_project(): void
+    {
+        $project = Project::query()->create([
+            'id' => app(IdGenerator::class)->project(),
+            'name' => 'Acme',
+        ]);
+        $otherProject = Project::query()->create([
+            'id' => app(IdGenerator::class)->project(),
+            'name' => 'Other',
+        ]);
+
+        $page = Page::query()->create([
+            'id' => app(IdGenerator::class)->page(),
+            'project_id' => $project->id,
+            'name' => 'Homepage',
+            'prompt' => '',
+            'document_json' => $this->markedHtmlDocument(),
+            'html_source' => $this->markedHtmlSource(),
+            'status' => 'valid',
+        ]);
+
+        $this->get(route('builder.pages.download-html', [$otherProject, $page]))
+            ->assertNotFound();
     }
 
     public function test_workspace_tracks_node_selected_events(): void
