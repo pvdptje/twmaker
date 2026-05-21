@@ -9,7 +9,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Throwable;
 
-class TargetedEditJob implements ShouldQueue, ShouldBeEncrypted
+class TargetedEditJob implements ShouldBeEncrypted, ShouldQueue
 {
     use Queueable;
 
@@ -19,7 +19,7 @@ class TargetedEditJob implements ShouldQueue, ShouldBeEncrypted
 
     public function __construct(
         public readonly string $pageId,
-        public readonly string $targetId,
+        public readonly string|array $targetId,
         public readonly string $instruction,
         public readonly ?string $provider = null,
         public readonly ?string $model = null,
@@ -29,9 +29,11 @@ class TargetedEditJob implements ShouldQueue, ShouldBeEncrypted
     public function handle(Pipeline $pipeline): void
     {
         try {
-            $pipeline->edit(
+            $targetIds = is_array($this->targetId) ? $this->targetId : [$this->targetId];
+
+            $pipeline->editMany(
                 Page::query()->findOrFail($this->pageId),
-                $this->targetId,
+                $targetIds,
                 $this->instruction,
                 $this->provider,
                 $this->model,

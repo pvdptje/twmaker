@@ -43,6 +43,7 @@ class Renderer
 <title>{$title}</title>
 <link rel="stylesheet" href="/preview.css">
 <script src="https://cdn.tailwindcss.com"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 </head>
 <body>
 {$body}
@@ -65,6 +66,7 @@ HTML;
 <title>{$title}</title>
 <link rel="stylesheet" href="/preview.css">
 <script src="https://cdn.tailwindcss.com"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 </head>
 <body>
 {$htmlSource}
@@ -86,6 +88,7 @@ HTML;
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{$title}</title>
 <script src="https://cdn.tailwindcss.com"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 <style>
 body {
     margin: 0;

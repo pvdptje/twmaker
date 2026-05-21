@@ -14,6 +14,8 @@ class Workspace extends Component
 
     public ?string $selected_node_id = null;
 
+    public array $selected_block_ids = [];
+
     public array $block_index = [];
 
     public string $generation_status = 'idle';
@@ -40,6 +42,22 @@ class Workspace extends Component
     {
         $this->selected_node_id = $nodeId;
         $this->dispatch('preview-selection-changed', nodeId: $nodeId, scrollIntoView: $scrollIntoView);
+    }
+
+    #[On('block-selection-toggled')]
+    public function toggleBlockSelection(string $blockId): void
+    {
+        if ($blockId === '') {
+            return;
+        }
+
+        if (in_array($blockId, $this->selected_block_ids, true)) {
+            $this->selected_block_ids = array_values(array_diff($this->selected_block_ids, [$blockId]));
+
+            return;
+        }
+
+        $this->selected_block_ids[] = $blockId;
     }
 
     #[On('generation-started')]
@@ -75,6 +93,7 @@ class Workspace extends Component
         $signature = $this->pageSignature($this->page);
         if ($signature !== $this->preview_signature) {
             $this->block_index = $this->slimBlockIndex($this->page->block_index ?? []);
+            $this->selected_block_ids = $this->validSelectedBlockIds($this->selected_block_ids);
             $this->preview_signature = $signature;
 
             if ($this->selected_node_id !== null) {
@@ -118,5 +137,15 @@ class Workspace extends Component
             ],
             $blocks,
         );
+    }
+
+    private function validSelectedBlockIds(array $selectedBlockIds): array
+    {
+        $known = array_flip(array_column($this->block_index, 'id'));
+
+        return array_values(array_filter(
+            $selectedBlockIds,
+            fn (mixed $id): bool => is_string($id) && isset($known[$id]),
+        ));
     }
 }

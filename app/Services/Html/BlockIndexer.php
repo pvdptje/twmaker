@@ -49,6 +49,51 @@ class BlockIndexer
     }
 
     /**
+     * @param  array<int, string>  $blockIds
+     */
+    public function replaceBlocks(string $html, array $blockIds, string $replacement): string
+    {
+        $blockIds = array_values(array_unique(array_filter(
+            $blockIds,
+            fn (mixed $id): bool => is_string($id) && $id !== '',
+        )));
+
+        if ($blockIds === []) {
+            throw new HtmlValidationException(['At least one block must be selected.']);
+        }
+
+        if (count($blockIds) === 1) {
+            return $this->replaceBlock($html, $blockIds[0], $replacement);
+        }
+
+        $wanted = array_flip($blockIds);
+        $selected = [];
+        foreach ($this->index($html) as $position => $block) {
+            if (isset($wanted[$block['id']])) {
+                $selected[$position] = $block;
+            }
+        }
+
+        $missing = array_values(array_diff($blockIds, array_column($selected, 'id')));
+        if ($missing !== []) {
+            throw new HtmlValidationException(['Block ['.implode(', ', $missing).'] was not found.']);
+        }
+
+        $positions = array_keys($selected);
+        sort($positions);
+        if (($positions[count($positions) - 1] - $positions[0] + 1) !== count($positions)) {
+            throw new HtmlValidationException(['Selected blocks must be contiguous.']);
+        }
+
+        $first = $selected[$positions[0]];
+        $last = $selected[$positions[count($positions) - 1]];
+
+        return substr($html, 0, $first['start_offset'])
+            .$replacement
+            .substr($html, $last['end_offset']);
+    }
+
+    /**
      * @return array<string, string>
      */
     public function commentAttributes(string $text): array

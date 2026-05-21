@@ -6,7 +6,7 @@
 
     <div class="min-h-0 flex-1 overflow-y-auto">
         <livewire:builder.side-panels.project-switcher.project-switcher :project="$project" />
-        <livewire:builder.side-panels.section-tree.section-tree :block-index="$blockIndex" />
+        <livewire:builder.side-panels.section-tree.section-tree :block-index="$blockIndex" :selected-block-ids="$selectedBlockIds" />
     </div>
 
     <div class="border-t border-neutral-800">

@@ -14,6 +14,9 @@ class RightInspector extends Component
     #[Reactive]
     public ?string $selectedNodeId = null;
 
+    #[Reactive]
+    public array $selectedBlockIds = [];
+
     public function render(): View
     {
         return view()->file(__DIR__.'/right-inspector.blade.php');

@@ -12,9 +12,8 @@ return [
             'api_key' => env('ANTHROPIC_API_KEY'),
             'models_refreshed_at' => '2026-05-21',
             'models' => [
-                'planner' => env('ANTHROPIC_PLANNER_MODEL', 'claude-sonnet-4-6'),
                 'section_generator' => env('ANTHROPIC_SECTION_MODEL', 'claude-sonnet-4-6'),
-                'repair' => env('ANTHROPIC_REPAIR_MODEL', 'claude-sonnet-4-6'),
+                'html_marker' => env('ANTHROPIC_MARKER_MODEL', 'claude-sonnet-4-6'),
                 'targeted_edit' => env('ANTHROPIC_EDIT_MODEL', 'claude-sonnet-4-6'),
             ],
             'available_models' => [
@@ -56,8 +55,8 @@ return [
                 ],
             ],
             'request_timeout' => (float) env('ANTHROPIC_REQUEST_TIMEOUT', 600),
-            'section_max_tokens' => (int) env('ANTHROPIC_SECTION_MAX_TOKENS', 16000),
-            'marker_max_tokens' => (int) env('ANTHROPIC_MARKER_MAX_TOKENS', 16000),
+            'section_max_tokens' => (int) env('ANTHROPIC_SECTION_MAX_TOKENS', 10000),
+            'marker_max_tokens' => (int) env('ANTHROPIC_MARKER_MAX_TOKENS', 8000),
             'edit_max_tokens' => env('ANTHROPIC_EDIT_MAX_TOKENS', 8000),
         ],
     ],

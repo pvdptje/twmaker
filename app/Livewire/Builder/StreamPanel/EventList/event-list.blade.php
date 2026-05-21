@@ -2,20 +2,29 @@
     class="min-h-0 overflow-y-auto p-3"
     wire:poll.5s
     x-data="{
+        now: Date.now(),
         maxRows: 80,
+        elapsed(iso) {
+            const seconds = Math.max(0, Math.floor((this.now - Date.parse(iso)) / 1000));
+            if (seconds < 60) return `${seconds}s`;
+            const minutes = Math.floor(seconds / 60);
+            const rest = seconds % 60;
+            return `${minutes}m ${rest.toString().padStart(2, '0')}s`;
+        },
         prune() {
             const rows = Array.from(this.$el.querySelectorAll('[data-generation-event-row]'));
             rows.slice(this.maxRows).forEach((row) => row.remove());
         },
     }"
     x-init="
+        setInterval(() => now = Date.now(), 1000);
         prune();
         new MutationObserver(() => prune()).observe($el, { childList: true, subtree: false });
     "
 >
     @forelse ($events as $event)
         @php
-            $isRunning = ($event->level === 'info' && str_ends_with((string) $event->kind, 'started')) || $event->kind === 'edit_requested';
+            $isRunning = $loop->first && (($event->level === 'info' && str_ends_with((string) $event->kind, 'started')) || $event->kind === 'edit_requested');
             $rowClass = match ($event->level) {
                 'success' => 'border-emerald-400/25 bg-gradient-to-r from-emerald-400/10 via-neutral-950 to-neutral-950',
                 'error' => 'border-red-400/30 bg-gradient-to-r from-red-500/10 via-neutral-950 to-neutral-950',
@@ -48,6 +57,11 @@
                 <div class="min-w-0 flex-1">
                     <div class="text-xs text-neutral-500">{{ $event->stage }} / {{ $event->kind }}</div>
                     <div class="text-sm text-neutral-200">{{ $event->summary }}</div>
+                    @if ($isRunning)
+                        <div class="mt-1 text-xs text-cyan-200">
+                            Running for <span x-text="elapsed(@js($event->occurred_at?->toIso8601String()))"></span>
+                        </div>
+                    @endif
                 </div>
             </div>
         </div>

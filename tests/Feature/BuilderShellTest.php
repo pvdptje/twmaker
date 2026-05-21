@@ -118,6 +118,7 @@ class BuilderShellTest extends TestCase
             ->assertSee('Ship pages with marked blocks')
             ->assertSee('Download HTML')
             ->assertSee('data-node-id=&quot;block_hero&quot;', false)
+            ->assertSee('alpinejs@3.x.x', false)
             ->assertSee('/preview-bridge.js', false);
     }
 
@@ -146,6 +147,7 @@ class BuilderShellTest extends TestCase
             ->assertSee('<!doctype html>', false)
             ->assertSee('Ship pages with marked blocks')
             ->assertSee('https://cdn.tailwindcss.com', false)
+            ->assertSee('alpinejs@3.x.x', false)
             ->assertDontSee('/preview-bridge.js', false);
     }
 
@@ -197,6 +199,31 @@ class BuilderShellTest extends TestCase
             ->dispatch('node-selected', nodeId: 'node_01h00000000000000000000002', scrollIntoView: false)
             ->assertSet('selected_node_id', 'node_01h00000000000000000000002')
             ->assertDispatched('preview-selection-changed', nodeId: 'node_01h00000000000000000000002', scrollIntoView: false);
+    }
+
+    public function test_workspace_tracks_multi_block_selection_events(): void
+    {
+        $project = Project::query()->create([
+            'id' => app(IdGenerator::class)->project(),
+            'name' => 'Acme',
+        ]);
+
+        $page = Page::query()->create([
+            'id' => app(IdGenerator::class)->page(),
+            'project_id' => $project->id,
+            'name' => 'Homepage',
+            'prompt' => '',
+            'document_json' => $this->emptyDocument(),
+            'status' => 'draft',
+        ]);
+
+        Livewire::test(Workspace::class, ['project' => $project, 'page' => $page])
+            ->dispatch('block-selection-toggled', blockId: 'block_hero')
+            ->assertSet('selected_block_ids', ['block_hero'])
+            ->dispatch('block-selection-toggled', blockId: 'block_features')
+            ->assertSet('selected_block_ids', ['block_hero', 'block_features'])
+            ->dispatch('block-selection-toggled', blockId: 'block_hero')
+            ->assertSet('selected_block_ids', ['block_features']);
     }
 
     public function test_generation_controls_enqueue_generate_page_job(): void
@@ -306,6 +333,35 @@ class BuilderShellTest extends TestCase
             && $job->provider === 'anthropic'
             && $job->model === 'claude-haiku-4-5-20251001'
             && $job->apiKey === 'test-edit-key');
+    }
+
+    public function test_edit_form_enqueues_targeted_edit_job_for_selected_blocks(): void
+    {
+        Queue::fake();
+
+        $project = Project::query()->create([
+            'id' => app(IdGenerator::class)->project(),
+            'name' => 'Acme',
+        ]);
+        $page = Page::query()->create([
+            'id' => app(IdGenerator::class)->page(),
+            'project_id' => $project->id,
+            'name' => 'Homepage',
+            'prompt' => '',
+            'document_json' => $this->emptyDocument(),
+            'status' => 'valid',
+        ]);
+
+        Livewire::test(EditForm::class, ['page' => $page, 'selectedBlockIds' => ['block_hero', 'block_features']])
+            ->set('instruction', 'Replace these with one product story section')
+            ->set('provider', 'anthropic')
+            ->set('model', 'claude-haiku-4-5-20251001')
+            ->call('applyEdit')
+            ->assertSet('instruction', '')
+            ->assertDispatched('generation-started', pageId: $page->id);
+
+        Queue::assertPushed(TargetedEditJob::class, fn (TargetedEditJob $job): bool => $job->targetId === ['block_hero', 'block_features']
+            && $job->instruction === 'Replace these with one product story section');
     }
 
     public function test_workspace_updates_generation_status_from_generation_events(): void
@@ -455,9 +511,9 @@ class BuilderShellTest extends TestCase
         $page->generationEvents()->create([
             'id' => app(IdGenerator::class)->generationEvent(),
             'kind' => 'stage_completed',
-            'stage' => 'planner',
+            'stage' => 'section_generator',
             'level' => 'success',
-            'summary' => 'Planner produced a page outline.',
+            'summary' => 'Raw HTML draft generated.',
             'payload' => [
                 'llm' => [
                     'provider' => 'anthropic',

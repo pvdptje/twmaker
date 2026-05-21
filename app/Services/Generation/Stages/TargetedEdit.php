@@ -22,14 +22,21 @@ class TargetedEdit
 
     public function edit(Page $page, string $targetId, string $instruction, ?string $provider = null, ?string $model = null, ?string $apiKey = null): array
     {
+        return $this->editMany($page, [$targetId], $instruction, $provider, $model, $apiKey);
+    }
+
+    /**
+     * @param  array<int, string>  $targetIds
+     */
+    public function editMany(Page $page, array $targetIds, string $instruction, ?string $provider = null, ?string $model = null, ?string $apiKey = null): array
+    {
         $provider ??= (string) config('llm.default_provider', 'anthropic');
+        $targetIds = $this->normalizeTargetIds($targetIds);
         $htmlSource = (string) ($page->html_source ?? '');
         $blockIndex = $this->blocks->index($htmlSource);
-        $targetBlock = collect($blockIndex)->firstWhere('id', $targetId);
+        $targetBlocks = $this->targetBlocks($blockIndex, $targetIds);
 
-        if (! is_array($targetBlock)) {
-            throw new HtmlValidationException(["Block [{$targetId}] was not found."]);
-        }
+        $this->assertContiguous($targetBlocks);
 
         $response = $this->provider->sendStructured(new StructuredRequest(
             stage: 'targeted_edit',
@@ -42,13 +49,18 @@ class TargetedEdit
             context: [
                 'page_id' => $page->id,
                 'page_name' => $page->name,
-                'target_id' => $targetId,
-                'target_block' => $targetBlock,
+                'target_id' => $targetIds[0],
+                'target_ids' => $targetIds,
+                'target_block' => $targetBlocks[0],
+                'target_blocks' => $targetBlocks,
+                'target_html' => $this->targetHtml($htmlSource, $targetBlocks),
                 'block_index' => $this->compactBlockIndex($blockIndex),
-                'surrounding_html' => $this->surroundingHtml($htmlSource, $targetBlock),
+                'surrounding_html' => $this->surroundingHtml($htmlSource, $targetBlocks),
                 'instructions' => [
-                    'Return one or more complete tw:block regions as html_source.',
-                    'The first returned block replaces the selected block identity; extra returned blocks become new sections.',
+                    count($targetIds) === 1
+                        ? 'Return one or more complete tw:block regions as html_source.'
+                        : 'Return one or more complete tw:block regions as html_source to replace the selected contiguous block range.',
+                    'The first returned block replaces the first selected block identity; extra returned blocks become new sections.',
                     'Do not include script tags, inline event handlers, or javascript: URLs.',
                 ],
             ],
@@ -59,7 +71,7 @@ class TargetedEdit
 
         $replacement = $this->normalizeReplacementIds(
             (string) ($response->output['html_source'] ?? ''),
-            $targetId,
+            $targetIds[0],
         );
 
         $this->validator->assertValid($replacement);
@@ -102,12 +114,75 @@ class TargetedEdit
         );
     }
 
-    private function surroundingHtml(string $htmlSource, array $targetBlock): string
+    private function surroundingHtml(string $htmlSource, array $targetBlocks): string
     {
-        $start = max(0, (int) $targetBlock['start_offset'] - 2500);
-        $end = min(strlen($htmlSource), (int) $targetBlock['end_offset'] + 2500);
+        $start = max(0, (int) $targetBlocks[0]['start_offset'] - 2500);
+        $end = min(strlen($htmlSource), (int) $targetBlocks[count($targetBlocks) - 1]['end_offset'] + 2500);
 
         return substr($htmlSource, $start, $end - $start);
+    }
+
+    /**
+     * @param  array<int, string>  $targetIds
+     * @return array<int, string>
+     */
+    private function normalizeTargetIds(array $targetIds): array
+    {
+        $targetIds = array_values(array_unique(array_filter(
+            $targetIds,
+            fn (mixed $id): bool => is_string($id) && $id !== '',
+        )));
+
+        if ($targetIds === []) {
+            throw new HtmlValidationException(['At least one block must be selected.']);
+        }
+
+        return $targetIds;
+    }
+
+    /**
+     * @param  array<int, array{id: string, type: string, label: string, start_offset: int, end_offset: int, html: string, summary: string|null}>  $blockIndex
+     * @param  array<int, string>  $targetIds
+     * @return array<int, array{id: string, type: string, label: string, start_offset: int, end_offset: int, html: string, summary: string|null, position: int}>
+     */
+    private function targetBlocks(array $blockIndex, array $targetIds): array
+    {
+        $wanted = array_flip($targetIds);
+        $targetBlocks = [];
+
+        foreach ($blockIndex as $position => $block) {
+            if (isset($wanted[$block['id']])) {
+                $block['position'] = $position;
+                $targetBlocks[] = $block;
+            }
+        }
+
+        $missing = array_values(array_diff($targetIds, array_column($targetBlocks, 'id')));
+        if ($missing !== []) {
+            throw new HtmlValidationException(['Block ['.implode(', ', $missing).'] was not found.']);
+        }
+
+        return $targetBlocks;
+    }
+
+    private function assertContiguous(array $targetBlocks): void
+    {
+        if (count($targetBlocks) < 2) {
+            return;
+        }
+
+        $positions = array_column($targetBlocks, 'position');
+        if (($positions[count($positions) - 1] - $positions[0] + 1) !== count($positions)) {
+            throw new HtmlValidationException(['Selected blocks must be contiguous.']);
+        }
+    }
+
+    private function targetHtml(string $htmlSource, array $targetBlocks): string
+    {
+        $first = $targetBlocks[0];
+        $last = $targetBlocks[count($targetBlocks) - 1];
+
+        return substr($htmlSource, (int) $first['start_offset'], (int) $last['end_offset'] - (int) $first['start_offset']);
     }
 
     private function normalizeReplacementIds(string $replacement, string $targetId): string

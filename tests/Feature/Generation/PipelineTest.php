@@ -45,6 +45,14 @@ class PipelineTest extends TestCase
     {
         [$project, $page] = $this->makePage('A cat nail studio landing page');
         $artifact = $this->htmlArtifact();
+        $artifact['raw_html'] .= "\n".<<<'HTML'
+<footer class="bg-neutral-950 px-6 py-12 text-white">
+  <div class="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-6">
+    <p>Cat nail studio</p>
+    <nav class="flex gap-4"><a href="#hero">Home</a><a href="#book">Book</a></nav>
+  </div>
+</footer>
+HTML;
         $artifact['marked_html'] .= "\n".$this->footerBlock();
 
         $this->app->instance(LlmProvider::class, new FakeHtmlGenerationProvider($artifact));
@@ -63,11 +71,11 @@ class PipelineTest extends TestCase
         ]);
     }
 
-    public function test_pipeline_rejects_unsafe_marked_html(): void
+    public function test_pipeline_rejects_unsafe_generated_html(): void
     {
         [$project, $page] = $this->makePage('Unsafe page');
         $artifact = $this->htmlArtifact();
-        $artifact['marked_html'] = '<!-- tw:block id="block_bad" type="hero" label="Hero" --><section data-node-id="block_bad" data-node-type="hero" data-tw-block="block_bad"><script>alert(1)</script></section><!-- /tw:block -->';
+        $artifact['raw_html'] = '<section><script>alert(1)</script></section>';
 
         $this->app->instance(LlmProvider::class, new FakeHtmlGenerationProvider($artifact));
 
@@ -120,7 +128,7 @@ class PipelineTest extends TestCase
             'page_id' => $page->id,
             'kind' => 'stage_completed',
             'stage' => 'html_marker',
-            'level' => 'warning',
+            'level' => 'success',
         ]);
     }
 
@@ -128,6 +136,7 @@ class PipelineTest extends TestCase
     {
         [$project, $page] = $this->makePage('Marker fallback');
         $artifact = $this->htmlArtifact();
+        $artifact['raw_html'] = 'Plain text without a block wrapper.';
         $artifact['marked_html'] = '';
 
         $this->app->instance(LlmProvider::class, new FakeHtmlGenerationProvider($artifact));
@@ -191,6 +200,47 @@ HTML;
             'kind' => 'edit_applied',
             'stage' => 'targeted_edit',
             'level' => 'success',
+        ]);
+    }
+
+    public function test_pipeline_targeted_edit_can_replace_multiple_blocks_with_one_block(): void
+    {
+        [$project, $page] = $this->makePage('A developer tool landing page');
+        $artifact = $this->htmlArtifact();
+        $blockIndex = app(BlockIndexer::class)->index($artifact['marked_html']);
+
+        $page->forceFill([
+            'document_json' => ['schema_version' => 2, 'page_metadata' => ['title' => 'Acme DevTools'], 'html_source' => $artifact['marked_html'], 'block_index' => $blockIndex, 'generation_history' => []],
+            'html_source' => $artifact['marked_html'],
+            'block_index' => $blockIndex,
+            'status' => 'valid',
+        ])->save();
+
+        $replacement = <<<'HTML'
+<!-- tw:block id="draft_story" type="story" label="Story" -->
+<section data-node-id="draft_story" data-node-type="story" data-tw-block="draft_story" class="bg-white px-6 py-24">
+  <div class="mx-auto max-w-4xl"><h2 class="text-4xl font-bold">One focused product story</h2><p>Everything from the original hero and feature grid is now a single narrative.</p></div>
+</section>
+<!-- /tw:block -->
+HTML;
+
+        $this->app->instance(LlmProvider::class, new FakeTargetedEditProvider($replacement));
+
+        app(Pipeline::class)->editMany($page, ['block_hero', 'block_features'], 'Replace these sections with one focused product story.');
+
+        $page->refresh();
+
+        $this->assertSame('valid', $page->status);
+        $this->assertCount(1, $page->block_index);
+        $this->assertSame('block_hero', $page->block_index[0]['id']);
+        $this->assertStringContainsString('One focused product story', $page->html_source);
+        $this->assertStringNotContainsString('Editable block index', $page->html_source);
+        $this->assertDatabaseHas('generation_events', [
+            'page_id' => $page->id,
+            'kind' => 'edit_applied',
+            'stage' => 'targeted_edit',
+            'level' => 'success',
+            'target_id' => 'block_hero,block_features',
         ]);
     }
 
@@ -280,14 +330,7 @@ class FakeHtmlGenerationProvider implements LlmProvider
     public function sendStructured(StructuredRequest $request): StructuredResponse
     {
         $output = match ($request->stage) {
-            'planner' => [
-                'title' => 'Acme DevTools',
-                'page_type' => 'landing',
-                'goal' => 'Convince developers to try Acme.',
-                'audience' => 'Senior backend engineers',
-                'prompt_summary' => 'Developer tool landing page',
-                'sections' => [['type' => 'hero', 'intent' => 'Create a polished opening block.']],
-            ],
+            'planner' => throw new \RuntimeException('Planner should not be called during page generation.'),
             'html_marker' => ['html_source' => $this->artifact['marked_html']],
             default => array_diff_key($this->artifact, ['marked_html' => true]),
         };
@@ -316,14 +359,7 @@ class FakeRetrySectionProvider implements LlmProvider
     public function sendStructured(StructuredRequest $request): StructuredResponse
     {
         $output = match ($request->stage) {
-            'planner' => [
-                'title' => 'Acme DevTools',
-                'page_type' => 'landing',
-                'goal' => 'Convince developers to try Acme.',
-                'audience' => 'Senior backend engineers',
-                'prompt_summary' => 'Developer tool landing page',
-                'sections' => [['type' => 'hero', 'intent' => 'Create a polished opening block.']],
-            ],
+            'planner' => throw new \RuntimeException('Planner should not be called during page generation.'),
             'section_generator' => array_merge(array_diff_key($this->artifact, ['marked_html' => true]), ['raw_html' => '']),
             'html_marker' => ['html_source' => $this->artifact['marked_html']],
             default => array_diff_key($this->artifact, ['marked_html' => true]),
@@ -338,17 +374,7 @@ class FakeAlwaysEmptySectionProvider implements LlmProvider
     public function sendStructured(StructuredRequest $request): StructuredResponse
     {
         $output = match ($request->stage) {
-            'planner' => [
-                'title' => 'Recovery Page',
-                'page_type' => 'landing',
-                'goal' => 'Show a page even when generation returns empty output.',
-                'audience' => 'Operators',
-                'prompt_summary' => 'Recovery page',
-                'sections' => [
-                    ['type' => 'hero', 'intent' => 'Introduce the page.'],
-                    ['type' => 'features', 'intent' => 'Explain the offer.'],
-                ],
-            ],
+            'planner' => throw new \RuntimeException('Planner should not be called during page generation.'),
             'html_marker' => ['html_source' => ''],
             default => [
                 'title' => 'Recovery Page',

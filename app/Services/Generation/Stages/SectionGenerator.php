@@ -13,10 +13,10 @@ class SectionGenerator
         private readonly PromptBuilder $prompts,
     ) {}
 
-    public function generate(Page $page, array $plan, ?string $provider = null, ?string $model = null, ?string $apiKey = null): array
+    public function generate(Page $page, ?string $provider = null, ?string $model = null, ?string $apiKey = null): array
     {
         $provider ??= (string) config('llm.default_provider', 'anthropic');
-        $artifact = $this->send($page, $plan, 'section_generator', $this->prompts->system('section_generator'), $page->prompt, 0.7, $provider, $model, $apiKey);
+        $artifact = $this->send($page, 'section_generator', $this->prompts->system('section_generator'), $page->prompt, 0.7, $provider, $model, $apiKey);
 
         if ($this->hasRawHtml($artifact)) {
             return $artifact;
@@ -24,7 +24,6 @@ class SectionGenerator
 
         $artifact = $this->send(
             $page,
-            $plan,
             'section_generator_retry',
             $this->prompts->system('section_generator')."\n\nCritical recovery instruction: the previous response returned empty HTML. You must fill `raw_html` with complete body HTML containing multiple Tailwind-styled sections. Do not leave `raw_html` blank.",
             "Generate the full Tailwind HTML page now. Original prompt: {$page->prompt}",
@@ -38,10 +37,10 @@ class SectionGenerator
             return ['_recovered' => 'retry'] + $artifact;
         }
 
-        return ['_recovered' => 'deterministic_fallback'] + $this->fallbackArtifact($page, $plan);
+        return ['_recovered' => 'deterministic_fallback'] + $this->fallbackArtifact($page);
     }
 
-    private function send(Page $page, array $plan, string $stage, string $systemPrompt, string $userPrompt, float $temperature, string $provider, ?string $model, ?string $apiKey): array
+    private function send(Page $page, string $stage, string $systemPrompt, string $userPrompt, float $temperature, string $provider, ?string $model, ?string $apiKey): array
     {
         $response = $this->provider->sendStructured(new StructuredRequest(
             stage: $stage,
@@ -53,7 +52,7 @@ class SectionGenerator
             schema: $this->schema(),
             context: [
                 'page_id' => $page->id,
-                'plan' => $plan,
+                'page_name' => $page->name,
             ],
             maxTokens: (int) config("llm.providers.{$provider}.section_max_tokens", 8000),
             temperature: $temperature,
@@ -78,31 +77,30 @@ class SectionGenerator
         return false;
     }
 
-    private function fallbackArtifact(Page $page, array $plan): array
+    private function fallbackArtifact(Page $page): array
     {
-        $title = (string) ($plan['title'] ?? $page->name);
-        $goal = (string) ($plan['goal'] ?? 'Generated from prompt.');
-        $audience = (string) ($plan['audience'] ?? 'Visitors');
-        $summary = (string) ($plan['prompt_summary'] ?? $page->prompt);
+        $title = $page->name !== '' ? $page->name : 'Generated page';
+        $goal = $page->prompt !== '' ? str($page->prompt)->limit(180)->toString() : 'Generated from prompt.';
+        $audience = 'Visitors';
+        $summary = $page->prompt !== '' ? str($page->prompt)->limit(240)->toString() : 'Generated page';
 
         return [
             'title' => $title,
-            'page_type' => (string) ($plan['page_type'] ?? 'landing'),
+            'page_type' => 'landing',
             'goal' => $goal,
             'audience' => $audience,
             'prompt_summary' => $summary,
-            'raw_html' => $this->fallbackHtml($title, $goal, $audience, $plan['sections'] ?? []),
+            'raw_html' => $this->fallbackHtml($title, $goal, $audience),
         ];
     }
 
-    private function fallbackHtml(string $title, string $goal, string $audience, array $sections): string
+    private function fallbackHtml(string $title, string $goal, string $audience): string
     {
         $title = $this->escape($title);
         $goal = $this->escape($goal);
         $audience = $this->escape($audience);
-        $sections = array_slice($sections, 0, 8);
 
-        $html = <<<HTML
+        return <<<HTML
 <header class="bg-neutral-950 px-6 py-6 text-white">
   <nav class="mx-auto flex max-w-6xl items-center justify-between gap-6">
     <div class="text-xl font-bold">{$title}</div>
@@ -118,26 +116,25 @@ class SectionGenerator
       <p class="mt-4 max-w-2xl text-sm text-neutral-400">Built for {$audience}.</p>
     </div>
   </section>
-HTML;
-
-        foreach ($sections as $index => $section) {
-            $type = $this->escape((string) ($section['type'] ?? 'section'));
-            $intent = $this->escape((string) ($section['intent'] ?? 'Supporting page section.'));
-            $number = $index + 1;
-
-            $html .= <<<HTML
 
   <section class="bg-white px-6 py-16 text-neutral-950">
-    <div class="mx-auto max-w-5xl rounded-xl border border-neutral-200 p-8 shadow-sm">
-      <p class="text-sm font-semibold text-cyan-600">Section {$number}</p>
-      <h2 class="mt-2 text-3xl font-bold capitalize">{$type}</h2>
-      <p class="mt-4 text-neutral-600">{$intent}</p>
+    <div class="mx-auto grid max-w-5xl gap-6 md:grid-cols-3">
+      <article class="rounded-xl border border-neutral-200 p-6 shadow-sm">
+        <h2 class="text-xl font-bold">Clear structure</h2>
+        <p class="mt-3 text-neutral-600">A readable recovery layout keeps the page editable.</p>
+      </article>
+      <article class="rounded-xl border border-neutral-200 p-6 shadow-sm">
+        <h2 class="text-xl font-bold">Responsive sections</h2>
+        <p class="mt-3 text-neutral-600">The draft uses simple Tailwind regions that work across viewports.</p>
+      </article>
+      <article class="rounded-xl border border-neutral-200 p-6 shadow-sm">
+        <h2 class="text-xl font-bold">Ready to refine</h2>
+        <p class="mt-3 text-neutral-600">Use targeted edits to replace any section with a stronger design.</p>
+      </article>
     </div>
   </section>
+</main>
 HTML;
-        }
-
-        return $html."\n</main>";
     }
 
     private function escape(string $value): string

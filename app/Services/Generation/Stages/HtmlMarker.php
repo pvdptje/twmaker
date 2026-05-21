@@ -13,21 +13,20 @@ class HtmlMarker
         private readonly PromptBuilder $prompts,
     ) {}
 
-    public function mark(Page $page, array $plan, array $artifact, ?string $provider = null, ?string $model = null, ?string $apiKey = null): array
+    public function mark(Page $page, array $artifact, ?string $provider = null, ?string $model = null, ?string $apiKey = null): array
     {
         $provider ??= (string) config('llm.default_provider', 'anthropic');
 
         $response = $this->provider->sendStructured(new StructuredRequest(
             stage: 'html_marker',
             provider: $provider,
-            model: $model ?: (string) config("llm.providers.{$provider}.models.repair"),
+            model: $model ?: (string) config("llm.providers.{$provider}.models.html_marker"),
             systemPrompt: $this->prompts->system('html_marker'),
             userPrompt: $page->prompt,
             toolName: 'submit_marked_html_document',
             schema: $this->schema(),
             context: [
                 'page_id' => $page->id,
-                'plan' => $plan,
                 'title' => $artifact['title'] ?? $page->name,
                 'page_type' => $artifact['page_type'] ?? 'generic',
                 'goal' => $artifact['goal'] ?? '',

@@ -16,6 +16,9 @@ class EditForm extends Component
     #[Reactive]
     public ?string $selectedNodeId = null;
 
+    #[Reactive]
+    public array $selectedBlockIds = [];
+
     public string $instruction = '';
 
     public string $provider = '';
@@ -61,17 +64,26 @@ class EditForm extends Component
     public function applyEdit(): void
     {
         $this->validate([
-            'selectedNodeId' => ['required', 'string'],
+            'selectedNodeId' => ['nullable', 'string'],
+            'selectedBlockIds' => ['array'],
+            'selectedBlockIds.*' => ['string'],
             'instruction' => ['required', 'string', 'min:3', 'max:5000'],
             'provider' => ['required', 'string', 'in:'.implode(',', $this->providerIds())],
             'model' => ['required', 'string', 'in:'.implode(',', $this->modelIds())],
             'apiKey' => ['nullable', 'string', 'max:500'],
         ]);
 
+        $targetIds = $this->targetIds();
+        if ($targetIds === []) {
+            $this->addError('selectedNodeId', 'Select one or more sections before applying an edit.');
+
+            return;
+        }
+
         $this->page->forceFill(['status' => 'generating'])->save();
         $this->dispatch('generation-started', pageId: $this->page->id);
 
-        TargetedEditJob::dispatch($this->page->id, (string) $this->selectedNodeId, $this->instruction, $this->provider, $this->model, $this->normalizedApiKey());
+        TargetedEditJob::dispatch($this->page->id, count($targetIds) === 1 ? $targetIds[0] : $targetIds, $this->instruction, $this->provider, $this->model, $this->normalizedApiKey());
         $this->instruction = '';
     }
 
@@ -133,5 +145,24 @@ class EditForm extends Component
     {
         return $this->normalizedApiKey() !== null
             || trim((string) config("llm.providers.{$this->provider}.api_key")) !== '';
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function targetIds(): array
+    {
+        $selectedBlockIds = array_values(array_unique(array_filter(
+            $this->selectedBlockIds,
+            fn (mixed $id): bool => is_string($id) && $id !== '',
+        )));
+
+        if ($selectedBlockIds !== []) {
+            return $selectedBlockIds;
+        }
+
+        return is_string($this->selectedNodeId) && $this->selectedNodeId !== ''
+            ? [$this->selectedNodeId]
+            : [];
     }
 }
