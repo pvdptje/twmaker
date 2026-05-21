@@ -490,6 +490,9 @@ class BuilderShellTest extends TestCase
 
         Livewire::test(StreamPanel::class, ['page' => $page])
             ->assertSee('running')
+            ->assertSee('LLM output')
+            ->assertSee('Waiting for the first HTML tokens.')
+            ->assertSee('Waiting for visible model output.')
             ->assertSee('animate-bounce', false)
             ->assertSee('bg-gradient-to-r', false);
     }

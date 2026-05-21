@@ -24,16 +24,28 @@ class GenerationStreamBuffer
         ], self::TTL_SECONDS);
     }
 
+    public function resetOutput(string $pageId, string $stage): void
+    {
+        Cache::put($this->outputKey($pageId, $stage), [
+            'stage' => $stage,
+            'output' => '',
+            'position' => 0,
+            'updated_at' => now()->toISOString(),
+        ], self::TTL_SECONDS);
+    }
+
     public function resetRun(string $pageId, string $stage): void
     {
         foreach (self::STAGES as $knownStage) {
             if ($knownStage === $stage) {
                 $this->reset($pageId, $knownStage);
+                $this->resetOutput($pageId, $knownStage);
 
                 continue;
             }
 
             Cache::forget($this->key($pageId, $knownStage));
+            Cache::forget($this->outputKey($pageId, $knownStage));
         }
     }
 
@@ -51,6 +63,24 @@ class GenerationStreamBuffer
         $snapshot['updated_at'] = now()->toISOString();
 
         Cache::put($this->key($pageId, $stage), $snapshot, self::TTL_SECONDS);
+
+        return $snapshot;
+    }
+
+    public function appendOutput(string $pageId, string $stage, string $chunk, int $position): array
+    {
+        $snapshot = $this->outputSnapshot($pageId, $stage);
+
+        if ($position < strlen($snapshot['output'])) {
+            $snapshot['output'] = substr($snapshot['output'], 0, $position).$chunk;
+        } else {
+            $snapshot['output'] .= $chunk;
+        }
+
+        $snapshot['position'] = strlen($snapshot['output']);
+        $snapshot['updated_at'] = now()->toISOString();
+
+        Cache::put($this->outputKey($pageId, $stage), $snapshot, self::TTL_SECONDS);
 
         return $snapshot;
     }
@@ -89,8 +119,47 @@ class GenerationStreamBuffer
         return $this->snapshot($pageId, 'section_generator');
     }
 
+    public function outputSnapshot(string $pageId, string $stage): array
+    {
+        $snapshot = Cache::get($this->outputKey($pageId, $stage));
+
+        if (! is_array($snapshot)) {
+            return [
+                'stage' => $stage,
+                'output' => '',
+                'position' => 0,
+                'updated_at' => null,
+            ];
+        }
+
+        return [
+            'stage' => (string) ($snapshot['stage'] ?? $stage),
+            'output' => (string) ($snapshot['output'] ?? ''),
+            'position' => (int) ($snapshot['position'] ?? strlen((string) ($snapshot['output'] ?? ''))),
+            'updated_at' => $snapshot['updated_at'] ?? null,
+        ];
+    }
+
+    public function latestOutputSnapshot(string $pageId): array
+    {
+        foreach (['targeted_edit', 'section_generator_retry', 'section_generator'] as $stage) {
+            $snapshot = $this->outputSnapshot($pageId, $stage);
+
+            if ($snapshot['output'] !== '') {
+                return $snapshot;
+            }
+        }
+
+        return $this->outputSnapshot($pageId, 'section_generator');
+    }
+
     private function key(string $pageId, string $stage): string
     {
         return "generation-stream:{$pageId}:{$stage}";
+    }
+
+    private function outputKey(string $pageId, string $stage): string
+    {
+        return "generation-output-stream:{$pageId}:{$stage}";
     }
 }

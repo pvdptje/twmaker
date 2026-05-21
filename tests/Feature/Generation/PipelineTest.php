@@ -271,9 +271,12 @@ HTML;
         app(Pipeline::class)->edit($page, 'block_hero', 'Stream this edit into the modal.');
 
         $snapshot = app(GenerationStreamBuffer::class)->latestSectionSnapshot($page->id);
+        $outputSnapshot = app(GenerationStreamBuffer::class)->latestOutputSnapshot($page->id);
 
         $this->assertSame('targeted_edit', $snapshot['stage']);
         $this->assertStringContainsString('Streamed edit result', $snapshot['html']);
+        $this->assertSame('targeted_edit', $outputSnapshot['stage']);
+        $this->assertStringContainsString('Streamed the selected edit.', $outputSnapshot['output']);
     }
 
     private function makePage(string $prompt): array

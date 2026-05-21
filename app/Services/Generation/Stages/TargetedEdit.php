@@ -116,7 +116,18 @@ class TargetedEdit
     {
         $streamed = '';
 
-        return function (string $partialJson) use ($page, $stage, &$streamed): void {
+        $rawOutput = '';
+
+        return function (string $partialJson, string $delta = '') use ($page, $stage, &$streamed, &$rawOutput): void {
+            $outputChunk = $delta !== '' ? $delta : substr($partialJson, strlen($rawOutput));
+            if ($outputChunk !== '') {
+                $outputPosition = strlen($rawOutput);
+                $rawOutput .= $outputChunk;
+
+                $this->streamBuffer->appendOutput($page->id, $stage, $outputChunk, $outputPosition);
+                broadcast(new GenerationStreamChunk($page->id, $stage, $outputChunk, $outputPosition, 'output'));
+            }
+
             $html = $this->partialJsonStringValue($partialJson, 'html_source');
 
             if (! is_string($html) || strlen($html) <= strlen($streamed)) {

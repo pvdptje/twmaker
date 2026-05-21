@@ -91,8 +91,10 @@ class SectionGenerator
             ]);
 
             $this->streamBuffer->append($page->id, $stage, $chunk, $position);
+            $this->streamBuffer->appendOutput($page->id, $stage, $chunk, $position);
 
             broadcast(new GenerationStreamChunk($page->id, $stage, $chunk, $position));
+            broadcast(new GenerationStreamChunk($page->id, $stage, $chunk, $position, 'output'));
         };
     }
 

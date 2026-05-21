@@ -9,6 +9,9 @@
     $streamHtml = (string) ($streamSnapshot['html'] ?? '');
     $streamStage = (string) ($streamSnapshot['stage'] ?? 'section_generator');
     $streamPosition = (int) ($streamSnapshot['position'] ?? strlen($streamHtml));
+    $outputText = (string) ($outputSnapshot['output'] ?? '');
+    $outputStage = (string) ($outputSnapshot['stage'] ?? $streamStage);
+    $outputPosition = (int) ($outputSnapshot['position'] ?? strlen($outputText));
 @endphp
 
 <div
@@ -17,12 +20,17 @@
     data-stream-snapshot="{{ base64_encode($streamHtml) }}"
     data-stream-stage="{{ $streamStage }}"
     data-stream-position="{{ $streamPosition }}"
+    data-output-snapshot="{{ base64_encode($outputText) }}"
+    data-output-stage="{{ $outputStage }}"
+    data-output-position="{{ $outputPosition }}"
     x-on:generation-started.window="if (!$event.detail?.pageId || $event.detail.pageId === pageId) resetForStage('section_generator')"
     x-data="{
         pageId: @js($page->id),
         open: @js($statusLabel === 'running'),
         html: @js($streamHtml),
+        output: @js($outputText),
         stage: @js($streamStage),
+        outputStage: @js($outputStage),
         connected: false,
         socketState: 'connecting',
         terminal: false,
@@ -37,7 +45,7 @@
             this.observer = new MutationObserver(() => this.syncSnapshot());
             this.observer.observe(this.$el, {
                 attributes: true,
-                attributeFilter: ['data-stream-snapshot', 'data-stream-stage', 'data-stream-position'],
+                attributeFilter: ['data-stream-snapshot', 'data-stream-stage', 'data-stream-position', 'data-output-snapshot', 'data-output-stage', 'data-output-position'],
             });
             this.pollTimer = setInterval(() => {
                 this.now = Date.now();
@@ -52,33 +60,36 @@
             this.dismissed = false;
             this.terminal = false;
             this.html = '';
+            this.output = '';
             this.stage = stage;
+            this.outputStage = stage;
             this.lastChunkAt = Date.now();
             this.scrollToBottom();
         },
-        syncSnapshot() {
-            const encoded = this.$el.dataset.streamSnapshot || '';
-            let snapshot = '';
-
+        decodeSnapshot(encoded) {
             try {
-                snapshot = decodeURIComponent(escape(atob(encoded)));
+                return decodeURIComponent(escape(atob(encoded)));
             } catch (error) {
                 try {
-                    snapshot = atob(encoded);
+                    return atob(encoded);
                 } catch (fallbackError) {
-                    snapshot = '';
+                    return '';
                 }
             }
+        },
+        syncSnapshot() {
+            const snapshot = this.decodeSnapshot(this.$el.dataset.streamSnapshot || '');
+            const outputSnapshot = this.decodeSnapshot(this.$el.dataset.outputSnapshot || '');
 
             const position = Number(this.$el.dataset.streamPosition || snapshot.length);
             const stage = this.$el.dataset.streamStage || this.stage;
+            const outputPosition = Number(this.$el.dataset.outputPosition || outputSnapshot.length);
+            const outputStage = this.$el.dataset.outputStage || this.outputStage;
 
             if (position === 0 && this.html !== '') {
                 this.html = '';
                 this.stage = stage;
                 this.lastChunkAt = Date.now();
-
-                return;
             }
 
             if (stage !== this.stage || snapshot.length > this.html.length) {
@@ -88,11 +99,27 @@
                 this.open = !this.dismissed;
                 this.scrollToBottom();
             }
+
+            if (outputPosition === 0 && this.output !== '') {
+                this.output = '';
+                this.outputStage = outputStage;
+                this.lastChunkAt = Date.now();
+            }
+
+            if (outputStage !== this.outputStage || outputSnapshot.length > this.output.length) {
+                this.output = outputSnapshot;
+                this.outputStage = outputStage;
+                this.lastChunkAt = Date.now();
+                this.open = !this.dismissed;
+                this.scrollToBottom();
+            }
         },
         scrollToBottom() {
             this.$nextTick(() => {
                 const code = this.$refs.streamedCode;
                 if (code) code.scrollTop = code.scrollHeight;
+                const output = this.$refs.outputCode;
+                if (output) output.scrollTop = output.scrollHeight;
             });
         },
         subscribe() {
@@ -119,8 +146,30 @@
                     if (!event?.chunk || (!eventStage.startsWith('section_generator') && !eventStage.startsWith('targeted_edit'))) return;
 
                     const chunk = String(event.chunk);
-                    const position = Number(event.position ?? this.html.length);
+                    const stream = String(event.stream || 'html');
 
+                    if (stream === 'output') {
+                        const position = Number(event.position ?? this.output.length);
+                        this.outputStage = event.stage || this.outputStage;
+
+                        if (position < this.output.length) {
+                            if (this.output.slice(position, position + chunk.length) === chunk) {
+                                return;
+                            }
+
+                            this.output = this.output.slice(0, position) + chunk;
+                        } else {
+                            this.output += chunk;
+                        }
+
+                        this.open = !this.dismissed;
+                        this.lastChunkAt = Date.now();
+                        this.scrollToBottom();
+
+                        return;
+                    }
+
+                    const position = Number(event.position ?? this.html.length);
                     this.stage = event.stage || this.stage;
 
                     if (position < this.html.length) {
@@ -149,7 +198,7 @@
                 });
         },
         isThinking() {
-            return this.open && !this.terminal && this.html !== '' && this.now - this.lastChunkAt > 2500;
+            return this.open && !this.terminal && (this.html === '' || this.now - this.lastChunkAt > 2500);
         },
         close() {
             this.dismissed = true;
@@ -193,11 +242,11 @@
         x-transition.opacity
         class="fixed inset-0 z-50 flex items-center justify-center bg-neutral-950/75 p-6 backdrop-blur-sm"
     >
-        <div class="flex h-[min(44rem,90vh)] w-[min(72rem,94vw)] flex-col overflow-hidden rounded-md border border-cyan-400/30 bg-neutral-950 shadow-2xl shadow-cyan-950/40">
+        <div class="flex h-[min(44rem,90vh)] w-[min(84rem,94vw)] flex-col overflow-hidden rounded-md border border-cyan-400/30 bg-neutral-950 shadow-2xl shadow-cyan-950/40">
             <div class="flex items-center justify-between border-b border-neutral-800 px-4 py-3">
                 <div class="min-w-0">
                     <div class="text-sm font-semibold text-white">Template stream</div>
-                    <div class="mt-0.5 text-xs text-neutral-500" x-text="isThinking() ? `${stage} / model is thinking` : `${stage} / live HTML`"></div>
+                    <div class="mt-0.5 text-xs text-neutral-500" x-text="isThinking() ? `${stage} / model activity` : `${stage} / live HTML`"></div>
                 </div>
                 <div class="flex items-center gap-3">
                     <div class="rounded-md border border-amber-300/40 bg-amber-300/10 px-2 py-1 text-xs font-medium text-amber-100" x-show="isThinking()">thinking</div>
@@ -205,17 +254,38 @@
                     <button type="button" class="rounded-md border border-neutral-700 px-3 py-1.5 text-xs font-semibold text-neutral-200 hover:border-neutral-500" x-on:click="close()">Hide</button>
                 </div>
             </div>
-            <div class="border-b border-neutral-800 px-4 py-2 text-xs text-neutral-400" x-show="!terminal && html === ''">
-                <span class="inline-flex items-center gap-2">
-                    <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-300"></span>
-                    <span>Model is thinking before the first HTML arrives.</span>
-                </span>
+            <div class="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[minmax(0,1fr)_19rem]">
+                <div class="flex min-h-0 flex-col border-r border-neutral-800">
+                    <div class="border-b border-neutral-800 px-4 py-2 text-xs text-neutral-400" x-show="!terminal && html === ''">
+                        <span class="inline-flex items-center gap-2">
+                            <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-300"></span>
+                            <span>Waiting for the first HTML tokens.</span>
+                        </span>
+                    </div>
+                    <pre
+                        x-ref="streamedCode"
+                        class="min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-words bg-neutral-950 p-4 font-mono text-xs leading-5 text-cyan-50"
+                        x-text="html"
+                    ></pre>
+                </div>
+                <aside class="flex min-h-0 flex-col bg-neutral-900/70">
+                    <div class="border-b border-neutral-800 px-3 py-3">
+                        <div class="text-xs font-semibold text-neutral-300">LLM output</div>
+                        <div class="mt-1 text-xs text-neutral-500" x-text="`${outputStage} / provider-visible stream`"></div>
+                    </div>
+                    <div class="border-b border-neutral-800 px-3 py-2 text-xs text-neutral-500" x-show="!terminal && output === ''">
+                        <div class="inline-flex items-center gap-2">
+                            <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-300"></span>
+                            <span>Waiting for visible model output.</span>
+                        </div>
+                    </div>
+                    <pre
+                        x-ref="outputCode"
+                        class="min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-words p-3 font-mono text-[11px] leading-5 text-neutral-200"
+                        x-text="output"
+                    ></pre>
+                </aside>
             </div>
-            <pre
-                x-ref="streamedCode"
-                class="min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-words bg-neutral-950 p-4 font-mono text-xs leading-5 text-cyan-50"
-                x-text="html"
-            ></pre>
         </div>
     </div>
 </div>

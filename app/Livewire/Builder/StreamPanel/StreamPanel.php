@@ -24,7 +24,9 @@ class StreamPanel extends Component
                 'error' => 'error',
                 default => $this->generationStatus,
             },
+            'events' => $this->page->generationEvents()->latest('occurred_at')->limit(12)->get(),
             'streamSnapshot' => app(GenerationStreamBuffer::class)->latestSectionSnapshot($this->page->id),
+            'outputSnapshot' => app(GenerationStreamBuffer::class)->latestOutputSnapshot($this->page->id),
         ]);
     }
 }

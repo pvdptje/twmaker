@@ -12,6 +12,7 @@ class GenerationStreamChunk implements ShouldBroadcastNow
         public readonly string $stage,
         public readonly string $chunk,
         public readonly int $position,
+        public readonly string $stream = 'html',
     ) {}
 
     public function broadcastOn(): Channel
@@ -31,6 +32,7 @@ class GenerationStreamChunk implements ShouldBroadcastNow
             'stage' => $this->stage,
             'chunk' => $this->chunk,
             'position' => $this->position,
+            'stream' => $this->stream,
         ];
     }
 }
