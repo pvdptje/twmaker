@@ -72,6 +72,29 @@ HTML;
         ]);
     }
 
+    public function test_pipeline_scrubs_malformed_utf8_before_json_persistence(): void
+    {
+        [$project, $page] = $this->makePage('A page with malformed bytes');
+        $artifact = $this->htmlArtifact();
+        $malformed = 'Broken '.chr(195).'(';
+
+        $artifact['title'] = 'Acme '.chr(195).'(';
+        $artifact['raw_html'] = '<section><p>'.$malformed.'</p></section>';
+        $artifact['marked_html'] = '<!-- tw:block id="block_hero" type="hero" label="Hero" --><section data-node-id="block_hero" data-node-type="hero" data-tw-block="block_hero"><p>'.$malformed.'</p></section><!-- /tw:block -->';
+
+        $this->app->instance(LlmProvider::class, new FakeHtmlGenerationProvider($artifact));
+
+        app(Pipeline::class)->generate($page);
+
+        $page->refresh();
+
+        $this->assertSame('valid', $page->status);
+        $this->assertTrue(mb_check_encoding($page->html_source, 'UTF-8'));
+        $this->assertTrue(mb_check_encoding($page->document_json['html_source'], 'UTF-8'));
+        $this->assertStringNotContainsString(chr(195).'(', $page->document_json['html_source']);
+        $this->assertSame($page->html_source, $page->document_json['html_source']);
+    }
+
     public function test_pipeline_rejects_unsafe_generated_html(): void
     {
         [$project, $page] = $this->makePage('Unsafe page');

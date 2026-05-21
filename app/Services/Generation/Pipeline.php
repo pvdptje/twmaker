@@ -36,7 +36,8 @@ class Pipeline
         try {
             $this->events->record($page, 'stage_started', 'section_generator', 'info', 'Designing raw Tailwind HTML.');
             $artifact = $this->sections->generate($page, $provider, $model, $apiKey);
-            $rawHtml = $this->htmlRepairer->repair($this->rawHtml($artifact));
+            $artifact = $this->scrubArray($artifact);
+            $rawHtml = $this->scrubText($this->htmlRepairer->repair($this->rawHtml($artifact)));
             if ($rawHtml === '') {
                 throw new HtmlValidationException(['Section generator returned empty HTML.']);
             }
@@ -48,6 +49,7 @@ class Pipeline
 
             $this->events->record($page, 'stage_started', 'html_marker', 'info', 'Adding editable block markers locally.');
             [$htmlSource, $markerPayload, $markerSummary, $markerLevel] = $this->markHtml($page, $artifact, $rawHtml, $provider, $model, $apiKey);
+            $htmlSource = $this->scrubText($htmlSource);
             $this->events->record($page, 'stage_completed', 'html_marker', $markerLevel, $markerSummary, payload: $markerPayload);
 
             $this->events->record($page, 'stage_started', 'validation', 'info', 'Validating marked HTML.');
@@ -107,6 +109,7 @@ class Pipeline
                 $targetIds,
                 $result['html_source'],
             );
+            $htmlSource = $this->scrubText($htmlSource);
 
             $this->htmlValidator->assertValid($htmlSource);
             $blockIndex = $this->blockIndexer->index($htmlSource);
@@ -145,11 +148,11 @@ class Pipeline
         return [
             'schema_version' => 2,
             'page_metadata' => [
-                'title' => (string) ($artifact['title'] ?? 'Generated page'),
-                'page_type' => (string) ($artifact['page_type'] ?? 'generic'),
-                'goal' => (string) ($artifact['goal'] ?? 'Generated from prompt.'),
-                'audience' => (string) ($artifact['audience'] ?? 'Visitors'),
-                'prompt_summary' => (string) ($artifact['prompt_summary'] ?? ''),
+                'title' => $this->scrubText((string) ($artifact['title'] ?? 'Generated page')),
+                'page_type' => $this->scrubText((string) ($artifact['page_type'] ?? 'generic')),
+                'goal' => $this->scrubText((string) ($artifact['goal'] ?? 'Generated from prompt.')),
+                'audience' => $this->scrubText((string) ($artifact['audience'] ?? 'Visitors')),
+                'prompt_summary' => $this->scrubText((string) ($artifact['prompt_summary'] ?? '')),
                 'status' => 'valid',
                 'created_at' => $now,
                 'updated_at' => $now,
@@ -180,6 +183,32 @@ class Pipeline
         }
 
         return '';
+    }
+
+    /**
+     * @param  array<string, mixed>  $value
+     * @return array<string, mixed>
+     */
+    private function scrubArray(array $value): array
+    {
+        foreach ($value as $key => $item) {
+            $value[$key] = match (true) {
+                is_string($item) => $this->scrubText($item),
+                is_array($item) => $this->scrubArray($item),
+                default => $item,
+            };
+        }
+
+        return $value;
+    }
+
+    private function scrubText(string $value): string
+    {
+        if (mb_check_encoding($value, 'UTF-8')) {
+            return $value;
+        }
+
+        return mb_scrub($value, 'UTF-8');
     }
 
     private function sectionGeneratorSummary(mixed $recovery): string
