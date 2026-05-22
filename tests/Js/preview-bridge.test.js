@@ -203,4 +203,31 @@ describe('preview bridge', () => {
             inline: 'nearest',
         }]);
     });
+
+    it('allows generated form fields to receive focus while reporting selection', () => {
+        const { document, messages, window } = bootPreview(`<body>
+            <!-- tw:block id="block_contact" type="contact" label="Contact" -->
+            <section>
+                <label>Message<textarea rows="4">Hello</textarea></label>
+            </section>
+            <!-- /tw:block -->
+        </body>`);
+        const textarea = document.querySelector('textarea');
+        const event = new window.MouseEvent('click', {
+            bubbles: true,
+            cancelable: true,
+        });
+
+        textarea.dispatchEvent(event);
+
+        expect(event.defaultPrevented).toBe(false);
+        expect(textarea.classList.contains('builder-selected')).toBe(true);
+        expect(messages[0].payload).toMatchObject({
+            type: 'builder:node-selected',
+            quickEdit: {
+                blockId: 'block_contact',
+                tagName: 'textarea',
+            },
+        });
+    });
 });

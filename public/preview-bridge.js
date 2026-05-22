@@ -27,6 +27,13 @@
         'textarea',
         'ul'
     ].join(',');
+    const focusableFormSelector = [
+        'input',
+        'select',
+        'textarea',
+        '[contenteditable=""]',
+        '[contenteditable="true"]'
+    ].join(',');
 
     function cssEscape(value) {
         if (window.CSS && typeof window.CSS.escape === 'function') {
@@ -207,7 +214,9 @@
             return;
         }
 
-        event.preventDefault();
+        if (!editable.target.closest(focusableFormSelector)) {
+            event.preventDefault();
+        }
         event.stopPropagation();
 
         clearSelection();
