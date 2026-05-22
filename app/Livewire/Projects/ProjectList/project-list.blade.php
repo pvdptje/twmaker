@@ -1,7 +1,10 @@
 <main class="mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-8 px-6 py-8">
-    <header class="flex flex-col gap-2">
-        <p class="text-sm font-medium text-cyan-300">Tailwind Template Builder</p>
-        <h1 class="text-3xl font-semibold tracking-normal text-white">Projects</h1>
+    <header class="flex items-start justify-between gap-4">
+        <div class="flex flex-col gap-2">
+            <p class="text-sm font-medium text-cyan-300">Tailwind Template Builder</p>
+            <h1 class="text-3xl font-semibold tracking-normal text-white">Projects</h1>
+        </div>
+        <a href="{{ route('setup.llm') }}" wire:navigate class="rounded-md border border-neutral-700 px-3 py-2 text-sm font-semibold text-neutral-200 hover:border-neutral-500">LLM setup</a>
     </header>
 
     <section class="grid gap-4 lg:grid-cols-[22rem_1fr]">

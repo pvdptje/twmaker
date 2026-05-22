@@ -5,6 +5,7 @@
             <h1 class="mt-2 text-3xl font-semibold tracking-normal text-white">{{ $project->name }}</h1>
             <p class="mt-1 text-sm text-neutral-400">{{ $project->description ?: 'Project dashboard' }}</p>
         </div>
+        <a href="{{ route('setup.llm') }}" wire:navigate class="rounded-md border border-neutral-700 px-3 py-2 text-sm font-semibold text-neutral-200 hover:border-neutral-500">LLM setup</a>
     </header>
 
     <section class="grid gap-4 lg:grid-cols-[22rem_1fr]">

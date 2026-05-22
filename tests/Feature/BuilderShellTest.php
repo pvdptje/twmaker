@@ -11,6 +11,7 @@ use App\Livewire\Builder\StreamPanel\StreamPanel;
 use App\Livewire\Builder\Workspace\Workspace;
 use App\Livewire\Projects\ProjectDashboard\ProjectDashboard;
 use App\Livewire\Projects\ProjectList\ProjectList;
+use App\Livewire\Setup\LlmSetup;
 use App\Models\Page;
 use App\Models\Project;
 use App\Services\Ids\IdGenerator;
@@ -37,6 +38,29 @@ class BuilderShellTest extends TestCase
             'name' => 'Acme Launches',
             'description' => 'Internal landing pages',
         ]);
+    }
+
+    public function test_llm_setup_page_renders_provider_keys_and_defaults(): void
+    {
+        $this->get(route('setup.llm'))
+            ->assertOk()
+            ->assertSee('LLM setup')
+            ->assertSee('Provider keys')
+            ->assertSee('Primary generation')
+            ->assertSee('Editing')
+            ->assertSee('Anthropic');
+    }
+
+    public function test_llm_setup_saves_browser_backed_defaults(): void
+    {
+        Livewire::test(LlmSetup::class)
+            ->set('apiKeys.anthropic', 'test-setup-key')
+            ->set('primaryProvider', 'anthropic')
+            ->set('primaryModel', 'claude-haiku-4-5-20251001')
+            ->set('editingProvider', 'anthropic')
+            ->set('editingModel', 'claude-sonnet-4-20250514')
+            ->call('save')
+            ->assertSet('saveStatus', 'Setup saved on this browser.');
     }
 
     public function test_project_dashboard_creates_an_empty_page_and_redirects_to_workspace(): void

@@ -5,16 +5,22 @@
         model: @entangle('model').live,
         apiKey: @entangle('apiKey'),
         storageKey(provider) { return `twmaker.apiKey.${provider}`; },
+        defaultKey(field) { return `twmaker.llmDefaults.editing.${field}`; },
         loadKey() { this.apiKey = localStorage.getItem(this.storageKey(this.provider)) || ''; },
-        saveKey() {
-            if (!this.provider) return;
-            if (this.apiKey) localStorage.setItem(this.storageKey(this.provider), this.apiKey);
-            else localStorage.removeItem(this.storageKey(this.provider));
+        loadDefaults() {
+            this.provider = localStorage.getItem(this.defaultKey('provider')) || this.provider;
+            this.$nextTick(() => {
+                this.model = localStorage.getItem(this.defaultKey('model')) || this.model;
+                this.loadKey();
+            });
         },
     }"
-    x-init="loadKey(); $watch('provider', () => loadKey()); $watch('apiKey', () => saveKey())"
+    x-init="loadDefaults(); $watch('provider', () => loadKey())"
 >
-    <div class="text-xs font-semibold uppercase tracking-normal text-neutral-500">Edit request</div>
+    <div class="flex items-center justify-between gap-3">
+        <div class="text-xs font-semibold uppercase tracking-normal text-neutral-500">Edit request</div>
+        <a href="{{ route('setup.llm') }}" wire:navigate class="text-xs font-medium text-cyan-300 hover:text-cyan-200">Setup</a>
+    </div>
     @if (count($selectedBlockIds) > 1)
         <div class="mt-2 rounded-md border border-cyan-500/40 bg-cyan-500/10 px-3 py-2 text-xs text-cyan-100">
             Multi edit: {{ count($selectedBlockIds) }} sections selected
@@ -46,14 +52,10 @@
     @error('model')
         <div class="mt-2 text-xs text-red-300">{{ $message }}</div>
     @enderror
-    <label class="mt-3 block text-xs font-medium text-neutral-400">
-        API key
-        <input wire:model.blur="apiKey" type="password" autocomplete="off" class="mt-1 w-full rounded-md border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400" placeholder="Stored locally for this provider">
-    </label>
+    <input type="hidden" wire:model="apiKey">
     @error('apiKey')
         <div class="mt-2 text-xs text-red-300">{{ $message }}</div>
     @enderror
-    <button type="button" wire:click="refreshModels" class="mt-3 w-full rounded-md border border-neutral-700 px-3 py-2 text-sm font-semibold text-neutral-200 hover:border-neutral-500">Refresh models</button>
     @if ($modelCatalogStatus !== '')
         <div class="mt-2 text-xs text-neutral-500">{{ $modelCatalogStatus }}</div>
     @endif
