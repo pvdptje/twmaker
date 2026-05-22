@@ -7,6 +7,7 @@ use App\Models\Project;
 use App\Services\Html\BlockIndexer;
 use App\Services\Html\HtmlValidationException;
 use App\Services\Html\QuickElementEditor;
+use App\Services\Rendering\Renderer;
 use Illuminate\Contracts\View\View;
 use Livewire\Attributes\On;
 use Livewire\Component;
@@ -110,6 +111,7 @@ class Workspace extends Component
         $this->block_index = $this->slimBlockIndex($this->currentBlockIndex($this->page));
         $this->preview_signature = $this->pageSignature($this->page);
         $this->preview_mount_key = $this->preview_signature;
+        $this->dispatchPreviewHtmlUpdated();
         $this->generation_status = match ($status) {
             'generating' => 'running',
             'valid' => 'valid',
@@ -128,6 +130,7 @@ class Workspace extends Component
             $this->selected_block_ids = $this->validSelectedBlockIds($this->selected_block_ids);
             $this->preview_signature = $signature;
             $this->preview_mount_key = $signature;
+            $this->dispatchPreviewHtmlUpdated();
 
             if ($this->selected_node_id !== null) {
                 $this->dispatch('preview-selection-changed', nodeId: $this->selected_node_id, scrollIntoView: true);
@@ -186,5 +189,28 @@ class Workspace extends Component
             $selectedBlockIds,
             fn (mixed $id): bool => is_string($id) && isset($known[$id]),
         ));
+    }
+
+    private function dispatchPreviewHtmlUpdated(): void
+    {
+        $this->dispatch(
+            'preview-html-updated',
+            srcdoc: $this->previewSource(),
+            selectedNodeId: $this->selected_node_id,
+        );
+    }
+
+    private function previewSource(): string
+    {
+        $renderer = app(Renderer::class);
+
+        if (is_string($this->page->html_source) && trim($this->page->html_source) !== '') {
+            return $renderer->renderPreviewHtml($this->page->html_source, $this->page->name);
+        }
+
+        return $renderer->renderPreviewHtml(
+            '<main class="flex min-h-screen items-center justify-center bg-white px-6 text-neutral-500"><p>No generated HTML yet.</p></main>',
+            $this->page->name,
+        );
     }
 }

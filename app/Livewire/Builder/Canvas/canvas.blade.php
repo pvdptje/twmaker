@@ -1,4 +1,4 @@
-<div class="flex h-full flex-col">
+<div class="flex h-full flex-col" wire:ignore>
     <div class="flex h-12 items-center justify-between border-b border-neutral-800 px-4">
         <div>
             <div class="text-sm font-medium text-white">Canvas</div>

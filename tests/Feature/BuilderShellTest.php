@@ -515,6 +515,7 @@ HTML,
 
         $component
             ->call('refreshFromPage')
+            ->assertDispatched('preview-html-updated')
             ->assertDispatched('preview-selection-changed', nodeId: 'block_hero', scrollIntoView: true);
     }
 

@@ -165,6 +165,22 @@
         syncPreviewSelection(false);
     }
 
+    function updatePreviewHtml(srcdoc, selectedNodeId = null) {
+        const previewFrame = frame();
+
+        if (!previewFrame || typeof srcdoc !== 'string' || srcdoc === '') {
+            return;
+        }
+
+        if (typeof selectedNodeId === 'string') {
+            previewFrame.dataset.selectedNodeId = selectedNodeId;
+        }
+
+        previewFrame.dataset.canvasBound = 'false';
+        previewFrame.srcdoc = srcdoc;
+        bindPreviewFrame();
+    }
+
     function bootCanvas() {
         bindQuickEditorControls();
         bindPreviewFrame();
@@ -181,6 +197,10 @@
             }
 
             syncPreviewSelection(event.detail?.scrollIntoView === true);
+        });
+
+        window.addEventListener('preview-html-updated', (event) => {
+            updatePreviewHtml(event.detail?.srcdoc, event.detail?.selectedNodeId || '');
         });
 
         window.addEventListener('quick-edit-saved', (event) => {
