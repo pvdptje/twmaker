@@ -59,5 +59,32 @@ return [
             'marker_max_tokens' => (int) env('ANTHROPIC_MARKER_MAX_TOKENS', 8000),
             'edit_max_tokens' => env('ANTHROPIC_EDIT_MAX_TOKENS', 8000),
         ],
+        'deepseek' => [
+            'label' => 'DeepSeek',
+            'driver' => 'deepseek',
+            'implemented' => true,
+            'base_url' => env('DEEPSEEK_BASE_URL', 'https://api.deepseek.com'),
+            'api_key' => env('DEEPSEEK_API_KEY'),
+            'models_refreshed_at' => '2026-05-22',
+            'models' => [
+                'section_generator' => env('DEEPSEEK_SECTION_MODEL', 'deepseek-v4-pro'),
+                'html_marker' => env('DEEPSEEK_MARKER_MODEL', 'deepseek-v4-pro'),
+                'targeted_edit' => env('DEEPSEEK_EDIT_MODEL', 'deepseek-v4-pro'),
+            ],
+            'available_models' => [
+                [
+                    'id' => 'deepseek-v4-pro',
+                    'label' => 'DeepSeek V4 Pro',
+                ],
+                [
+                    'id' => 'deepseek-v4-flash',
+                    'label' => 'DeepSeek V4 Flash',
+                ],
+            ],
+            'request_timeout' => (float) env('DEEPSEEK_REQUEST_TIMEOUT', 600),
+            'section_max_tokens' => (int) env('DEEPSEEK_SECTION_MAX_TOKENS', 32000),
+            'marker_max_tokens' => (int) env('DEEPSEEK_MARKER_MAX_TOKENS', 8000),
+            'edit_max_tokens' => (int) env('DEEPSEEK_EDIT_MAX_TOKENS', 8000),
+        ],
     ],
 ];

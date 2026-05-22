@@ -25,14 +25,20 @@ class GenerationControls extends Component
     public function mount(Page $page): void
     {
         $this->prompt = $page->prompt;
-        $this->provider = $this->registry()->defaultProvider();
-        $this->model = $this->defaultModel();
+        $this->provider = $this->storedProvider() ?? $this->registry()->defaultProvider();
+        $this->model = $this->storedModel($this->provider) ?? $this->defaultModel();
     }
 
     public function updatedProvider(): void
     {
-        $this->model = $this->defaultModel();
+        $this->storeProvider();
+        $this->model = $this->storedModel($this->provider) ?? $this->defaultModel();
         $this->modelCatalogStatus = '';
+    }
+
+    public function updatedModel(): void
+    {
+        $this->storeModel();
     }
 
     public function updatedApiKey(): void
@@ -74,6 +80,17 @@ class GenerationControls extends Component
         GeneratePageJob::dispatch($this->page->id, $this->provider, $this->model, $this->normalizedApiKey());
 
         $this->dispatch('generation-finished', pageId: $this->page->id, status: $this->page->refresh()->status);
+    }
+
+    public function generateWithSelection(string $provider, string $model, ?string $apiKey = null): void
+    {
+        $this->provider = $provider;
+        $this->model = $model;
+        $this->apiKey = (string) $apiKey;
+        $this->storeProvider();
+        $this->storeModel();
+
+        $this->generate();
     }
 
     public function render(): View
@@ -134,5 +151,35 @@ class GenerationControls extends Component
     {
         return $this->normalizedApiKey() !== null
             || trim((string) config("llm.providers.{$this->provider}.api_key")) !== '';
+    }
+
+    private function storedProvider(): ?string
+    {
+        $provider = session('builder.primary.provider');
+
+        return is_string($provider) && $this->registry()->isImplementedProvider($provider) ? $provider : null;
+    }
+
+    private function storedModel(string $provider): ?string
+    {
+        $model = session("builder.primary.models.{$provider}");
+
+        return is_string($model) && in_array($model, $this->registry()->modelIds($provider, $this->normalizedApiKey()), true)
+            ? $model
+            : null;
+    }
+
+    private function storeProvider(): void
+    {
+        if ($this->provider !== '') {
+            session(['builder.primary.provider' => $this->provider]);
+        }
+    }
+
+    private function storeModel(): void
+    {
+        if ($this->provider !== '' && $this->model !== '') {
+            session(["builder.primary.models.{$this->provider}" => $this->model]);
+        }
     }
 }

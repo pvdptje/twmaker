@@ -43,6 +43,7 @@ class LlmManager implements LlmProvider
 
         return match ($driver) {
             'anthropic' => app(AnthropicProvider::class),
+            'deepseek' => app(DeepSeekProvider::class),
             default => throw new InvalidArgumentException("LLM provider [{$provider}] is not implemented."),
         };
     }

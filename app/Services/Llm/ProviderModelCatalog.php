@@ -78,6 +78,7 @@ class ProviderModelCatalog
     {
         return match (config("llm.providers.{$provider}.driver")) {
             'anthropic' => $this->fetchAnthropic($apiKey),
+            'deepseek' => $this->fetchDeepSeek($provider, $apiKey),
             default => null,
         };
     }
@@ -142,6 +143,57 @@ class ProviderModelCatalog
 
             return null;
         }
+    }
+
+    private function fetchDeepSeek(string $provider, string $apiKey): ?array
+    {
+        try {
+            $baseUrl = rtrim((string) config("llm.providers.{$provider}.base_url", 'https://api.deepseek.com'), '/');
+            $response = Http::withToken($apiKey)
+                ->acceptJson()
+                ->timeout(15)
+                ->get($baseUrl.'/models');
+
+            if (! $response->successful()) {
+                Log::warning('Failed to fetch DeepSeek models.', [
+                    'status' => $response->status(),
+                ]);
+
+                return null;
+            }
+
+            $models = [];
+            foreach ($response->json('data', []) as $model) {
+                $id = (string) ($model['id'] ?? '');
+
+                if ($id === '') {
+                    continue;
+                }
+
+                $models[] = [
+                    'id' => $id,
+                    'label' => $this->labelFromModelId($id),
+                ];
+            }
+
+            return $models === [] ? null : $models;
+        } catch (Throwable $exception) {
+            Log::warning('Failed to fetch DeepSeek models.', [
+                'exception' => $exception::class,
+                'message' => $exception->getMessage(),
+            ]);
+
+            return null;
+        }
+    }
+
+    private function labelFromModelId(string $id): string
+    {
+        return str($id)
+            ->replace(['-', '_'], ' ')
+            ->title()
+            ->replace('Deepseek', 'DeepSeek')
+            ->toString();
     }
 
     private function apiKey(string $provider, ?string $apiKey): ?string

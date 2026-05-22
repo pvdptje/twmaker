@@ -6,16 +6,22 @@
         apiKey: @entangle('apiKey'),
         storageKey(provider) { return `twmaker.apiKey.${provider}`; },
         defaultKey(field) { return `twmaker.llmDefaults.primary.${field}`; },
+        selectionKey(field) { return `twmaker.builder.primary.${field}`; },
         loadKey() { this.apiKey = localStorage.getItem(this.storageKey(this.provider)) || ''; },
         loadDefaults() {
-            this.provider = localStorage.getItem(this.defaultKey('provider')) || this.provider;
+            this.provider = localStorage.getItem(this.selectionKey('provider')) || localStorage.getItem(this.defaultKey('provider')) || this.provider;
             this.$nextTick(() => {
-                this.model = localStorage.getItem(this.defaultKey('model')) || this.model;
+                this.model = localStorage.getItem(this.selectionKey(`model.${this.provider}`)) || localStorage.getItem(this.defaultKey('model')) || this.model;
                 this.loadKey();
             });
         },
+        saveSelection() {
+            if (!this.provider) return;
+            localStorage.setItem(this.selectionKey('provider'), this.provider);
+            if (this.model) localStorage.setItem(this.selectionKey(`model.${this.provider}`), this.model);
+        },
     }"
-    x-init="loadDefaults(); $watch('provider', () => loadKey())"
+    x-init="loadDefaults(); $watch('provider', () => { loadKey(); saveSelection() }); $watch('model', () => saveSelection())"
 >
     <div class="flex items-center justify-between gap-3">
         <div class="text-xs font-semibold uppercase tracking-normal text-neutral-500">Generation</div>
@@ -54,5 +60,11 @@
     @if ($modelCatalogStatus !== '')
         <div class="mt-2 text-xs text-neutral-500">{{ $modelCatalogStatus }}</div>
     @endif
-    <button type="button" wire:click="generate" class="mt-3 w-full rounded-md bg-cyan-500 px-3 py-2 text-sm font-semibold text-neutral-950 hover:bg-cyan-400">Generate</button>
+    <button
+        type="button"
+        x-on:click="saveSelection(); $wire.generateWithSelection(provider, model, apiKey)"
+        class="mt-3 w-full rounded-md bg-cyan-500 px-3 py-2 text-sm font-semibold text-neutral-950 hover:bg-cyan-400"
+    >
+        Generate
+    </button>
 </section>

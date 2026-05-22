@@ -310,7 +310,7 @@
             type="button"
             class="mt-4 w-full rounded-md border border-cyan-400/40 bg-cyan-400/10 px-3 py-2 text-xs font-semibold text-cyan-100 transition-colors hover:border-cyan-300 hover:bg-cyan-400/15 disabled:cursor-not-allowed disabled:border-neutral-800 disabled:bg-neutral-950 disabled:text-neutral-600"
             x-on:click="reopen()"
-            x-bind:disabled="open || (targetHtml === '' && !@js($statusLabel === 'running'))"
+            x-bind:disabled="targetHtml === '' && !@js($statusLabel === 'running')"
         >
             Open stream
         </button>

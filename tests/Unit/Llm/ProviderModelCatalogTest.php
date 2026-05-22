@@ -64,4 +64,33 @@ class ProviderModelCatalogTest extends TestCase
             ],
         ], $catalog->models('anthropic', 'test-key'));
     }
+
+    public function test_fetches_deepseek_models_and_caches_them(): void
+    {
+        Cache::flush();
+        Http::fake([
+            'https://api.deepseek.com/models' => Http::response([
+                'object' => 'list',
+                'data' => [
+                    [
+                        'id' => 'deepseek-v4-flash',
+                        'object' => 'model',
+                        'owned_by' => 'deepseek',
+                    ],
+                ],
+            ]),
+        ]);
+
+        $catalog = app(ProviderModelCatalog::class);
+
+        $this->assertSame([
+            [
+                'id' => 'deepseek-v4-flash',
+                'label' => 'DeepSeek V4 Flash',
+            ],
+        ], $catalog->refresh('deepseek', 'test-key'));
+
+        $this->assertSame('deepseek-v4-flash', $catalog->models('deepseek', 'test-key')[0]['id']);
+        Http::assertSent(fn ($request): bool => $request->hasHeader('Authorization', 'Bearer test-key'));
+    }
 }

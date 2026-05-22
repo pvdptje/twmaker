@@ -43,7 +43,7 @@ class LlmRegistry
         $fetched = $this->catalog->models($provider, $apiKey);
 
         if (is_array($fetched) && $fetched !== []) {
-            return $this->normalizeModels($fetched);
+            return $this->normalizeModels(array_merge($fetched, $this->fallbackModelOptions($provider)));
         }
 
         return $this->fallbackModelOptions($provider);
@@ -58,7 +58,7 @@ class LlmRegistry
         $fetched = $this->catalog->refresh($provider, $apiKey);
 
         if (is_array($fetched) && $fetched !== []) {
-            return $this->normalizeModels($fetched);
+            return $this->normalizeModels(array_merge($fetched, $this->fallbackModelOptions($provider)));
         }
 
         return $this->fallbackModelOptions($provider);

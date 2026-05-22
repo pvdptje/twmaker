@@ -48,7 +48,8 @@ class BuilderShellTest extends TestCase
             ->assertSee('Provider keys')
             ->assertSee('Primary generation')
             ->assertSee('Editing')
-            ->assertSee('Anthropic');
+            ->assertSee('Anthropic')
+            ->assertSee('DeepSeek');
     }
 
     public function test_llm_setup_saves_browser_backed_defaults(): void
@@ -317,11 +318,38 @@ class BuilderShellTest extends TestCase
         Livewire::test(GenerationControls::class, ['page' => $page])
             ->set('apiKey', 'test-model-key')
             ->call('refreshModels')
-            ->assertSet('model', 'claude-fresh-20260521')
+            ->assertSet('model', 'claude-sonnet-4-6')
             ->assertSee('Claude Fresh')
-            ->assertSee('1 models refreshed.');
+            ->assertSee('10 models refreshed.');
 
         Http::assertSentCount(1);
+    }
+
+    public function test_generation_controls_enqueue_selected_deepseek_flash_model(): void
+    {
+        Queue::fake();
+
+        $project = Project::query()->create([
+            'id' => app(IdGenerator::class)->project(),
+            'name' => 'Acme',
+        ]);
+        $page = Page::query()->create([
+            'id' => app(IdGenerator::class)->page(),
+            'project_id' => $project->id,
+            'name' => 'Homepage',
+            'prompt' => '',
+            'document_json' => $this->emptyDocument(),
+            'status' => 'draft',
+        ]);
+
+        Livewire::test(GenerationControls::class, ['page' => $page])
+            ->set('prompt', 'A developer tool landing page')
+            ->call('generateWithSelection', 'deepseek', 'deepseek-v4-flash', 'test-deepseek-key')
+            ->assertDispatched('generation-started', pageId: $page->id);
+
+        Queue::assertPushed(GeneratePageJob::class, fn (GeneratePageJob $job): bool => $job->provider === 'deepseek'
+            && $job->model === 'deepseek-v4-flash'
+            && $job->apiKey === 'test-deepseek-key');
     }
 
     public function test_edit_form_enqueues_targeted_edit_job_for_selected_node(): void
@@ -597,6 +625,27 @@ HTML,
             ->assertSee('Waiting for visible model output.')
             ->assertSee('animate-bounce', false)
             ->assertSee('bg-gradient-to-r', false);
+    }
+
+    public function test_stream_panel_can_reopen_modal_while_running_after_it_was_hidden(): void
+    {
+        $project = Project::query()->create([
+            'id' => app(IdGenerator::class)->project(),
+            'name' => 'Acme',
+        ]);
+        $page = Page::query()->create([
+            'id' => app(IdGenerator::class)->page(),
+            'project_id' => $project->id,
+            'name' => 'Homepage',
+            'prompt' => '',
+            'document_json' => $this->emptyDocument(),
+            'status' => 'generating',
+        ]);
+
+        Livewire::test(StreamPanel::class, ['page' => $page])
+            ->assertSee('Open stream')
+            ->assertSee('x-bind:disabled="targetHtml === \'\' && !true"', false)
+            ->assertDontSee('x-bind:disabled="open ||', false);
     }
 
     public function test_right_inspector_shows_token_totals_per_model(): void
