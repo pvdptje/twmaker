@@ -264,14 +264,14 @@ class DeepSeekProvider implements LlmProvider
                 return $arguments;
             }
 
-            $decoded = json_decode($this->scrubText((string) $arguments), true, 512, JSON_THROW_ON_ERROR);
+            $decoded = $this->decodeJsonArray((string) $arguments);
 
             return is_array($decoded) ? $decoded : [];
         }
 
         $content = (string) ($body['choices'][0]['message']['content'] ?? '');
         if (trim($content) !== '') {
-            $decoded = json_decode($this->scrubText($content), true, 512, JSON_THROW_ON_ERROR);
+            $decoded = $this->decodeJsonArray($content);
 
             if (is_array($decoded)) {
                 return $decoded;
@@ -332,7 +332,7 @@ class DeepSeekProvider implements LlmProvider
             return null;
         }
 
-        $decoded = json_decode($this->scrubText($payload), true, 512, JSON_THROW_ON_ERROR);
+        $decoded = $this->decodeJsonArray($payload);
 
         return is_array($decoded) ? $decoded : null;
     }
@@ -355,6 +355,18 @@ class DeepSeekProvider implements LlmProvider
         }
 
         return mb_scrub($value, 'UTF-8');
+    }
+
+    private function sanitizeJson(string $value): string
+    {
+        return preg_replace('/[\x00-\x1F\x7F]/', '', $this->scrubText($value)) ?? '';
+    }
+
+    private function decodeJsonArray(string $value): array
+    {
+        $decoded = json_decode($this->sanitizeJson($value), true, 512, JSON_THROW_ON_ERROR);
+
+        return is_array($decoded) ? $decoded : [];
     }
 
     private function scrubArray(array $value): array
