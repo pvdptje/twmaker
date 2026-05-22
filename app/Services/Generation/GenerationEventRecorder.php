@@ -22,6 +22,10 @@ class GenerationEventRecorder
         ?string $targetId = null,
         ?array $payload = null,
     ): GenerationEvent {
+        $summary = $this->scrubText($summary);
+        $targetId = is_string($targetId) ? $this->scrubText($targetId) : null;
+        $payload = is_array($payload) ? $this->scrubArray($payload) : null;
+
         $event = GenerationEvent::query()->create([
             'id' => $this->ids->generationEvent(),
             'page_id' => $page->id,
@@ -47,5 +51,27 @@ class GenerationEventRecorder
         }
 
         return $event;
+    }
+
+    private function scrubText(string $value): string
+    {
+        if (mb_check_encoding($value, 'UTF-8')) {
+            return $value;
+        }
+
+        return mb_scrub($value, 'UTF-8');
+    }
+
+    private function scrubArray(array $value): array
+    {
+        foreach ($value as $key => $item) {
+            $value[$key] = match (true) {
+                is_string($item) => $this->scrubText($item),
+                is_array($item) => $this->scrubArray($item),
+                default => $item,
+            };
+        }
+
+        return $value;
     }
 }

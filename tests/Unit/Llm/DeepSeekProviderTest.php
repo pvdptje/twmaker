@@ -132,4 +132,42 @@ class DeepSeekProviderTest extends TestCase
                 && ! isset($body['tool_choice']);
         });
     }
+
+    public function test_stream_scrubs_malformed_utf8_payloads(): void
+    {
+        $malformedPayload = '{"id":"chatcmpl-stream","choices":[{"delta":{"content":"Broken '.chr(195).'("}}]}';
+
+        Http::fake([
+            'https://api.deepseek.com/chat/completions' => Http::response(implode("\n\n", [
+                'data: '.$malformedPayload,
+                'data: [DONE]',
+            ]), 200, ['Content-Type' => 'text/event-stream']),
+        ]);
+
+        $chunks = [];
+        $response = (new DeepSeekProvider)->sendTextStream(new StructuredRequest(
+            stage: 'section_generator',
+            provider: 'deepseek',
+            model: 'deepseek-v4-flash',
+            systemPrompt: 'Return raw HTML.',
+            userPrompt: 'A simple page',
+            toolName: 'submit_raw_html_document',
+            schema: [
+                'type' => 'object',
+                'required' => ['raw_html'],
+                'properties' => [
+                    'raw_html' => ['type' => 'string'],
+                ],
+            ],
+            maxTokens: 8000,
+            apiKey: 'test-deepseek-key',
+        ), function (string $chunk, int $position) use (&$chunks): void {
+            $chunks[] = [$chunk, $position];
+        });
+
+        $this->assertTrue(mb_check_encoding($response->output['raw_html'], 'UTF-8'));
+        $this->assertStringNotContainsString(chr(195).'(', $response->output['raw_html']);
+        $this->assertSame(0, $chunks[0][1]);
+        $this->assertTrue(mb_check_encoding($chunks[0][0], 'UTF-8'));
+    }
 }

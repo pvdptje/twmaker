@@ -30,9 +30,18 @@ class GenerationStreamChunk implements ShouldBroadcastNow
         return [
             'page_id' => $this->pageId,
             'stage' => $this->stage,
-            'chunk' => $this->chunk,
+            'chunk' => $this->scrubText($this->chunk),
             'position' => $this->position,
             'stream' => $this->stream,
         ];
+    }
+
+    private function scrubText(string $value): string
+    {
+        if (mb_check_encoding($value, 'UTF-8')) {
+            return $value;
+        }
+
+        return mb_scrub($value, 'UTF-8');
     }
 }

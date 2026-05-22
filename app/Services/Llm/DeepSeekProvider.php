@@ -52,7 +52,7 @@ class DeepSeekProvider implements LlmProvider
                 throw new RuntimeException('DeepSeek returned an invalid response body.');
             }
 
-            $output = $this->extractToolArguments($body, $request->toolName);
+            $output = $this->scrubArray($this->extractToolArguments($body, $request->toolName));
         } catch (Throwable $exception) {
             Log::error('DeepSeek structured request failed.', [
                 'stage' => $request->stage,
@@ -80,7 +80,7 @@ class DeepSeekProvider implements LlmProvider
                 'id' => $body['id'] ?? null,
                 'finish_reason' => $body['choices'][0]['finish_reason'] ?? null,
             ],
-            usage: $body['usage'] ?? [],
+            usage: $this->scrubArray(is_array($body['usage'] ?? null) ? $body['usage'] : []),
         );
     }
 
@@ -138,7 +138,7 @@ class DeepSeekProvider implements LlmProvider
                 }
 
                 $finishReason = $choice['finish_reason'] ?? $finishReason;
-                $chunk = (string) ($choice['delta']['content'] ?? '');
+                $chunk = $this->scrubText((string) ($choice['delta']['content'] ?? ''));
                 if ($chunk === '') {
                     continue;
                 }
@@ -170,9 +170,9 @@ class DeepSeekProvider implements LlmProvider
         return new StructuredResponse(
             stage: $request->stage,
             model: $request->model,
-            output: ['raw_html' => $this->stripCodeFence($text)],
+            output: ['raw_html' => $this->stripCodeFence($this->scrubText($text))],
             raw: ['id' => $messageId, 'finish_reason' => $finishReason],
-            usage: $usage,
+            usage: $this->scrubArray($usage),
         );
     }
 
@@ -241,14 +241,14 @@ class DeepSeekProvider implements LlmProvider
                 return $arguments;
             }
 
-            $decoded = json_decode((string) $arguments, true, 512, JSON_THROW_ON_ERROR);
+            $decoded = json_decode($this->scrubText((string) $arguments), true, 512, JSON_THROW_ON_ERROR);
 
             return is_array($decoded) ? $decoded : [];
         }
 
         $content = (string) ($body['choices'][0]['message']['content'] ?? '');
         if (trim($content) !== '') {
-            $decoded = json_decode($content, true, 512, JSON_THROW_ON_ERROR);
+            $decoded = json_decode($this->scrubText($content), true, 512, JSON_THROW_ON_ERROR);
 
             if (is_array($decoded)) {
                 return $decoded;
@@ -309,7 +309,7 @@ class DeepSeekProvider implements LlmProvider
             return null;
         }
 
-        $decoded = json_decode($payload, true, 512, JSON_THROW_ON_ERROR);
+        $decoded = json_decode($this->scrubText($payload), true, 512, JSON_THROW_ON_ERROR);
 
         return is_array($decoded) ? $decoded : null;
     }
@@ -323,5 +323,27 @@ class DeepSeekProvider implements LlmProvider
         }
 
         return $text;
+    }
+
+    private function scrubText(string $value): string
+    {
+        if (mb_check_encoding($value, 'UTF-8')) {
+            return $value;
+        }
+
+        return mb_scrub($value, 'UTF-8');
+    }
+
+    private function scrubArray(array $value): array
+    {
+        foreach ($value as $key => $item) {
+            $value[$key] = match (true) {
+                is_string($item) => $this->scrubText($item),
+                is_array($item) => $this->scrubArray($item),
+                default => $item,
+            };
+        }
+
+        return $value;
     }
 }

@@ -91,6 +91,7 @@ class SectionGenerator
                 'bytes' => strlen($chunk),
             ]);
 
+            $chunk = $this->scrubText($chunk);
             $this->streamBuffer->append($page->id, $stage, $chunk, $position);
             $this->streamBuffer->appendOutput($page->id, $stage, $chunk, $position);
 
@@ -112,6 +113,15 @@ class SectionGenerator
                 'message' => $exception->getMessage(),
             ]);
         }
+    }
+
+    private function scrubText(string $value): string
+    {
+        if (mb_check_encoding($value, 'UTF-8')) {
+            return $value;
+        }
+
+        return mb_scrub($value, 'UTF-8');
     }
 
     private function hasRawHtml(array $artifact): bool
