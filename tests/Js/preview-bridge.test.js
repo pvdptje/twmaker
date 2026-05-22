@@ -230,4 +230,32 @@ describe('preview bridge', () => {
             },
         });
     });
+
+    it('prevents generated links from navigating the preview frame while reporting selection', () => {
+        const { document, messages, window } = bootPreview(`<body>
+            <!-- tw:block id="block_nav" type="navigation" label="Navigation" -->
+            <nav>
+                <a href="#about">About</a>
+            </nav>
+            <!-- /tw:block -->
+        </body>`);
+        const link = document.querySelector('a');
+        const event = new window.MouseEvent('click', {
+            bubbles: true,
+            cancelable: true,
+        });
+
+        link.dispatchEvent(event);
+
+        expect(event.defaultPrevented).toBe(true);
+        expect(window.location.href).toBe('https://preview.test/');
+        expect(link.classList.contains('builder-selected')).toBe(true);
+        expect(messages[0].payload).toMatchObject({
+            type: 'builder:node-selected',
+            quickEdit: {
+                blockId: 'block_nav',
+                tagName: 'a',
+            },
+        });
+    });
 });

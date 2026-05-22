@@ -34,6 +34,7 @@
         '[contenteditable=""]',
         '[contenteditable="true"]'
     ].join(',');
+    const navigableLinkSelector = 'a[href]';
 
     function cssEscape(value) {
         if (window.CSS && typeof window.CSS.escape === 'function') {
@@ -214,7 +215,7 @@
             return;
         }
 
-        if (!editable.target.closest(focusableFormSelector)) {
+        if (editable.target.closest(navigableLinkSelector) || !editable.target.closest(focusableFormSelector)) {
             event.preventDefault();
         }
         event.stopPropagation();
