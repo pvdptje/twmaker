@@ -118,8 +118,7 @@ class DeepSeekProviderTest extends TestCase
 
         $this->assertSame(['raw_html' => '<section>Hello</section>'], $response->output);
         $this->assertSame([
-            ['<section>', 0],
-            ['Hello</section>', 9],
+            ['<section>Hello</section>', 0],
         ], $chunks);
         $this->assertSame(14, $response->usage['total_tokens']);
 

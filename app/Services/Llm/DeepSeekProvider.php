@@ -92,6 +92,18 @@ class DeepSeekProvider implements LlmProvider
         $usage = [];
         $messageId = null;
         $finishReason = null;
+        $pendingChunk = '';
+        $pendingPosition = 0;
+        $lastFlushAt = microtime(true);
+        $flush = function () use (&$pendingChunk, &$pendingPosition, &$lastFlushAt, $onDelta, $request): void {
+            if ($pendingChunk === '') {
+                return;
+            }
+
+            $onDelta($pendingChunk, $pendingPosition, $request);
+            $pendingChunk = '';
+            $lastFlushAt = microtime(true);
+        };
 
         Log::info('DeepSeek text stream started.', [
             'stage' => $request->stage,
@@ -145,8 +157,19 @@ class DeepSeekProvider implements LlmProvider
 
                 $position = strlen($text);
                 $text .= $chunk;
-                $onDelta($chunk, $position, $request);
+
+                if ($pendingChunk === '') {
+                    $pendingPosition = $position;
+                }
+
+                $pendingChunk .= $chunk;
+
+                if (strlen($pendingChunk) >= 512 || microtime(true) - $lastFlushAt >= 0.75) {
+                    $flush();
+                }
             }
+
+            $flush();
         } catch (Throwable $exception) {
             Log::error('DeepSeek text stream failed.', [
                 'stage' => $request->stage,
