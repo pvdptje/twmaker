@@ -275,6 +275,12 @@
                     }
                     if (event.kind === 'generation_completed' || event.kind === 'generation_failed' || event.kind === 'edit_applied' || event.kind === 'edit_rejected') {
                         this.terminal = true;
+                        if (window.Livewire?.dispatch) {
+                            window.Livewire.dispatch('generation-finished', {
+                                pageId: this.pageId,
+                                status: (event.kind === 'generation_completed' || event.kind === 'edit_applied') ? 'valid' : 'error',
+                            });
+                        }
                     }
                 });
         },

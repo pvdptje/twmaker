@@ -588,6 +588,7 @@ HTML,
             ->assertSee('LLM output')
             ->assertSee('Waiting for the first HTML tokens.')
             ->assertSee('Waiting for visible model output.')
+            ->assertSee("window.Livewire.dispatch('generation-finished'", false)
             ->assertSee('animate-bounce', false)
             ->assertSee('bg-gradient-to-r', false);
     }
