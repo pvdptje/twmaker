@@ -57,11 +57,11 @@ class Pipeline
 
             $this->events->record($page, 'stage_started', 'validation', 'info', 'Validating marked HTML.');
             $this->htmlValidator->assertValid($htmlSource);
-            $blockIndex = $this->blockIndexer->index($htmlSource);
+            $blockIndex = $this->scrubArray($this->blockIndexer->index($htmlSource));
             $this->events->record($page, 'stage_completed', 'validation', 'success', 'Marked HTML is valid.', payload: [
                 'blocks' => count($blockIndex),
             ]);
-            $document = $this->htmlArtifact($artifact, $htmlSource, $blockIndex);
+            $document = $this->scrubArray($this->htmlArtifact($artifact, $htmlSource, $blockIndex));
 
             $page->forceFill([
                 'document_json' => $document,
@@ -115,12 +115,12 @@ class Pipeline
             $htmlSource = $this->cleanHtml($htmlSource);
 
             $this->htmlValidator->assertValid($htmlSource);
-            $blockIndex = $this->blockIndexer->index($htmlSource);
-            $document = $this->htmlArtifact(
+            $blockIndex = $this->scrubArray($this->blockIndexer->index($htmlSource));
+            $document = $this->scrubArray($this->htmlArtifact(
                 $this->editArtifact($page, $instruction),
                 $htmlSource,
                 $blockIndex,
-            );
+            ));
 
             $page->forceFill([
                 'document_json' => $document,

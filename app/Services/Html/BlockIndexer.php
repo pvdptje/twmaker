@@ -110,12 +110,21 @@ class BlockIndexer
 
     private function summary(string $html): ?string
     {
-        $text = trim(preg_replace('/\s+/', ' ', strip_tags($html)) ?? '');
+        $text = $this->scrubText(trim(preg_replace('/\s+/', ' ', strip_tags($html)) ?? ''));
 
         if ($text === '') {
             return null;
         }
 
-        return strlen($text) > 160 ? substr($text, 0, 157).'...' : $text;
+        return mb_strlen($text, 'UTF-8') > 160 ? mb_substr($text, 0, 157, 'UTF-8').'...' : $text;
+    }
+
+    private function scrubText(string $value): string
+    {
+        if (mb_check_encoding($value, 'UTF-8')) {
+            return $value;
+        }
+
+        return mb_scrub($value, 'UTF-8');
     }
 }

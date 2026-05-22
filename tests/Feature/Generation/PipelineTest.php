@@ -97,6 +97,25 @@ HTML;
         $this->assertSame($page->html_source, $page->document_json['html_source']);
     }
 
+    public function test_pipeline_persists_long_multibyte_block_summaries_as_valid_json(): void
+    {
+        [$project, $page] = $this->makePage('A page with a long multibyte summary');
+        $artifact = $this->htmlArtifact();
+        $text = str_repeat('a', 156).'€'.str_repeat('b', 20);
+        $artifact['raw_html'] = '<section><p>'.$text.'</p></section>';
+        $artifact['marked_html'] = '<!-- tw:block id="block_hero" type="hero" label="Hero" --><section data-node-id="block_hero" data-node-type="hero" data-tw-block="block_hero"><p>'.$text.'</p></section><!-- /tw:block -->';
+
+        $this->app->instance(LlmProvider::class, new FakeHtmlGenerationProvider($artifact));
+
+        app(Pipeline::class)->generate($page);
+
+        $page->refresh();
+
+        $this->assertTrue(mb_check_encoding($page->block_index[0]['summary'], 'UTF-8'));
+        $this->assertStringContainsString('€', $page->block_index[0]['summary']);
+        $this->assertSame($page->block_index, $page->document_json['block_index']);
+    }
+
     public function test_pipeline_rejects_unsafe_generated_html(): void
     {
         [$project, $page] = $this->makePage('Unsafe page');
