@@ -1,17 +1,24 @@
 <section
     class="border-b border-neutral-800 p-4"
     x-data="{
-        provider: @entangle('provider').live,
-        model: @entangle('model').live,
-        apiKey: @entangle('apiKey'),
+        provider: @js($provider),
+        model: @js($model),
+        apiKey: '',
+        modelOptionsByProvider: @js($modelOptionsByProvider),
         storageKey(provider) { return `twmaker.apiKey.${provider}`; },
         defaultKey(field) { return `twmaker.llmDefaults.editing.${field}`; },
         selectionKey(field) { return `twmaker.builder.editing.${field}`; },
         loadKey() { this.apiKey = localStorage.getItem(this.storageKey(this.provider)) || ''; },
+        modelOptions() { return this.modelOptionsByProvider[this.provider] || []; },
+        ensureModel() {
+            if (this.modelOptions().some((option) => option.id === this.model)) return;
+            this.model = this.modelOptions()[0]?.id || '';
+        },
         loadDefaults() {
             this.provider = localStorage.getItem(this.selectionKey('provider')) || localStorage.getItem(this.defaultKey('provider')) || this.provider;
             this.$nextTick(() => {
                 this.model = localStorage.getItem(this.selectionKey(`model.${this.provider}`)) || localStorage.getItem(this.defaultKey('model')) || this.model;
+                this.ensureModel();
                 this.loadKey();
             });
         },
@@ -21,7 +28,7 @@
             if (this.model) localStorage.setItem(this.selectionKey(`model.${this.provider}`), this.model);
         },
     }"
-    x-init="loadDefaults(); $watch('provider', () => { loadKey(); saveSelection() }); $watch('model', () => saveSelection())"
+    x-init="loadDefaults(); $watch('provider', () => { ensureModel(); loadKey(); saveSelection() }); $watch('model', () => saveSelection())"
 >
     <div class="flex items-center justify-between gap-3">
         <div class="text-xs font-semibold uppercase tracking-normal text-neutral-500">Edit request</div>
@@ -38,7 +45,7 @@
     @enderror
     <label class="mt-3 block text-xs font-medium text-neutral-400">
         Provider
-        <select wire:model.live="provider" class="mt-1 w-full rounded-md border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400">
+        <select x-model="provider" class="mt-1 w-full rounded-md border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400">
             @foreach ($providerOptions as $providerOption)
                 <option value="{{ $providerOption['id'] }}">{{ $providerOption['label'] }}</option>
             @endforeach
@@ -49,10 +56,10 @@
     @enderror
     <label class="mt-3 block text-xs font-medium text-neutral-400">
         Model
-        <select wire:model.live="model" class="mt-1 w-full rounded-md border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400">
-            @foreach ($modelOptions as $modelOption)
-                <option value="{{ $modelOption['id'] }}">{{ $modelOption['label'] }} ({{ $modelOption['id'] }})</option>
-            @endforeach
+        <select x-model="model" class="mt-1 w-full rounded-md border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400">
+            <template x-for="modelOption in modelOptions()" :key="modelOption.id">
+                <option :value="modelOption.id" x-text="`${modelOption.label} (${modelOption.id})`"></option>
+            </template>
         </select>
     </label>
     @error('model')
@@ -72,6 +79,7 @@
         type="button"
         x-on:click="saveSelection(); $wire.applyEditWithSelection(provider, model, apiKey)"
         wire:loading.attr="disabled"
+        wire:target="applyEditWithSelection,applyEdit"
         @disabled(! $selectedNodeId && count($selectedBlockIds) === 0)
         class="mt-3 w-full rounded-md bg-cyan-500 px-3 py-2 text-sm font-semibold text-neutral-950 hover:bg-cyan-400 disabled:bg-neutral-800 disabled:text-neutral-400"
     >

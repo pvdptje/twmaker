@@ -97,7 +97,9 @@ class GenerationControls extends Component
     {
         return view()->file(__DIR__.'/generation-controls.blade.php', [
             'providerOptions' => $this->providerOptions(),
-            'modelOptions' => $this->modelOptions(),
+            'modelOptionsByProvider' => collect($this->providerIds())
+                ->mapWithKeys(fn (string $provider): array => [$provider => $this->registry()->modelOptions($provider, $this->normalizedApiKey())])
+                ->all(),
         ]);
     }
 
