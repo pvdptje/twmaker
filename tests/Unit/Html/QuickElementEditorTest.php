@@ -26,6 +26,20 @@ class QuickElementEditorTest extends TestCase
         $this->assertStringContainsString('<!-- /tw:block -->', $updated);
     }
 
+    public function test_replaces_inside_block_that_starts_with_style(): void
+    {
+        $html = '<!-- tw:block id="block_hero" type="hero" label="Hero" --><style>.hero{color:red}</style><section class="hero"><h1>Ship pages</h1><p>Fast</p></section><!-- /tw:block -->';
+
+        $updated = $this->editor()->replace(
+            $html,
+            'block_hero:0',
+            '<h1>Better hero</h1>',
+        );
+
+        $this->assertStringContainsString('<style>.hero{color:red}</style>', $updated);
+        $this->assertStringContainsString('<section class="hero"><h1>Better hero</h1><p>Fast</p></section>', $updated);
+    }
+
     public function test_rejects_edits_that_include_block_markers(): void
     {
         $this->expectException(HtmlValidationException::class);

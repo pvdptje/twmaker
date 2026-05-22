@@ -1,5 +1,6 @@
 (function () {
     let selected = null;
+    let selectionOverlay = null;
     const editableSelector = [
         'a',
         'article',
@@ -34,7 +35,7 @@
         '[contenteditable=""]',
         '[contenteditable="true"]'
     ].join(',');
-    const navigableLinkSelector = 'a[href]';
+    const navigableLinkSelector = 'a[href], area[href]';
 
     function cssEscape(value) {
         if (window.CSS && typeof window.CSS.escape === 'function') {
@@ -60,11 +61,19 @@
         return attrs.id ? attrs : null;
     }
 
-    function nextElementSibling(node) {
+    function isBlockRootCandidate(node) {
+        if (!(node instanceof Element)) {
+            return false;
+        }
+
+        return !['LINK', 'META', 'SCRIPT', 'STYLE', 'TEMPLATE', 'TITLE'].includes(node.tagName);
+    }
+
+    function nextBlockRootSibling(node) {
         let current = node.nextSibling;
 
         while (current) {
-            if (current.nodeType === Node.ELEMENT_NODE) {
+            if (current.nodeType === Node.ELEMENT_NODE && isBlockRootCandidate(current)) {
                 return current;
             }
 
@@ -79,7 +88,7 @@
 
         while (walker.nextNode()) {
             const marker = parseBlockMarker(walker.currentNode);
-            const root = marker ? nextElementSibling(walker.currentNode) : null;
+            const root = marker ? nextBlockRootSibling(walker.currentNode) : null;
 
             if (!root) {
                 continue;
@@ -107,6 +116,74 @@
         if (selected) {
             selected.classList.remove('builder-selected');
         }
+
+        selected = null;
+        hideSelectionOverlay();
+    }
+
+    function selectionOverlayElement() {
+        if (selectionOverlay?.isConnected) {
+            return selectionOverlay;
+        }
+
+        selectionOverlay = document.createElement('div');
+        selectionOverlay.setAttribute('aria-hidden', 'true');
+        selectionOverlay.dataset.builderSelectionOverlay = 'true';
+        Object.assign(selectionOverlay.style, {
+            position: 'fixed',
+            display: 'none',
+            pointerEvents: 'none',
+            boxSizing: 'border-box',
+            border: '2px solid #06b6d4',
+            borderRadius: '6px',
+            boxShadow: '0 0 0 2px rgba(8, 145, 178, 0.18), 0 10px 28px rgba(8, 145, 178, 0.28)',
+            zIndex: '2147483647',
+            transition: 'top 80ms ease, left 80ms ease, width 80ms ease, height 80ms ease'
+        });
+
+        (document.body || document.documentElement).appendChild(selectionOverlay);
+
+        return selectionOverlay;
+    }
+
+    function hideSelectionOverlay() {
+        if (selectionOverlay) {
+            selectionOverlay.style.display = 'none';
+        }
+    }
+
+    function updateSelectionOverlay() {
+        if (!selected?.isConnected) {
+            hideSelectionOverlay();
+            return;
+        }
+
+        const rect = selected.getBoundingClientRect();
+        if (rect.width <= 0 || rect.height <= 0) {
+            hideSelectionOverlay();
+            return;
+        }
+
+        const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
+        const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+        if (rect.right < 0 || rect.bottom < 0 || rect.left > viewportWidth || rect.top > viewportHeight) {
+            hideSelectionOverlay();
+            return;
+        }
+
+        const overlay = selectionOverlayElement();
+        overlay.style.display = 'block';
+        overlay.style.left = `${rect.left}px`;
+        overlay.style.top = `${rect.top}px`;
+        overlay.style.width = `${rect.width}px`;
+        overlay.style.height = `${rect.height}px`;
+    }
+
+    function selectElement(element) {
+        clearSelection();
+        selected = element;
+        selected.classList.add('builder-selected');
+        updateSelectionOverlay();
     }
 
     function elementChildren(node) {
@@ -192,6 +269,10 @@
         return { target, blockRoot };
     }
 
+    function selectionRoot(editable) {
+        return editable.blockRoot || editable.target;
+    }
+
     function cleanOuterHtml(element) {
         const clone = element.cloneNode(true);
         clone.classList?.remove('builder-selected');
@@ -203,7 +284,19 @@
         return clone.outerHTML;
     }
 
-    document.addEventListener('click', function (event) {
+    function closestElement(from, selector) {
+        const clicked = from instanceof Element ? from : from?.parentElement;
+
+        return clicked?.closest(selector) || null;
+    }
+
+    function preventPreviewNavigation(event) {
+        if (closestElement(event.target, navigableLinkSelector)) {
+            event.preventDefault();
+        }
+    }
+
+    function handlePointerSelection(event, openQuickEdit = false) {
         const editable = editableTarget(event.target);
         if (!editable) {
             return;
@@ -215,16 +308,12 @@
             return;
         }
 
-        if (editable.target.closest(navigableLinkSelector) || !editable.target.closest(focusableFormSelector)) {
+        if (!editable.target.closest(focusableFormSelector)) {
             event.preventDefault();
         }
-        event.stopPropagation();
+        selectElement(selectionRoot(editable));
 
-        clearSelection();
-        selected = editable.target;
-        selected.classList.add('builder-selected');
-
-        const rect = selected.getBoundingClientRect();
+        const rect = editable.target.getBoundingClientRect();
 
         window.parent.postMessage({
             type: 'builder:node-selected',
@@ -245,8 +334,20 @@
                     x: event.clientX,
                     y: event.clientY
                 }
-            }
+            },
+            openQuickEdit: openQuickEdit === true
         }, '*');
+    }
+
+    document.addEventListener('click', preventPreviewNavigation, true);
+    document.addEventListener('auxclick', preventPreviewNavigation, true);
+
+    document.addEventListener('click', function (event) {
+        handlePointerSelection(event, false);
+    }, true);
+
+    document.addEventListener('dblclick', function (event) {
+        handlePointerSelection(event, true);
     }, true);
 
     window.addEventListener('message', function (event) {
@@ -254,14 +355,14 @@
             clearSelection();
 
             if (!event.data.nodeId) {
-                selected = null;
+                hideSelectionOverlay();
                 return;
             }
 
-            selected = document.querySelector(nodeSelector(event.data.nodeId));
+            const nextSelected = document.querySelector(nodeSelector(event.data.nodeId));
 
-            if (selected) {
-                selected.classList.add('builder-selected');
+            if (nextSelected) {
+                selectElement(nextSelected);
 
                 if (event.data.scrollIntoView === true && typeof selected.scrollIntoView === 'function') {
                     selected.scrollIntoView({
@@ -269,6 +370,7 @@
                         block: 'center',
                         inline: 'nearest'
                     });
+                    window.requestAnimationFrame?.(updateSelectionOverlay);
                 }
             }
 
@@ -290,9 +392,7 @@
             }
 
             element.replaceWith(replacement);
-            clearSelection();
-            selected = replacement;
-            selected.classList.add('builder-selected');
+            selectElement(blockRoot?.isConnected ? blockRoot : replacement);
 
             return;
         }
@@ -310,4 +410,6 @@
     });
 
     annotateBlocksFromComments();
+    window.addEventListener('resize', updateSelectionOverlay);
+    window.addEventListener('scroll', updateSelectionOverlay, true);
 })();

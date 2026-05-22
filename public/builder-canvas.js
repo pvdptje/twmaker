@@ -232,7 +232,11 @@
                 previewFrame.dataset.selectedNodeId = event.data.nodeId || '';
             }
 
-            showQuickEditor(event.data.quickEdit);
+            if (event.data.openQuickEdit === true) {
+                showQuickEditor(event.data.quickEdit);
+            } else {
+                hideQuickEditor();
+            }
 
             if (window.Livewire?.dispatch) {
                 window.Livewire.dispatch('node-selected', {

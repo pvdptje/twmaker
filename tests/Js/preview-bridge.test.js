@@ -69,6 +69,40 @@ describe('preview bridge', () => {
         expect(document.querySelector('p').classList.contains('builder-selected')).toBe(true);
     });
 
+    it('draws a non-interactive overlay around the selected element', () => {
+        const { document, window } = bootPreview(`
+            <section data-node-id="sec_01h00000000000000000000000" data-node-type="hero">
+                <h1 data-node-id="node_01h00000000000000000000001" data-node-type="heading">Ship pages</h1>
+            </section>
+        `);
+        const heading = document.querySelector('h1');
+        heading.getBoundingClientRect = () => ({
+            x: 20,
+            y: 30,
+            left: 20,
+            top: 30,
+            right: 220,
+            bottom: 78,
+            width: 200,
+            height: 48,
+            toJSON: () => {},
+        });
+
+        heading.dispatchEvent(new window.MouseEvent('click', {
+            bubbles: true,
+            cancelable: true,
+        }));
+
+        const overlay = document.querySelector('[data-builder-selection-overlay="true"]');
+        expect(overlay).not.toBeNull();
+        expect(overlay.style.pointerEvents).toBe('none');
+        expect(overlay.style.display).toBe('block');
+        expect(overlay.style.left).toBe('20px');
+        expect(overlay.style.top).toBe('30px');
+        expect(overlay.style.width).toBe('200px');
+        expect(overlay.style.height).toBe('48px');
+    });
+
     it('reports a stable edit path inside a marked block', () => {
         const { document, messages, window } = bootPreview(`<body>
             <!-- tw:block id="block_hero" type="hero" label="Hero" -->
@@ -98,6 +132,138 @@ describe('preview bridge', () => {
                     x: 12,
                     y: 24,
                 },
+            },
+        });
+        expect(document.querySelector('section').classList.contains('builder-selected')).toBe(true);
+        expect(document.querySelector('p').classList.contains('builder-selected')).toBe(false);
+    });
+
+    it('draws the overlay around the marked block root when a child is clicked', () => {
+        const { document, window } = bootPreview(`<body>
+            <!-- tw:block id="block_hero" type="hero" label="Hero" -->
+            <section>
+                <h1>Ship pages</h1>
+            </section>
+            <!-- /tw:block -->
+        </body>`);
+        const section = document.querySelector('section');
+        section.getBoundingClientRect = () => ({
+            x: 10,
+            y: 12,
+            left: 10,
+            top: 12,
+            right: 410,
+            bottom: 252,
+            width: 400,
+            height: 240,
+            toJSON: () => {},
+        });
+
+        document.querySelector('h1').dispatchEvent(new window.MouseEvent('click', {
+            bubbles: true,
+            cancelable: true,
+        }));
+
+        const overlay = document.querySelector('[data-builder-selection-overlay="true"]');
+        expect(section.classList.contains('builder-selected')).toBe(true);
+        expect(document.querySelector('h1').classList.contains('builder-selected')).toBe(false);
+        expect(overlay.style.left).toBe('10px');
+        expect(overlay.style.top).toBe('12px');
+        expect(overlay.style.width).toBe('400px');
+        expect(overlay.style.height).toBe('240px');
+    });
+
+    it('does not pin the overlay to the viewport edge when selection scrolls away', () => {
+        const { document, window } = bootPreview(`<body>
+            <!-- tw:block id="block_hero" type="hero" label="Hero" -->
+            <section>
+                <h1>Ship pages</h1>
+            </section>
+            <!-- /tw:block -->
+        </body>`);
+        const section = document.querySelector('section');
+        section.getBoundingClientRect = () => ({
+            x: 10,
+            y: -260,
+            left: 10,
+            top: -260,
+            right: 410,
+            bottom: -20,
+            width: 400,
+            height: 240,
+            toJSON: () => {},
+        });
+
+        document.querySelector('h1').dispatchEvent(new window.MouseEvent('click', {
+            bubbles: true,
+            cancelable: true,
+        }));
+
+        const overlay = document.querySelector('[data-builder-selection-overlay="true"]');
+        expect(overlay?.style.display).not.toBe('block');
+        expect(overlay?.style.top).not.toBe('0px');
+    });
+
+    it('uses the first rendered element as the block root when a block starts with style', () => {
+        const { document, messages, window } = bootPreview(`<body>
+            <!-- tw:block id="block_hero" type="hero" label="Hero" -->
+            <style>.hero { color: red; }</style>
+            <section class="hero">
+                <h1>Ship pages</h1>
+            </section>
+            <!-- /tw:block -->
+        </body>`);
+
+        document.querySelector('h1').dispatchEvent(new window.MouseEvent('click', {
+            bubbles: true,
+            cancelable: true,
+        }));
+
+        expect(document.querySelector('style').dataset.builderBlockId).toBeUndefined();
+        expect(document.querySelector('section').dataset.builderBlockId).toBe('block_hero');
+        expect(document.querySelector('section').classList.contains('builder-selected')).toBe(true);
+        expect(document.querySelector('h1').classList.contains('builder-selected')).toBe(false);
+        expect(messages[0].payload).toMatchObject({
+            type: 'builder:node-selected',
+            nodeId: 'block_hero',
+            quickEdit: {
+                editId: 'block_hero:0',
+                blockId: 'block_hero',
+                tagName: 'h1',
+            },
+        });
+    });
+
+    it('only asks the parent to open quick edit on double click', () => {
+        const { document, messages, window } = bootPreview(`<body>
+            <!-- tw:block id="block_hero" type="hero" label="Hero" -->
+            <section><h1>Ship pages</h1></section>
+            <!-- /tw:block -->
+        </body>`);
+        const heading = document.querySelector('h1');
+
+        heading.dispatchEvent(new window.MouseEvent('click', {
+            bubbles: true,
+            cancelable: true,
+        }));
+
+        heading.dispatchEvent(new window.MouseEvent('dblclick', {
+            bubbles: true,
+            cancelable: true,
+        }));
+
+        expect(messages).toHaveLength(2);
+        expect(messages[0].payload).toMatchObject({
+            type: 'builder:node-selected',
+            openQuickEdit: false,
+        });
+        expect(messages[1].payload).toMatchObject({
+            type: 'builder:node-selected',
+            openQuickEdit: true,
+            quickEdit: {
+                blockId: 'block_hero',
+                tagName: 'h1',
+                outerHTML: '<h1>Ship pages</h1>',
             },
         });
     });
@@ -141,7 +307,8 @@ describe('preview bridge', () => {
 
         expect(document.querySelector('h1').textContent).toBe('Ship pages');
         expect(document.querySelector('p').className).toContain('mt-8');
-        expect(document.querySelector('p').classList.contains('builder-selected')).toBe(true);
+        expect(document.querySelector('section').classList.contains('builder-selected')).toBe(true);
+        expect(document.querySelector('p').classList.contains('builder-selected')).toBe(false);
         expect(document.querySelector('p').textContent).toBe('Better website copy here.');
     });
 
@@ -221,7 +388,8 @@ describe('preview bridge', () => {
         textarea.dispatchEvent(event);
 
         expect(event.defaultPrevented).toBe(false);
-        expect(textarea.classList.contains('builder-selected')).toBe(true);
+        expect(document.querySelector('section').classList.contains('builder-selected')).toBe(true);
+        expect(textarea.classList.contains('builder-selected')).toBe(false);
         expect(messages[0].payload).toMatchObject({
             type: 'builder:node-selected',
             quickEdit: {
@@ -249,12 +417,92 @@ describe('preview bridge', () => {
 
         expect(event.defaultPrevented).toBe(true);
         expect(window.location.href).toBe('https://preview.test/');
-        expect(link.classList.contains('builder-selected')).toBe(true);
+        expect(document.querySelector('nav').classList.contains('builder-selected')).toBe(true);
+        expect(link.classList.contains('builder-selected')).toBe(false);
         expect(messages[0].payload).toMatchObject({
             type: 'builder:node-selected',
             quickEdit: {
                 blockId: 'block_nav',
                 tagName: 'a',
+            },
+        });
+    });
+
+    it('prevents unmarked preview links from navigating', () => {
+        const { document, messages, window } = bootPreview(`<body>
+            <main>
+                <a href="#about">About</a>
+            </main>
+        </body>`);
+        const link = document.querySelector('a');
+        const event = new window.MouseEvent('click', {
+            bubbles: true,
+            cancelable: true,
+        });
+
+        link.dispatchEvent(event);
+
+        expect(event.defaultPrevented).toBe(true);
+        expect(window.location.href).toBe('https://preview.test/');
+        expect(messages).toHaveLength(0);
+    });
+
+    it('prevents link navigation without blocking generated link click handlers', () => {
+        const { document, window } = bootPreview(`<body>
+            <!-- tw:block id="block_nav" type="navigation" label="Navigation" -->
+            <nav>
+                <a href="#about">About</a>
+            </nav>
+            <!-- /tw:block -->
+        </body>`);
+        const link = document.querySelector('a');
+        let clicked = 0;
+
+        link.addEventListener('click', () => {
+            clicked += 1;
+        });
+
+        const event = new window.MouseEvent('click', {
+            bubbles: true,
+            cancelable: true,
+        });
+
+        link.dispatchEvent(event);
+
+        expect(event.defaultPrevented).toBe(true);
+        expect(clicked).toBe(1);
+        expect(window.location.href).toBe('https://preview.test/');
+    });
+
+    it('does not block generated click handlers from running', () => {
+        const { document, messages, window } = bootPreview(`<body>
+            <!-- tw:block id="block_nav" type="navigation" label="Navigation" -->
+            <nav>
+                <button type="button">Menu</button>
+            </nav>
+            <!-- /tw:block -->
+        </body>`);
+        const button = document.querySelector('button');
+        let clicked = 0;
+
+        button.addEventListener('click', () => {
+            clicked += 1;
+        });
+
+        button.dispatchEvent(new window.MouseEvent('click', {
+            bubbles: true,
+            cancelable: true,
+        }));
+
+        expect(clicked).toBe(1);
+        expect(document.querySelector('nav').classList.contains('builder-selected')).toBe(true);
+        expect(button.classList.contains('builder-selected')).toBe(false);
+        expect(messages[0].payload).toMatchObject({
+            type: 'builder:node-selected',
+            openQuickEdit: false,
+            quickEdit: {
+                blockId: 'block_nav',
+                tagName: 'button',
             },
         });
     });

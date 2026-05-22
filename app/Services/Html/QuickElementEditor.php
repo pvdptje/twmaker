@@ -89,7 +89,7 @@ class QuickElementEditor
 
     private function elementAtPath(DOMElement $root, array $path): ?DOMElement
     {
-        $current = $this->elementChildren($root)[0] ?? null;
+        $current = $this->renderedElementChildren($root)[0] ?? null;
 
         foreach ($path as $index) {
             if (! $current instanceof DOMElement) {
@@ -100,6 +100,24 @@ class QuickElementEditor
         }
 
         return $current instanceof DOMElement ? $current : null;
+    }
+
+    /**
+     * @return array<int, DOMElement>
+     */
+    private function renderedElementChildren(DOMNode $node): array
+    {
+        return array_values(array_filter(
+            $this->elementChildren($node),
+            fn (DOMElement $child): bool => ! in_array(strtolower($child->tagName), [
+                'link',
+                'meta',
+                'script',
+                'style',
+                'template',
+                'title',
+            ], true),
+        ));
     }
 
     /**

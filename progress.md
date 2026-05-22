@@ -267,6 +267,7 @@ in_progress
 - [2026-05-22] M5.targeted-edit-preview-refresh: targeted edit terminal stream events now notify the workspace to refresh immediately; the canvas keeps its `wire:ignore` boundary and refreshes the iframe through an explicit `preview-html-updated` srcdoc event so the preview bridge can re-derive runtime block attributes from comments.
 - [2026-05-22] M5.preview-form-focus-fix: preview bridge no longer prevents default clicks on generated form fields, so page textareas/inputs can receive focus while still reporting builder selection.
 - [2026-05-22] M5.preview-selection-outline-fix: iframe-origin clicks no longer echo a block-id selection back into the preview, preserving the outline on the actual clicked element while section-tree selections can still scroll and outline block roots.
+- [2026-05-22] M5.preview-selection-overlay-polish: single-click now selects blocks without opening quick edit, double-click opens the quick HTML editor, generated click handlers still run, preview links cannot navigate the iframe, blocks that start with local setup tags such as `<style>` annotate their first rendered element, and the selected block is shown with a non-interactive overlay that follows scroll/resize and hides when offscreen.
 
 ## Next Up (Top 3)
 1. M5: add stale-selection and malformed-edit UX handling in the inspector.
@@ -318,3 +319,4 @@ in_progress
 - M5 targeted edit preview refresh verification passed: `php artisan test --filter=BuilderShellTest`, `npm.cmd run test:js`, and `npm.cmd run build`.
 - M5 preview form focus verification passed: `npm.cmd run test:js`, `php artisan test`, and `npm.cmd run build`.
 - M5 preview selection outline verification passed: `php artisan test --filter=BuilderShellTest`, `npm.cmd run test:js`, and `npm.cmd run build`.
+- M5 preview selection overlay polish verification passed: `vendor\bin\pint.bat --dirty --test`, `php artisan test` (145 tests, 300 assertions), `npm.cmd run test:js` (16 tests), and `npm.cmd run build`.
