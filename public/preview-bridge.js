@@ -28,6 +28,73 @@
         'ul'
     ].join(',');
 
+    function cssEscape(value) {
+        if (window.CSS && typeof window.CSS.escape === 'function') {
+            return window.CSS.escape(value);
+        }
+
+        return String(value).replace(/["\\]/g, '\\$&');
+    }
+
+    function parseBlockMarker(comment) {
+        const text = comment?.nodeValue || '';
+
+        if (!/^\s*tw:block\b/i.test(text)) {
+            return null;
+        }
+
+        const attrs = {};
+        text.replace(/([a-z0-9_-]+)\s*=\s*"([^"]*)"/gi, function (_, key, value) {
+            attrs[key] = value;
+            return '';
+        });
+
+        return attrs.id ? attrs : null;
+    }
+
+    function nextElementSibling(node) {
+        let current = node.nextSibling;
+
+        while (current) {
+            if (current.nodeType === Node.ELEMENT_NODE) {
+                return current;
+            }
+
+            current = current.nextSibling;
+        }
+
+        return null;
+    }
+
+    function annotateBlocksFromComments() {
+        const walker = document.createTreeWalker(document.body || document, window.NodeFilter.SHOW_COMMENT);
+
+        while (walker.nextNode()) {
+            const marker = parseBlockMarker(walker.currentNode);
+            const root = marker ? nextElementSibling(walker.currentNode) : null;
+
+            if (!root) {
+                continue;
+            }
+
+            root.dataset.builderBlockId = marker.id;
+            root.dataset.builderBlockType = marker.type || 'block';
+            root.dataset.builderBlockLabel = marker.label || marker.type || 'Block';
+        }
+    }
+
+    function blockSelector(id) {
+        const escaped = cssEscape(id);
+
+        return '[data-builder-block-id="' + escaped + '"], [data-tw-block="' + escaped + '"], [data-node-id="' + escaped + '"]';
+    }
+
+    function nodeSelector(id) {
+        const escaped = cssEscape(id);
+
+        return '[data-node-id="' + escaped + '"], [data-builder-block-id="' + escaped + '"], [data-tw-block="' + escaped + '"]';
+    }
+
     function clearSelection() {
         if (selected) {
             selected.classList.remove('builder-selected');
@@ -108,7 +175,7 @@
     function editableTarget(from) {
         const clicked = from instanceof Element ? from : from?.parentElement;
         const target = clicked?.closest(editableSelector);
-        const blockRoot = clicked?.closest('[data-tw-block]') || clicked?.closest('[data-node-id]');
+        const blockRoot = clicked?.closest('[data-builder-block-id]') || clicked?.closest('[data-tw-block]') || clicked?.closest('[data-node-id]');
 
         if (!target || !blockRoot || !blockRoot.contains(target)) {
             return null;
@@ -135,7 +202,7 @@
         }
 
         const path = editPath(editable.blockRoot, editable.target);
-        const blockId = editable.blockRoot.dataset.twBlock || editable.blockRoot.dataset.nodeId;
+        const blockId = editable.blockRoot.dataset.builderBlockId || editable.blockRoot.dataset.twBlock || editable.blockRoot.dataset.nodeId;
         if (!blockId || path === null) {
             return;
         }
@@ -151,8 +218,8 @@
 
         window.parent.postMessage({
             type: 'builder:node-selected',
-            nodeId: editable.target.dataset.nodeId || blockId,
-            nodeType: editable.target.dataset.nodeType || null,
+            nodeId: editable.target.dataset.nodeId || editable.target.dataset.builderBlockId || blockId,
+            nodeType: editable.target.dataset.nodeType || editable.target.dataset.builderBlockType || null,
             quickEdit: {
                 editId: blockId + ':' + path.join('.'),
                 blockId,
@@ -181,7 +248,7 @@
                 return;
             }
 
-            selected = document.querySelector('[data-node-id="' + event.data.nodeId + '"]');
+            selected = document.querySelector(nodeSelector(event.data.nodeId));
 
             if (selected) {
                 selected.classList.add('builder-selected');
@@ -204,8 +271,7 @@
                 return;
             }
 
-            const blockRoot = document.querySelector('[data-tw-block="' + target.blockId + '"]')
-                || document.querySelector('[data-node-id="' + target.blockId + '"]');
+            const blockRoot = document.querySelector(blockSelector(target.blockId));
             const element = blockRoot ? elementAtPath(blockRoot, target.path) : null;
             const replacement = singleReplacementElement(event.data.html);
 
@@ -225,11 +291,13 @@
             return;
         }
 
-        const target = document.querySelector('[data-node-id="' + event.data.nodeId + '"]');
+        const target = document.querySelector(nodeSelector(event.data.nodeId));
         if (!target || typeof event.data.html !== 'string') {
             return;
         }
 
         target.outerHTML = event.data.html;
     });
+
+    annotateBlocksFromComments();
 })();

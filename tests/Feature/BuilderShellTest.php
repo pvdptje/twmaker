@@ -14,6 +14,7 @@ use App\Livewire\Projects\ProjectList\ProjectList;
 use App\Livewire\Setup\LlmSetup;
 use App\Models\Page;
 use App\Models\Project;
+use App\Services\Html\BlockIndexer;
 use App\Services\Ids\IdGenerator;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
@@ -83,8 +84,7 @@ class BuilderShellTest extends TestCase
 
         $this->assertSame($project->id, $page->project_id);
         $this->assertSame('draft', $page->status);
-        $this->assertSame(2, $page->document_json['schema_version']);
-        $this->assertSame([], $page->document_json['block_index']);
+        $this->assertNull($page->html_source);
     }
 
     public function test_workspace_renders_four_panel_shell_with_placeholder_canvas_and_empty_stream(): void
@@ -99,7 +99,6 @@ class BuilderShellTest extends TestCase
             'project_id' => $project->id,
             'name' => 'Homepage',
             'prompt' => '',
-            'document_json' => $this->emptyDocument(),
             'status' => 'draft',
         ]);
 
@@ -125,19 +124,7 @@ class BuilderShellTest extends TestCase
             'project_id' => $project->id,
             'name' => 'Homepage',
             'prompt' => '',
-            'document_json' => $this->markedHtmlDocument(),
             'html_source' => $this->markedHtmlSource(),
-            'block_index' => [
-                [
-                    'id' => 'block_hero',
-                    'type' => 'hero',
-                    'label' => 'Hero',
-                    'start_offset' => 0,
-                    'end_offset' => strlen($this->markedHtmlSource()),
-                    'html' => '<section data-node-id="block_hero" data-node-type="hero" data-tw-block="block_hero" class="px-6 py-24"><h1>Ship pages with marked blocks</h1></section>',
-                    'summary' => 'Ship pages with marked blocks',
-                ],
-            ],
             'status' => 'valid',
         ]);
 
@@ -145,7 +132,7 @@ class BuilderShellTest extends TestCase
             ->assertOk()
             ->assertSee('Ship pages with marked blocks')
             ->assertSee('Download HTML')
-            ->assertSee('data-node-id=&quot;block_hero&quot;', false)
+            ->assertSee('tw:block id=&quot;block_hero&quot;', false)
             ->assertSee('alpinejs@3.x.x', false)
             ->assertSee('/preview-bridge.js', false);
     }
@@ -162,9 +149,7 @@ class BuilderShellTest extends TestCase
             'project_id' => $project->id,
             'name' => 'Homepage',
             'prompt' => '',
-            'document_json' => $this->markedHtmlDocument(),
             'html_source' => $this->markedHtmlSource(),
-            'block_index' => $this->markedHtmlDocument()['block_index'],
             'status' => 'valid',
         ]);
 
@@ -195,7 +180,6 @@ class BuilderShellTest extends TestCase
             'project_id' => $project->id,
             'name' => 'Homepage',
             'prompt' => '',
-            'document_json' => $this->markedHtmlDocument(),
             'html_source' => $this->markedHtmlSource(),
             'status' => 'valid',
         ]);
@@ -216,7 +200,6 @@ class BuilderShellTest extends TestCase
             'project_id' => $project->id,
             'name' => 'Homepage',
             'prompt' => '',
-            'document_json' => $this->emptyDocument(),
             'status' => 'draft',
         ]);
 
@@ -241,7 +224,6 @@ class BuilderShellTest extends TestCase
             'project_id' => $project->id,
             'name' => 'Homepage',
             'prompt' => '',
-            'document_json' => $this->emptyDocument(),
             'status' => 'draft',
         ]);
 
@@ -267,7 +249,6 @@ class BuilderShellTest extends TestCase
             'project_id' => $project->id,
             'name' => 'Homepage',
             'prompt' => '',
-            'document_json' => $this->emptyDocument(),
             'status' => 'draft',
         ]);
 
@@ -313,7 +294,6 @@ class BuilderShellTest extends TestCase
             'project_id' => $project->id,
             'name' => 'Homepage',
             'prompt' => '',
-            'document_json' => $this->emptyDocument(),
             'status' => 'draft',
         ]);
 
@@ -340,7 +320,6 @@ class BuilderShellTest extends TestCase
             'project_id' => $project->id,
             'name' => 'Homepage',
             'prompt' => '',
-            'document_json' => $this->emptyDocument(),
             'status' => 'draft',
         ]);
 
@@ -367,7 +346,6 @@ class BuilderShellTest extends TestCase
             'project_id' => $project->id,
             'name' => 'Homepage',
             'prompt' => '',
-            'document_json' => $this->emptyDocument(),
             'status' => 'valid',
         ]);
 
@@ -403,7 +381,6 @@ class BuilderShellTest extends TestCase
             'project_id' => $project->id,
             'name' => 'Homepage',
             'prompt' => '',
-            'document_json' => $this->emptyDocument(),
             'status' => 'valid',
         ]);
 
@@ -430,7 +407,6 @@ class BuilderShellTest extends TestCase
             'project_id' => $project->id,
             'name' => 'Homepage',
             'prompt' => '',
-            'document_json' => $this->emptyDocument(),
             'status' => 'draft',
         ]);
 
@@ -452,7 +428,6 @@ class BuilderShellTest extends TestCase
             'project_id' => $project->id,
             'name' => 'Homepage',
             'prompt' => '',
-            'document_json' => $this->emptyDocument(),
             'status' => 'generating',
         ]);
 
@@ -461,9 +436,7 @@ class BuilderShellTest extends TestCase
 
         $page->forceFill([
             'status' => 'valid',
-            'html_source' => '<!-- tw:block id="block_hero" type="hero" label="Hero" --><section data-node-id="block_hero" data-node-type="hero" data-tw-block="block_hero">Hello</section><!-- /tw:block -->',
-            'block_index' => [['id' => 'block_hero', 'type' => 'hero', 'label' => 'Hero', 'start_offset' => 0, 'end_offset' => 1, 'html' => 'Hello', 'summary' => 'Hello']],
-            'document_json' => ['schema_version' => 2, 'page_metadata' => [], 'html_source' => 'Hello', 'block_index' => [['id' => 'block_hero']], 'generation_history' => []],
+            'html_source' => '<!-- tw:block id="block_hero" type="hero" label="Hero" --><section>Hello</section><!-- /tw:block -->',
         ])->save();
 
         $component
@@ -479,7 +452,7 @@ class BuilderShellTest extends TestCase
             ]);
     }
 
-    public function test_workspace_section_browser_prefers_current_html_blocks_over_stale_saved_index(): void
+    public function test_workspace_section_browser_derives_current_html_blocks(): void
     {
         $project = Project::query()->create([
             'id' => app(IdGenerator::class)->project(),
@@ -490,18 +463,14 @@ class BuilderShellTest extends TestCase
             'project_id' => $project->id,
             'name' => 'Homepage',
             'prompt' => '',
-            'document_json' => $this->emptyDocument(),
             'html_source' => <<<'HTML'
 <!-- tw:block id="block_hero" type="hero" label="Hero" -->
-<section data-node-id="block_hero" data-node-type="hero" data-tw-block="block_hero">Hero</section>
+<section>Hero</section>
 <!-- /tw:block -->
 <!-- tw:block id="block_features" type="features" label="Features" -->
-<section data-node-id="block_features" data-node-type="features" data-tw-block="block_features">Features</section>
+<section>Features</section>
 <!-- /tw:block -->
 HTML,
-            'block_index' => [
-                ['id' => 'block_hero', 'type' => 'hero', 'label' => 'Hero', 'summary' => 'Hero'],
-            ],
             'status' => 'valid',
         ]);
 
@@ -533,7 +502,6 @@ HTML,
             'project_id' => $project->id,
             'name' => 'Homepage',
             'prompt' => '',
-            'document_json' => $this->emptyDocument(),
             'status' => 'valid',
         ]);
 
@@ -542,8 +510,7 @@ HTML,
             ->assertSet('selected_node_id', 'block_hero');
 
         $page->forceFill([
-            'html_source' => '<!-- tw:block id="block_hero" type="hero" label="Hero" --><section data-node-id="block_hero" data-node-type="hero" data-tw-block="block_hero">Updated</section><!-- /tw:block -->',
-            'block_index' => [['id' => 'block_hero', 'type' => 'hero', 'label' => 'Hero', 'start_offset' => 0, 'end_offset' => 1, 'html' => 'Updated', 'summary' => 'Updated']],
+            'html_source' => '<!-- tw:block id="block_hero" type="hero" label="Hero" --><section>Updated</section><!-- /tw:block -->',
         ])->save();
 
         $component
@@ -562,9 +529,7 @@ HTML,
             'project_id' => $project->id,
             'name' => 'Homepage',
             'prompt' => '',
-            'document_json' => $this->markedHtmlDocument(),
-            'html_source' => '<!-- tw:block id="block_hero" type="hero" label="Hero" --><section data-node-id="block_hero" data-node-type="hero" data-tw-block="block_hero" class="px-6 py-24"><h1>Ship pages</h1><p class="mt-4">Fast</p></section><!-- /tw:block -->',
-            'block_index' => [],
+            'html_source' => '<!-- tw:block id="block_hero" type="hero" label="Hero" --><section class="px-6 py-24"><h1>Ship pages</h1><p class="mt-4">Fast</p></section><!-- /tw:block -->',
             'status' => 'valid',
         ]);
 
@@ -582,8 +547,8 @@ HTML,
         $this->assertStringContainsString('<h1>Ship pages</h1>', $page->html_source);
         $this->assertStringContainsString('<p class="mt-8 text-lg text-neutral-600">Better website copy here.</p>', $page->html_source);
         $this->assertStringContainsString('<!-- /tw:block -->', $page->html_source);
-        $this->assertStringContainsString('Better website copy here.', $page->block_index[0]['summary']);
-        $this->assertSame($page->html_source, $page->document_json['html_source']);
+        $blockIndex = app(BlockIndexer::class)->index($page->html_source);
+        $this->assertStringContainsString('Better website copy here.', $blockIndex[0]['summary']);
     }
 
     public function test_stream_panel_derives_status_from_page_row(): void
@@ -597,7 +562,6 @@ HTML,
             'project_id' => $project->id,
             'name' => 'Homepage',
             'prompt' => '',
-            'document_json' => $this->emptyDocument(),
             'status' => 'error',
         ]);
 
@@ -616,7 +580,6 @@ HTML,
             'project_id' => $project->id,
             'name' => 'Homepage',
             'prompt' => '',
-            'document_json' => $this->emptyDocument(),
             'status' => 'generating',
         ]);
 
@@ -640,7 +603,6 @@ HTML,
             'project_id' => $project->id,
             'name' => 'Homepage',
             'prompt' => '',
-            'document_json' => $this->emptyDocument(),
             'status' => 'generating',
         ]);
 
@@ -661,7 +623,6 @@ HTML,
             'project_id' => $project->id,
             'name' => 'Homepage',
             'prompt' => '',
-            'document_json' => $this->emptyDocument(),
             'status' => 'valid',
         ]);
 
@@ -702,80 +663,8 @@ HTML,
             ->assertSee('200 total');
     }
 
-    private function emptyDocument(): array
-    {
-        $now = now('UTC')->format('Y-m-d\TH:i:s\Z');
-
-        return [
-            'schema_version' => 1,
-            'page_metadata' => [
-                'title' => 'Homepage',
-                'page_type' => 'landing',
-                'goal' => 'Draft a landing page.',
-                'audience' => 'General audience',
-                'prompt_summary' => 'Empty draft page',
-                'status' => 'draft',
-                'created_at' => $now,
-                'updated_at' => $now,
-            ],
-            'design_system' => [
-                'colors' => [
-                    'primary' => 'cyan',
-                    'accent' => 'emerald',
-                    'neutral' => 'neutral',
-                    'background' => 'white',
-                    'foreground' => 'neutral-950',
-                ],
-                'typography' => [
-                    'heading_family' => 'sans',
-                    'body_family' => 'sans',
-                    'scale' => 'comfortable',
-                ],
-                'spacing' => [
-                    'density' => 'comfortable',
-                    'section_padding' => 'md',
-                ],
-                'radius' => 'md',
-                'tone' => 'professional',
-                'dark_mode' => false,
-            ],
-            'document_tree' => [],
-            'generation_history' => [],
-        ];
-    }
-
-    private function markedHtmlDocument(): array
-    {
-        return [
-            'schema_version' => 2,
-            'page_metadata' => [
-                'title' => 'Homepage',
-                'page_type' => 'landing',
-                'goal' => 'Draft a landing page.',
-                'audience' => 'General audience',
-                'prompt_summary' => 'Marked HTML preview',
-                'status' => 'valid',
-                'created_at' => '2026-05-20T18:00:00Z',
-                'updated_at' => '2026-05-20T18:00:00Z',
-            ],
-            'html_source' => $this->markedHtmlSource(),
-            'block_index' => [
-                [
-                    'id' => 'block_hero',
-                    'type' => 'hero',
-                    'label' => 'Hero',
-                    'start_offset' => 0,
-                    'end_offset' => strlen($this->markedHtmlSource()),
-                    'html' => '<section data-node-id="block_hero" data-node-type="hero" data-tw-block="block_hero" class="px-6 py-24"><h1>Ship pages with marked blocks</h1></section>',
-                    'summary' => 'Ship pages with marked blocks',
-                ],
-            ],
-            'generation_history' => [],
-        ];
-    }
-
     private function markedHtmlSource(): string
     {
-        return '<!-- tw:block id="block_hero" type="hero" label="Hero" --><section data-node-id="block_hero" data-node-type="hero" data-tw-block="block_hero" class="px-6 py-24"><h1>Ship pages with marked blocks</h1></section><!-- /tw:block -->';
+        return '<!-- tw:block id="block_hero" type="hero" label="Hero" --><section class="px-6 py-24"><h1>Ship pages with marked blocks</h1></section><!-- /tw:block -->';
     }
 }

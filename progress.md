@@ -263,6 +263,7 @@ in_progress
 - `app/Livewire/Builder/Workspace/workspace.blade.php`: modified: adds polling and keyed child components so generated HTML refreshes without a hard browser refresh.
 - `tests/Feature/BuilderShellTest.php`: modified: covers polling generated HTML state into the workspace.
 - `tests/Feature/BuilderShellTest.php`: modified: expects empty R3 page shape on page creation.
+- [2026-05-22] M5.comment-marker-source-of-truth: pages now persist only `html_source` plus cache/status metadata; `document_json` and stored `block_index` are dropped from the page row, block lists derive from comments, generator prompts no longer ask for builder data attributes, and the preview bridge annotates block roots from `tw:block` comments at runtime.
 
 ## Next Up (Top 3)
 1. M5: add stale-selection and malformed-edit UX handling in the inspector.
@@ -310,3 +311,4 @@ in_progress
 - M5 provider/model settings and lock removal verification passed: `php artisan test`, `npm.cmd run build`, and `npm.cmd run test:js`.
 - M5 stale Anthropic model fix verification passed: `php artisan config:clear`, `php artisan cache:clear`, and `php artisan test` (111 tests, 192 assertions).
 - M5 live stream modal reset verification passed: `vendor\bin\pint.bat --dirty`, `php artisan test --filter=PipelineTest`, `php artisan test --filter=BuilderShellTest`, and `npm.cmd run build`.
+- M5 comment marker source-of-truth verification passed: `vendor\bin\pint.bat --dirty`, `php artisan test` (144 tests, 296 assertions), `npm.cmd run test:js`, and `npm.cmd run build`.

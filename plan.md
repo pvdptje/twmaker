@@ -98,7 +98,7 @@ Not Figma. Not Webflow. Not a CMS. Not a multi-tenant SaaS. Not an image generat
 |---|----------|------------|
 | OQ1 | Exact JSON schema fields and nesting rules | Defined in full in Sec. 4 to Sec. 9. |
 | OQ2 | Exact prop schema per reusable element type | Defined in Sec. 7. |
-| OQ3 | Exact preview selection implementation | `srcdoc` iframe + `postMessage` bridge with `data-node-id`. See Sec. 13. |
+| OQ3 | Exact preview selection implementation | `srcdoc` iframe + `postMessage` bridge derived from `tw:block` comments. See Sec. 13. |
 | OQ4 | Sync streamed partials vs queued with pushed events | Queued jobs + Laravel Reverb broadcasting. See Sec. 12. |
 | OQ5 | Provider and model for first impl | Anthropic Claude via official PHP SDK. Default model `claude-sonnet-4-5` (configurable per stage). Structured output enforced via `tool_use`. See Sec. 11. |
 
@@ -107,9 +107,9 @@ Not Figma. Not Webflow. Not a CMS. Not a multi-tenant SaaS. Not an image generat
 ## 4. Marked HTML Document Model - Top Level
 
 ### 4.0 R3 Architecture Pivot
-V1 now treats generated Tailwind HTML as the page source of truth. The LLM is allowed to produce real HTML and Tailwind utility classes directly, as long as editable regions are marked with machine-readable comments and data attributes.
+V1 now treats generated Tailwind HTML as the page source of truth. The LLM is allowed to produce real HTML and Tailwind utility classes directly, as long as editable regions are marked with machine-readable comments.
 
-The application derives a lightweight JSON `block_index` from the HTML. This index is not the creative source. It exists so the builder can list sections, sync canvas selections, extract one block for targeted editing, and replace that block after an edit.
+The application derives a lightweight in-memory `block_index` from the HTML comments. This index is not persisted as page source. It exists so the builder can list sections, sync canvas selections, extract one block for targeted editing, and replace that block after an edit.
 
 Legacy note: the structured JSON schema in Sec. 4.1 through Sec. 9 is retained as compatibility reference during migration. New generation and targeted editing should use Sec. 4.0.1 through Sec. 4.0.6.
 
@@ -119,7 +119,7 @@ type HtmlPageArtifact = {
   schema_version: 2;
   page_metadata: PageMetadata;
   html_source: string;                    // marked Tailwind HTML body content
-  block_index: BlockIndexEntry[];         // derived from html_source
+  block_index: BlockIndexEntry[];         // derived from html_source for runtime responses only
   generation_history: GenerationHistoryEntry[];
 };
 ```
@@ -129,7 +129,7 @@ Every top-level editable region MUST be wrapped in balanced comments:
 
 ```html
 <!-- tw:block id="block_01h..." type="hero" label="Hero" -->
-<section data-node-id="block_01h..." data-node-type="hero" data-tw-block="block_01h..." class="...">
+<section class="...">
   ...
 </section>
 <!-- /tw:block -->
@@ -137,16 +137,16 @@ Every top-level editable region MUST be wrapped in balanced comments:
 
 Rules:
 - `id` must be unique in the page.
-- The first element inside a block must include `data-node-id`, `data-node-type`, and `data-tw-block` matching the block marker.
+- The first element inside a block does not need builder data attributes; the comments are the source of truth.
 - Blocks may contain arbitrary safe HTML and Tailwind classes.
-- Blocks may contain nested node markers for granular selection, but V1 targeted edit only requires block-level replacement.
+- The preview bridge may add runtime-only DOM attributes from the comments for selection, but those attributes are not saved to `html_source`.
 
 ### 4.0.3 Optional Node Markers
 Important editable text or controls MAY be wrapped as nodes:
 
 ```html
 <!-- tw:node id="node_01h..." role="headline" -->
-<h1 data-node-id="node_01h..." data-node-type="headline" class="...">...</h1>
+<h1 class="...">...</h1>
 <!-- /tw:node -->
 ```
 
@@ -171,7 +171,6 @@ Offsets are derived and may be recalculated any time `html_source` changes.
 Validation MUST reject:
 - Missing or unbalanced `tw:block` comments.
 - Duplicate block IDs.
-- A block marker whose first element does not expose the same `data-node-id`.
 - `<script>` tags.
 - Inline event handler attributes such as `onclick`, `onload`, or any attribute beginning with `on`.
 - `javascript:` URLs.
@@ -189,7 +188,7 @@ For targeted editing, the orchestrator extracts the selected marked block and se
 - The selected block HTML.
 - Relevant page metadata.
 
-The LLM returns exactly one marked block. The replacement is accepted if it passes Sec. 4.0.5 and either preserves the selected block ID or explicitly declares a new ID with no collision. The builder replaces the old marked block substring in `html_source`, then regenerates `block_index`.
+The LLM returns one or more marked blocks. The replacement is accepted if it passes Sec. 4.0.5 and either preserves the selected block ID or explicitly declares a new ID with no collision. The builder replaces the old marked block substring in `html_source`, then derives a fresh `block_index`.
 
 ## 4A. Legacy Document JSON Schema - Top Level
 
@@ -891,16 +890,16 @@ type PipelineStage =
 - Failure mode: if the planner fails twice, abort with status="error".
 
 #### Stage 2 - Section Generator
-Runs as one creative raw HTML pass for the full page body.
-- Input: user prompt + planner output.
-- Output: raw safe Tailwind HTML body in `raw_html`, without `tw:block` markers.
+Runs as one creative HTML pass for the full page document.
+- Input: user prompt.
+- Output: safe marked Tailwind HTML as plain text, including balanced `tw:block` comments.
 - Streamed events: `section_generator / stage_started`, `section_generator / stage_completed`.
 - Element references: must not use `element_instance` or reusable library IDs.
 - Failure mode: empty output or unsafe output aborts the pipeline with status="error".
 
 #### Stage 3 - HTML Marker
 - Input: raw HTML + planner output.
-- Action: wrap meaningful top-level regions in `<!-- tw:block ... -->` comments and add matching `data-node-id`, `data-node-type`, and `data-tw-block` attributes.
+- Action: fallback only; wrap meaningful top-level regions in `<!-- tw:block ... -->` comments.
 - Output: `html_source`.
 - Streamed events: `html_marker / stage_started`, `html_marker / stage_completed`.
 
@@ -910,9 +909,8 @@ Runs as one creative raw HTML pass for the full page body.
   1. HTML source is not empty.
   2. At least one balanced `tw:block` marker pair exists.
   3. Block IDs are unique.
-  4. Every block root exposes matching selectable attributes.
-  5. No `<script>`, inline event handlers, or `javascript:` URLs are present.
-- Output: schema-version-2 document with derived `block_index`, plus cached preview HTML.
+  4. No `<script>`, inline event handlers, or `javascript:` URLs are present.
+- Output: persisted `html_source` and cached preview HTML; `block_index` is derived when needed.
 
 #### Stage 5 - Renderer
 - See Sec. 13 for full contract.
@@ -922,7 +920,7 @@ Runs as one creative raw HTML pass for the full page body.
 - Input: target block ID, edit instruction, full `html_source` for context, and the extracted marked block HTML.
 - LLM call: asks for one replacement marked block only.
 - Validation: validates the replacement block with the same marked-HTML validator.
-- Apply: replace the old marked-block substring in `html_source`, regenerate `block_index`, and refresh preview cache.
+- Apply: replace the old marked-block substring in `html_source`, derive `block_index`, and refresh preview cache.
 - Render: preview re-renders from the updated HTML source.
 - Streamed events: `edit_requested`, then either `edit_applied` or `edit_rejected`.
 
@@ -1082,8 +1080,8 @@ The Livewire component appends events to its in-memory list (capped at 200 displ
 ### 13.1 Preview Contract
 - Input: validated marked Tailwind HTML source.
 - Output: complete iframe `srcdoc`.
-- Every editable block carries `data-node-id="<block id>"`, `data-node-type="<block type>"`, and `data-tw-block="<block id>"`.
-- Optional nested nodes may also carry `data-node-id`.
+- Every editable block carries `tw:block` comment markers in `html_source`.
+- The preview bridge derives runtime-only `data-builder-block-id` attributes from those comments for click selection.
 - The preview is intentionally permissive about Tailwind utility classes.
 
 ### 13.2 Renderer Implementation
@@ -1105,10 +1103,11 @@ The Livewire component appends events to its in-memory list (capped at 200 displ
   - `<!doctype html><html><head><link rel="stylesheet" href="/preview.css"><script src="https://cdn.tailwindcss.com"></script></head><body> ...html_source... <script src="/preview-bridge.js"></script></body></html>`
 - The iframe is same-origin, so the parent can read/write its DOM if ever needed.
 - `preview-bridge.js` is a tiny script that:
-  1. Listens for `click` events.
-  2. Walks up from the click target to nearest `[data-node-id]`, preferring marked blocks and nodes.
-  3. Calls `window.parent.postMessage({ type: 'builder:node-selected', nodeId, nodeType }, '*')`.
-  4. Listens for `{ type: 'select-node', nodeId }` and adds an outline class to that node.
+  1. Reads `tw:block` comments and annotates each primary wrapper element with runtime-only block metadata.
+  2. Listens for `click` events.
+  3. Walks up from the click target to the nearest runtime block root or legacy `[data-node-id]`.
+  4. Calls `window.parent.postMessage({ type: 'builder:node-selected', nodeId, nodeType }, '*')`.
+  5. Listens for `{ type: 'select-node', nodeId }` and adds an outline class to that node.
 
 ### 13.6 Parent Bridge
 - Canvas JavaScript listens to preview bridge messages.
@@ -1201,9 +1200,7 @@ All ID columns are `string(32)` (varchar(32)) to fit typed-prefix ULIDs (Sec. 4.
 | project_id | string(32) FK -> projects.id | onDelete cascade |
 | name | string(160) | |
 | prompt | text | original user prompt |
-| document_json | json | current `Document` |
 | html_source | longText nullable | R3 marked Tailwind HTML source of truth |
-| block_index | json nullable | R3 derived editable block index |
 | rendered_html_cache | longText nullable | cache of full preview/export HTML |
 | status | enum | draft/generating/valid/invalid/error |
 | last_generation_summary | string(500) nullable | |
@@ -1244,7 +1241,7 @@ Indexes: `(page_id, occurred_at desc)`.
 |--------|------|-------|
 | id | string(32) PK | `ver_*` |
 | page_id | string(32) FK | onDelete cascade |
-| document_json | json | snapshot |
+| html_source | longText nullable | marked HTML snapshot |
 | created_by_kind | string(40) | e.g. `generation`, `edit`, `manual` |
 | created_at | timestampTz | |
 
@@ -1442,7 +1439,7 @@ Legacy JSON renderer asserts every emitted class is in this set (dev mode). R3 m
 - Output: a single HTML file with the marked HTML body cleaned for public use.
 - The export contains:
   - `<!doctype html>` + minimal `<head>` (title from metadata, viewport meta, the CSS).
-  - The `html_source` body stripped of marker comments, `data-node-id`, `data-node-type`, and `data-tw-block` attributes.
+  - The `html_source` body stripped of marker comments and runtime builder attributes.
 - Export removes the bridge script, selection overlay class, and any builder-only artifacts.
 
 ### 19.2 Implementation

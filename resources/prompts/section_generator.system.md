@@ -22,10 +22,7 @@ Editable block contract:
   `<!-- tw:block id="block_..." type="hero" label="Hero" -->`
   then exactly one primary wrapper element,
   then `<!-- /tw:block -->`.
-- The primary wrapper element inside each block must include:
-  `data-node-id="same block id"`
-  `data-node-type="same block type"`
-  `data-tw-block="same block id"`
+- Do not add builder metadata attributes such as `data-node-id`, `data-node-type`, or `data-tw-block`; the comments are the source of truth.
 - Use unique, readable block IDs: `block_header`, `block_hero`, `block_features`, `block_pricing`, `block_footer`, etc.
 - Use descriptive block types. They are labels, not a fixed schema.
 - Prefer 5 to 9 editable blocks for a full page.

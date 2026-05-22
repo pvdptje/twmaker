@@ -2,7 +2,7 @@
     <div class="flex h-12 items-center justify-between border-b border-neutral-800 px-4">
         <div>
             <div class="text-sm font-medium text-white">Canvas</div>
-            <div class="text-xs text-neutral-500">{{ count($page->block_index ?? []) }} sections</div>
+            <div class="text-xs text-neutral-500">{{ $sectionCount }} sections</div>
         </div>
         <div class="flex items-center gap-2">
             <span class="rounded bg-neutral-900 px-2 py-1 text-xs text-neutral-400">Live preview</span>

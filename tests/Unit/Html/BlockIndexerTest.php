@@ -11,7 +11,7 @@ class BlockIndexerTest extends TestCase
     {
         $text = str_repeat('a', 156).'€'.str_repeat('b', 20);
         $html = '<!-- tw:block id="block_hero" type="hero" label="Hero" -->'
-            .'<section data-node-id="block_hero" data-node-type="hero" data-tw-block="block_hero"><p>'.$text.'</p></section>'
+            .'<section><p>'.$text.'</p></section>'
             .'<!-- /tw:block -->';
 
         $block = (new BlockIndexer)->index($html)[0];

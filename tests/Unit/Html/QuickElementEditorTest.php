@@ -12,7 +12,7 @@ class QuickElementEditorTest extends TestCase
 {
     public function test_replaces_one_element_without_exposing_block_markers(): void
     {
-        $html = '<!-- tw:block id="block_hero" type="hero" label="Hero" --><section data-node-id="block_hero" data-node-type="hero" data-tw-block="block_hero" class="px-6 py-24"><h1>Ship pages</h1><p class="mt-4 text-lg">Fast</p></section><!-- /tw:block -->';
+        $html = '<!-- tw:block id="block_hero" type="hero" label="Hero" --><section class="px-6 py-24"><h1>Ship pages</h1><p class="mt-4 text-lg">Fast</p></section><!-- /tw:block -->';
 
         $updated = $this->editor()->replace(
             $html,
@@ -31,7 +31,7 @@ class QuickElementEditorTest extends TestCase
         $this->expectException(HtmlValidationException::class);
 
         $this->editor()->replace(
-            '<!-- tw:block id="block_hero" type="hero" label="Hero" --><section data-node-id="block_hero" data-tw-block="block_hero">Hero</section><!-- /tw:block -->',
+            '<!-- tw:block id="block_hero" type="hero" label="Hero" --><section>Hero</section><!-- /tw:block -->',
             'block_hero:',
             '<!-- tw:block id="oops" --><section>Bad</section><!-- /tw:block -->',
         );

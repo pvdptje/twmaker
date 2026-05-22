@@ -36,6 +36,7 @@ class HtmlFragmentRepairerTest extends TestCase
 
         $this->assertStringContainsString('@click="open = ! open"', $marked);
         $this->assertStringContainsString(':class="{ active: open }"', $marked);
-        $this->assertStringContainsString('data-tw-block="block_hero"', $marked);
+        $this->assertStringContainsString('tw:block id="block_hero"', $marked);
+        $this->assertStringNotContainsString('data-tw-block="block_hero"', $marked);
     }
 }

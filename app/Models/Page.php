@@ -17,21 +17,11 @@ class Page extends Model
         'project_id',
         'name',
         'prompt',
-        'document_json',
         'html_source',
-        'block_index',
         'rendered_html_cache',
         'status',
         'last_generation_summary',
     ];
-
-    protected function casts(): array
-    {
-        return [
-            'document_json' => 'array',
-            'block_index' => 'array',
-        ];
-    }
 
     public function project(): BelongsTo
     {

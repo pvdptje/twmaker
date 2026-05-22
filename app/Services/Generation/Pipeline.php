@@ -64,9 +64,7 @@ class Pipeline
             $document = $this->scrubArray($this->htmlArtifact($artifact, $htmlSource, $blockIndex));
 
             $page->forceFill([
-                'document_json' => $document,
                 'html_source' => $htmlSource,
-                'block_index' => $blockIndex,
                 'rendered_html_cache' => $this->renderer->renderPreviewHtml($htmlSource, $artifact['title'] ?? $page->name),
                 'status' => 'valid',
                 'last_generation_summary' => $document['page_metadata']['prompt_summary'] ?? null,
@@ -123,9 +121,7 @@ class Pipeline
             ));
 
             $page->forceFill([
-                'document_json' => $document,
                 'html_source' => $htmlSource,
-                'block_index' => $blockIndex,
                 'rendered_html_cache' => $this->renderer->renderPreviewHtml($htmlSource, $page->name),
                 'status' => 'valid',
                 'last_generation_summary' => $document['page_metadata']['prompt_summary'] ?? null,
@@ -342,7 +338,7 @@ class Pipeline
         }
 
         return '<!-- tw:block id="block_page" type="custom" label="Page" -->'."\n"
-            .'<div data-node-id="block_page" data-node-type="custom" data-tw-block="block_page">'."\n"
+            .'<div>'."\n"
             .$rawHtml."\n"
             .'</div>'."\n"
             .'<!-- /tw:block -->';
@@ -350,13 +346,11 @@ class Pipeline
 
     private function editArtifact(Page $page, string $instruction): array
     {
-        $metadata = $page->document_json['page_metadata'] ?? [];
-
         return [
-            'title' => $metadata['title'] ?? $page->name,
-            'page_type' => $metadata['page_type'] ?? 'generic',
-            'goal' => $metadata['goal'] ?? 'Edited from builder instruction.',
-            'audience' => $metadata['audience'] ?? 'Visitors',
+            'title' => $page->name,
+            'page_type' => 'generic',
+            'goal' => $page->prompt !== '' ? str($page->prompt)->limit(180)->toString() : 'Edited from builder instruction.',
+            'audience' => 'Visitors',
             'prompt_summary' => 'Targeted edit: '.str($instruction)->limit(120),
         ];
     }

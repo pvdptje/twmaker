@@ -170,19 +170,10 @@ class DeterministicBlockMarker
                 $meta['label'],
             );
             $closeComment = "\n".'<!-- /tw:block -->';
-            $attributes = sprintf(
-                ' data-node-id="%s" data-node-type="%s" data-tw-block="%s"',
-                $meta['id'],
-                $meta['type'],
-                $meta['id'],
-            );
 
             $html = substr($html, 0, (int) $target['end'])
                 .$closeComment
                 .substr($html, (int) $target['end']);
-            $html = substr($html, 0, (int) $target['open_end'])
-                .$attributes
-                .substr($html, (int) $target['open_end']);
             $html = substr($html, 0, (int) $target['start'])
                 .$openComment
                 .substr($html, (int) $target['start']);

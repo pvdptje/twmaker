@@ -326,18 +326,10 @@ class TargetedEdit
                 [
                     'id="'.$oldId.'"',
                     "id='{$oldId}'",
-                    'data-node-id="'.$oldId.'"',
-                    "data-node-id='{$oldId}'",
-                    'data-tw-block="'.$oldId.'"',
-                    "data-tw-block='{$oldId}'",
                 ],
                 [
                     'id="'.$newId.'"',
                     "id='{$newId}'",
-                    'data-node-id="'.$newId.'"',
-                    "data-node-id='{$newId}'",
-                    'data-tw-block="'.$newId.'"',
-                    "data-tw-block='{$newId}'",
                 ],
                 $blockHtml,
             );

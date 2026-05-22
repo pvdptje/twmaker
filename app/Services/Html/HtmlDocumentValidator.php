@@ -54,13 +54,6 @@ class HtmlDocumentValidator
             }
             $ids[$block['id']] = true;
 
-            if (! preg_match('/data-node-id=["\']'.preg_quote($block['id'], '/').'["\']/', $block['html'])) {
-                $errors[] = "Block [{$block['id']}] must contain a matching data-node-id attribute.";
-            }
-
-            if (! preg_match('/data-tw-block=["\']'.preg_quote($block['id'], '/').'["\']/', $block['html'])) {
-                $errors[] = "Block [{$block['id']}] must contain a matching data-tw-block attribute.";
-            }
         }
 
         return array_values(array_unique($errors));

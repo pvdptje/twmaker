@@ -16,7 +16,7 @@ class PageVersion extends Model
     protected $fillable = [
         'id',
         'page_id',
-        'document_json',
+        'html_source',
         'created_by_kind',
         'created_at',
     ];
@@ -24,7 +24,6 @@ class PageVersion extends Model
     protected function casts(): array
     {
         return [
-            'document_json' => 'array',
             'created_at' => 'datetime',
         ];
     }

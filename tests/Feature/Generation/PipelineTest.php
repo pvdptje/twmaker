@@ -20,7 +20,7 @@ class PipelineTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_pipeline_persists_marked_html_and_block_index(): void
+    public function test_pipeline_persists_marked_html_and_derives_block_index(): void
     {
         [$project, $page] = $this->makePage('A developer tool landing page');
 
@@ -33,9 +33,9 @@ class PipelineTest extends TestCase
         $this->assertSame('valid', $page->status);
         $this->assertSame(2, $document['schema_version']);
         $this->assertStringContainsString('tw:block id="block_hero"', $page->html_source);
-        $this->assertCount(2, $page->block_index);
-        $this->assertSame('block_hero', $page->block_index[0]['id']);
-        $this->assertSame($document, $page->document_json);
+        $blockIndex = app(BlockIndexer::class)->index($page->html_source);
+        $this->assertCount(2, $blockIndex);
+        $this->assertSame('block_hero', $blockIndex[0]['id']);
         $this->assertDatabaseHas('generation_events', [
             'page_id' => $page->id,
             'kind' => 'generation_completed',
@@ -65,8 +65,9 @@ HTML;
         $page->refresh();
 
         $this->assertSame('valid', $page->status);
-        $this->assertCount(3, $page->block_index);
-        $this->assertSame('footer', $page->block_index[2]['type']);
+        $blockIndex = app(BlockIndexer::class)->index($page->html_source);
+        $this->assertCount(3, $blockIndex);
+        $this->assertSame('footer', $blockIndex[2]['type']);
         $this->assertDatabaseMissing('generation_events', [
             'page_id' => $page->id,
             'kind' => 'generation_failed',
@@ -74,7 +75,7 @@ HTML;
         ]);
     }
 
-    public function test_pipeline_scrubs_malformed_utf8_before_json_persistence(): void
+    public function test_pipeline_scrubs_malformed_utf8_before_html_persistence(): void
     {
         [$project, $page] = $this->makePage('A page with malformed bytes');
         $artifact = $this->htmlArtifact();
@@ -92,12 +93,10 @@ HTML;
 
         $this->assertSame('valid', $page->status);
         $this->assertTrue(mb_check_encoding($page->html_source, 'UTF-8'));
-        $this->assertTrue(mb_check_encoding($page->document_json['html_source'], 'UTF-8'));
-        $this->assertStringNotContainsString(chr(195).'(', $page->document_json['html_source']);
-        $this->assertSame($page->html_source, $page->document_json['html_source']);
+        $this->assertStringNotContainsString(chr(195).'(', $page->html_source);
     }
 
-    public function test_pipeline_persists_long_multibyte_block_summaries_as_valid_json(): void
+    public function test_pipeline_derives_long_multibyte_block_summaries_as_valid_utf8(): void
     {
         [$project, $page] = $this->makePage('A page with a long multibyte summary');
         $artifact = $this->htmlArtifact();
@@ -111,9 +110,9 @@ HTML;
 
         $page->refresh();
 
-        $this->assertTrue(mb_check_encoding($page->block_index[0]['summary'], 'UTF-8'));
-        $this->assertStringContainsString('€', $page->block_index[0]['summary']);
-        $this->assertSame($page->block_index, $page->document_json['block_index']);
+        $blockIndex = app(BlockIndexer::class)->index($page->html_source);
+        $this->assertTrue(mb_check_encoding($blockIndex[0]['summary'], 'UTF-8'));
+        $this->assertStringContainsString('€', $blockIndex[0]['summary']);
     }
 
     public function test_pipeline_rejects_unsafe_generated_html(): void
@@ -210,9 +209,10 @@ HTML;
         $page->refresh();
 
         $this->assertSame('valid', $page->status);
-        $this->assertCount(1, $page->block_index);
-        $this->assertSame('block_page', $page->block_index[0]['id']);
-        $this->assertStringContainsString('data-tw-block="block_page"', $page->html_source);
+        $blockIndex = app(BlockIndexer::class)->index($page->html_source);
+        $this->assertCount(1, $blockIndex);
+        $this->assertSame('block_page', $blockIndex[0]['id']);
+        $this->assertStringNotContainsString('data-tw-block="block_page"', $page->html_source);
         $this->assertDatabaseHas('generation_events', [
             'page_id' => $page->id,
             'kind' => 'stage_completed',
@@ -228,9 +228,7 @@ HTML;
         $blockIndex = app(BlockIndexer::class)->index($artifact['marked_html']);
 
         $page->forceFill([
-            'document_json' => ['schema_version' => 2, 'page_metadata' => ['title' => 'Acme DevTools'], 'html_source' => $artifact['marked_html'], 'block_index' => $blockIndex, 'generation_history' => []],
             'html_source' => $artifact['marked_html'],
-            'block_index' => $blockIndex,
             'status' => 'valid',
         ])->save();
 
@@ -254,11 +252,12 @@ HTML;
         $page->refresh();
 
         $this->assertSame('valid', $page->status);
-        $this->assertCount(3, $page->block_index);
-        $this->assertSame('block_hero', $page->block_index[0]['id']);
-        $this->assertStringStartsWith('sec_', $page->block_index[1]['id']);
-        $this->assertSame('block_features', $page->block_index[2]['id']);
-        $this->assertStringContainsString('Editable block index', $page->block_index[2]['html']);
+        $blockIndex = app(BlockIndexer::class)->index($page->html_source);
+        $this->assertCount(3, $blockIndex);
+        $this->assertSame('block_hero', $blockIndex[0]['id']);
+        $this->assertStringStartsWith('sec_', $blockIndex[1]['id']);
+        $this->assertSame('block_features', $blockIndex[2]['id']);
+        $this->assertStringContainsString('Editable block index', $blockIndex[2]['html']);
         $this->assertDatabaseHas('generation_events', [
             'page_id' => $page->id,
             'kind' => 'edit_applied',
@@ -274,9 +273,7 @@ HTML;
         $blockIndex = app(BlockIndexer::class)->index($artifact['marked_html']);
 
         $page->forceFill([
-            'document_json' => ['schema_version' => 2, 'page_metadata' => ['title' => 'Acme DevTools'], 'html_source' => $artifact['marked_html'], 'block_index' => $blockIndex, 'generation_history' => []],
             'html_source' => $artifact['marked_html'],
-            'block_index' => $blockIndex,
             'status' => 'valid',
         ])->save();
 
@@ -295,8 +292,9 @@ HTML;
         $page->refresh();
 
         $this->assertSame('valid', $page->status);
-        $this->assertCount(1, $page->block_index);
-        $this->assertSame('block_hero', $page->block_index[0]['id']);
+        $blockIndex = app(BlockIndexer::class)->index($page->html_source);
+        $this->assertCount(1, $blockIndex);
+        $this->assertSame('block_hero', $blockIndex[0]['id']);
         $this->assertStringContainsString('One focused product story', $page->html_source);
         $this->assertStringNotContainsString('Editable block index', $page->html_source);
         $this->assertDatabaseHas('generation_events', [
@@ -315,9 +313,7 @@ HTML;
         $blockIndex = app(BlockIndexer::class)->index($artifact['marked_html']);
 
         $page->forceFill([
-            'document_json' => ['schema_version' => 2, 'page_metadata' => ['title' => 'Acme DevTools'], 'html_source' => $artifact['marked_html'], 'block_index' => $blockIndex, 'generation_history' => []],
             'html_source' => $artifact['marked_html'],
-            'block_index' => $blockIndex,
             'status' => 'valid',
         ])->save();
 
@@ -354,7 +350,6 @@ HTML;
             'project_id' => $project->id,
             'name' => 'Homepage',
             'prompt' => $prompt,
-            'document_json' => ['schema_version' => 2, 'page_metadata' => [], 'html_source' => '', 'block_index' => [], 'generation_history' => []],
             'status' => 'draft',
         ]);
 

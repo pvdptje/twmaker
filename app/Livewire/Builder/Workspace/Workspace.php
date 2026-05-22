@@ -61,18 +61,8 @@ class Workspace extends Component
             return;
         }
 
-        $blockIndex = app(BlockIndexer::class)->index($updatedHtml);
-        $document = $this->page->document_json ?? [];
-        if (($document['schema_version'] ?? null) === 2) {
-            $document['html_source'] = $updatedHtml;
-            $document['block_index'] = $blockIndex;
-            $document['page_metadata']['updated_at'] = now('UTC')->format('Y-m-d\TH:i:s\Z');
-        }
-
         $this->page->forceFill([
             'html_source' => $updatedHtml,
-            'block_index' => $blockIndex,
-            'document_json' => $document,
             'status' => 'valid',
             'rendered_html_cache' => null,
         ])->save();
@@ -165,7 +155,6 @@ class Workspace extends Component
             $page->status,
             (string) $page->updated_at,
             md5((string) ($page->html_source ?? '')),
-            md5(json_encode($page->block_index ?? [], JSON_THROW_ON_ERROR)),
         ]));
     }
 
@@ -185,9 +174,8 @@ class Workspace extends Component
     private function currentBlockIndex(Page $page): array
     {
         $html = (string) ($page->html_source ?? '');
-        $blocks = trim($html) === '' ? [] : app(BlockIndexer::class)->index($html);
 
-        return $blocks !== [] ? $blocks : ($page->block_index ?? []);
+        return trim($html) === '' ? [] : app(BlockIndexer::class)->index($html);
     }
 
     private function validSelectedBlockIds(array $selectedBlockIds): array

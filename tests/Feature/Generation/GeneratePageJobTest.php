@@ -27,7 +27,6 @@ class GeneratePageJobTest extends TestCase
             'project_id' => $project->id,
             'name' => 'Homepage',
             'prompt' => '',
-            'document_json' => $this->emptyDocument(),
             'status' => 'draft',
         ]);
         $pipeline = Mockery::mock(Pipeline::class);
@@ -36,47 +35,5 @@ class GeneratePageJobTest extends TestCase
         (new GeneratePageJob($page->id))->handle($pipeline);
 
         $this->assertTrue(true);
-    }
-
-    private function emptyDocument(): array
-    {
-        $now = now('UTC')->format('Y-m-d\TH:i:s\Z');
-
-        return [
-            'schema_version' => 1,
-            'page_metadata' => [
-                'title' => 'Homepage',
-                'page_type' => 'landing',
-                'goal' => 'Draft a landing page.',
-                'audience' => 'General audience',
-                'prompt_summary' => 'Empty draft page',
-                'status' => 'draft',
-                'created_at' => $now,
-                'updated_at' => $now,
-            ],
-            'design_system' => [
-                'colors' => [
-                    'primary' => 'cyan',
-                    'accent' => 'emerald',
-                    'neutral' => 'neutral',
-                    'background' => 'white',
-                    'foreground' => 'neutral-950',
-                ],
-                'typography' => [
-                    'heading_family' => 'sans',
-                    'body_family' => 'sans',
-                    'scale' => 'comfortable',
-                ],
-                'spacing' => [
-                    'density' => 'comfortable',
-                    'section_padding' => 'md',
-                ],
-                'radius' => 'md',
-                'tone' => 'professional',
-                'dark_mode' => false,
-            ],
-            'document_tree' => [],
-            'generation_history' => [],
-        ];
     }
 }

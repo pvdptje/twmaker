@@ -70,12 +70,14 @@ describe('preview bridge', () => {
     });
 
     it('reports a stable edit path inside a marked block', () => {
-        const { document, messages, window } = bootPreview(`
-            <section data-node-id="block_hero" data-node-type="hero" data-tw-block="block_hero">
+        const { document, messages, window } = bootPreview(`<body>
+            <!-- tw:block id="block_hero" type="hero" label="Hero" -->
+            <section>
                 <h1>Ship pages</h1>
                 <div><p>Fast</p></div>
             </section>
-        `);
+            <!-- /tw:block -->
+        </body>`);
 
         document.querySelector('p').dispatchEvent(new window.MouseEvent('click', {
             bubbles: true,
@@ -120,12 +122,14 @@ describe('preview bridge', () => {
     });
 
     it('replaces a quick-edited element by edit path without reloading the preview', () => {
-        const { document, window } = bootPreview(`
-            <section data-node-id="block_hero" data-node-type="hero" data-tw-block="block_hero">
+        const { document, window } = bootPreview(`<body>
+            <!-- tw:block id="block_hero" type="hero" label="Hero" -->
+            <section>
                 <h1>Ship pages</h1>
                 <p class="mt-4">Fast</p>
             </section>
-        `);
+            <!-- /tw:block -->
+        </body>`);
 
         window.dispatchEvent(new window.MessageEvent('message', {
             data: {
@@ -170,13 +174,17 @@ describe('preview bridge', () => {
     });
 
     it('scrolls a parent-selected node into view when requested', () => {
-        const { document, window } = bootPreview(`
+        const { document, window } = bootPreview(`<body>
             <main>
-                <section data-node-id="block_hero" data-node-type="hero">Hero</section>
-                <section data-node-id="block_pricing" data-node-type="pricing">Pricing</section>
+                <!-- tw:block id="block_hero" type="hero" label="Hero" -->
+                <section>Hero</section>
+                <!-- /tw:block -->
+                <!-- tw:block id="block_pricing" type="pricing" label="Pricing" -->
+                <section>Pricing</section>
+                <!-- /tw:block -->
             </main>
-        `);
-        const pricing = document.querySelector('[data-node-id="block_pricing"]');
+        </body>`);
+        const pricing = document.querySelector('[data-builder-block-id="block_pricing"]');
         const calls = [];
         pricing.scrollIntoView = (options) => calls.push(options);
 

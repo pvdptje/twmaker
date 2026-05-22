@@ -3,6 +3,7 @@
 namespace App\Livewire\Builder\Canvas;
 
 use App\Models\Page;
+use App\Services\Html\BlockIndexer;
 use App\Services\Rendering\Renderer;
 use Illuminate\Contracts\View\View;
 use Livewire\Attributes\Reactive;
@@ -27,8 +28,11 @@ class Canvas extends Component
 
     public function render(): View
     {
+        $html = (string) ($this->page->html_source ?? '');
+
         return view()->file(__DIR__.'/canvas.blade.php', [
             'srcdoc' => $this->previewSource(app(Renderer::class)),
+            'sectionCount' => trim($html) === '' ? 0 : count(app(BlockIndexer::class)->index($html)),
         ]);
     }
 

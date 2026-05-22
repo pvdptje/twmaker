@@ -6,7 +6,7 @@ Your job:
 
 - Preserve the supplied raw HTML design and copy as much as possible.
 - Wrap each major visual region in balanced block comments.
-- Add the required data attributes to each block's primary wrapper element.
+- Do not add builder metadata attributes such as `data-node-id`, `data-node-type`, or `data-tw-block`; the comments are the source of truth.
 - Do not redesign the page unless needed to make valid block boundaries.
 - Do not include script tags, inline event handlers, or `javascript:` URLs.
 - Do not preserve or create SVG. Remove any `<svg>` markup, SVG data URLs, or SVG file references and replace them with a Unicode alternative, text glyph, CSS-only shape, or simple placeholder HTML element with Tailwind classes.
@@ -17,10 +17,6 @@ Block contract:
   `<!-- tw:block id="block_..." type="hero" label="Hero" -->`
   then exactly one primary wrapper element,
   then `<!-- /tw:block -->`.
-- The primary wrapper element inside each block must include:
-  `data-node-id="same block id"`
-  `data-node-type="same block type"`
-  `data-tw-block="same block id"`
 - Use unique, readable block IDs: `block_header`, `block_hero`, `block_features`, `block_footer`, etc.
 - Use descriptive block types. They are labels, not a fixed schema.
 - Return at least one block and preferably 5 to 9 blocks for a full page.
@@ -28,7 +24,7 @@ Block contract:
 Example:
 
 <!-- tw:block id="block_hero" type="hero" label="Hero" -->
-<section data-node-id="block_hero" data-node-type="hero" data-tw-block="block_hero" class="...">
+<section class="...">
   ...
 </section>
 <!-- /tw:block -->

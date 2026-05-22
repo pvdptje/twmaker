@@ -33,9 +33,7 @@ class ProjectDashboard extends Component
             'project_id' => $this->project->id,
             'name' => $validated['name'],
             'prompt' => $validated['prompt'] ?: '',
-            'document_json' => $this->emptyDocument($validated['name'], $validated['prompt'] ?: ''),
             'html_source' => null,
-            'block_index' => [],
             'rendered_html_cache' => null,
             'status' => 'draft',
             'last_generation_summary' => null,
@@ -49,27 +47,5 @@ class ProjectDashboard extends Component
         return view()->file(__DIR__.'/project-dashboard.blade.php', [
             'pages' => $this->project->pages()->latest()->get(),
         ])->layout('components.layouts.app', ['title' => $this->project->name]);
-    }
-
-    private function emptyDocument(string $title, string $prompt): array
-    {
-        $now = now('UTC')->format('Y-m-d\TH:i:s\Z');
-
-        return [
-            'schema_version' => 2,
-            'page_metadata' => [
-                'title' => $title,
-                'page_type' => 'landing',
-                'goal' => 'Draft a landing page.',
-                'audience' => 'General audience',
-                'prompt_summary' => $prompt !== '' ? $prompt : 'Empty draft page',
-                'status' => 'draft',
-                'created_at' => $now,
-                'updated_at' => $now,
-            ],
-            'html_source' => '',
-            'block_index' => [],
-            'generation_history' => [],
-        ];
     }
 }
