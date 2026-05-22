@@ -209,7 +209,7 @@ class BuilderShellTest extends TestCase
             ->assertDispatched('preview-selection-changed', nodeId: 'node_01h00000000000000000000001', scrollIntoView: true)
             ->dispatch('node-selected', nodeId: 'node_01h00000000000000000000002', scrollIntoView: false)
             ->assertSet('selected_node_id', 'node_01h00000000000000000000002')
-            ->assertDispatched('preview-selection-changed', nodeId: 'node_01h00000000000000000000002', scrollIntoView: false);
+            ->assertNotDispatched('preview-selection-changed', nodeId: 'node_01h00000000000000000000002', scrollIntoView: false);
     }
 
     public function test_workspace_tracks_multi_block_selection_events(): void

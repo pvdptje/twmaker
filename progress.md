@@ -266,6 +266,7 @@ in_progress
 - [2026-05-22] M5.comment-marker-source-of-truth: pages now persist only `html_source` plus cache/status metadata; `document_json` and stored `block_index` are dropped from the page row, block lists derive from comments, generator prompts no longer ask for builder data attributes, and the preview bridge annotates block roots from `tw:block` comments at runtime.
 - [2026-05-22] M5.targeted-edit-preview-refresh: targeted edit terminal stream events now notify the workspace to refresh immediately; the canvas keeps its `wire:ignore` boundary and refreshes the iframe through an explicit `preview-html-updated` srcdoc event so the preview bridge can re-derive runtime block attributes from comments.
 - [2026-05-22] M5.preview-form-focus-fix: preview bridge no longer prevents default clicks on generated form fields, so page textareas/inputs can receive focus while still reporting builder selection.
+- [2026-05-22] M5.preview-selection-outline-fix: iframe-origin clicks no longer echo a block-id selection back into the preview, preserving the outline on the actual clicked element while section-tree selections can still scroll and outline block roots.
 
 ## Next Up (Top 3)
 1. M5: add stale-selection and malformed-edit UX handling in the inspector.
@@ -316,3 +317,4 @@ in_progress
 - M5 comment marker source-of-truth verification passed: `vendor\bin\pint.bat --dirty`, `php artisan test` (144 tests, 296 assertions), `npm.cmd run test:js`, and `npm.cmd run build`.
 - M5 targeted edit preview refresh verification passed: `php artisan test --filter=BuilderShellTest`, `npm.cmd run test:js`, and `npm.cmd run build`.
 - M5 preview form focus verification passed: `npm.cmd run test:js`, `php artisan test`, and `npm.cmd run build`.
+- M5 preview selection outline verification passed: `php artisan test --filter=BuilderShellTest`, `npm.cmd run test:js`, and `npm.cmd run build`.

@@ -48,7 +48,10 @@ class Workspace extends Component
     public function selectNode(?string $nodeId = null, bool $scrollIntoView = true): void
     {
         $this->selected_node_id = $nodeId;
-        $this->dispatch('preview-selection-changed', nodeId: $nodeId, scrollIntoView: $scrollIntoView);
+
+        if ($scrollIntoView) {
+            $this->dispatch('preview-selection-changed', nodeId: $nodeId, scrollIntoView: true);
+        }
     }
 
     #[On('quick-edit-save')]

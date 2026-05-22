@@ -232,7 +232,6 @@
                 previewFrame.dataset.selectedNodeId = event.data.nodeId || '';
             }
 
-            syncPreviewSelection(false);
             showQuickEditor(event.data.quickEdit);
 
             if (window.Livewire?.dispatch) {
