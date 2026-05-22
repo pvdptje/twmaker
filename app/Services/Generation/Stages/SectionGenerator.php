@@ -66,9 +66,13 @@ class SectionGenerator
             apiKey: $apiKey,
         );
 
-        $response = method_exists($this->provider, 'sendTextStream')
-            ? $this->provider->sendTextStream($request, $this->streamHtml($page, $stage))
-            : $this->provider->sendStructured($request);
+        try {
+            $response = method_exists($this->provider, 'sendTextStream')
+                ? $this->provider->sendTextStream($request, $this->streamHtml($page, $stage))
+                : $this->provider->sendStructured($request);
+        } finally {
+            $this->streamBuffer->flushRun($page->id, $stage);
+        }
 
         return $response->output + ['_llm' => [
             'provider' => $provider,

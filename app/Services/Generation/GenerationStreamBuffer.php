@@ -8,30 +8,50 @@ class GenerationStreamBuffer
 {
     private const TTL_SECONDS = 3600;
 
+    private const PERSIST_INTERVAL_SECONDS = 1.0;
+
     private const STAGES = [
         'section_generator',
         'section_generator_retry',
         'targeted_edit',
     ];
 
+    /**
+     * @var array<string, array<string, mixed>>
+     */
+    private array $snapshots = [];
+
+    /**
+     * @var array<string, float>
+     */
+    private array $lastPersistedAt = [];
+
     public function reset(string $pageId, string $stage): void
     {
-        Cache::put($this->key($pageId, $stage), [
+        $key = $this->key($pageId, $stage);
+        $snapshot = [
             'stage' => $stage,
             'html' => '',
             'position' => 0,
             'updated_at' => now()->toISOString(),
-        ], self::TTL_SECONDS);
+        ];
+
+        $this->snapshots[$key] = $snapshot;
+        $this->persist($key, $snapshot);
     }
 
     public function resetOutput(string $pageId, string $stage): void
     {
-        Cache::put($this->outputKey($pageId, $stage), [
+        $key = $this->outputKey($pageId, $stage);
+        $snapshot = [
             'stage' => $stage,
             'output' => '',
             'position' => 0,
             'updated_at' => now()->toISOString(),
-        ], self::TTL_SECONDS);
+        ];
+
+        $this->snapshots[$key] = $snapshot;
+        $this->persist($key, $snapshot);
     }
 
     public function resetRun(string $pageId, string $stage): void
@@ -44,13 +64,14 @@ class GenerationStreamBuffer
                 continue;
             }
 
-            Cache::forget($this->key($pageId, $knownStage));
-            Cache::forget($this->outputKey($pageId, $knownStage));
+            $this->forget($this->key($pageId, $knownStage));
+            $this->forget($this->outputKey($pageId, $knownStage));
         }
     }
 
     public function append(string $pageId, string $stage, string $chunk, int $position): array
     {
+        $key = $this->key($pageId, $stage);
         $snapshot = $this->snapshot($pageId, $stage);
 
         if ($position < strlen($snapshot['html'])) {
@@ -61,14 +82,16 @@ class GenerationStreamBuffer
 
         $snapshot['position'] = strlen($snapshot['html']);
         $snapshot['updated_at'] = now()->toISOString();
+        $this->snapshots[$key] = $snapshot;
 
-        Cache::put($this->key($pageId, $stage), $snapshot, self::TTL_SECONDS);
+        $this->persistIfDue($key, $snapshot);
 
         return $snapshot;
     }
 
     public function appendOutput(string $pageId, string $stage, string $chunk, int $position): array
     {
+        $key = $this->outputKey($pageId, $stage);
         $snapshot = $this->outputSnapshot($pageId, $stage);
 
         if ($position < strlen($snapshot['output'])) {
@@ -79,15 +102,33 @@ class GenerationStreamBuffer
 
         $snapshot['position'] = strlen($snapshot['output']);
         $snapshot['updated_at'] = now()->toISOString();
+        $this->snapshots[$key] = $snapshot;
 
-        Cache::put($this->outputKey($pageId, $stage), $snapshot, self::TTL_SECONDS);
+        $this->persistIfDue($key, $snapshot);
 
         return $snapshot;
     }
 
+    public function flush(string $pageId, string $stage): void
+    {
+        $this->flushKey($this->key($pageId, $stage));
+    }
+
+    public function flushOutput(string $pageId, string $stage): void
+    {
+        $this->flushKey($this->outputKey($pageId, $stage));
+    }
+
+    public function flushRun(string $pageId, string $stage): void
+    {
+        $this->flush($pageId, $stage);
+        $this->flushOutput($pageId, $stage);
+    }
+
     public function snapshot(string $pageId, string $stage): array
     {
-        $snapshot = Cache::get($this->key($pageId, $stage));
+        $key = $this->key($pageId, $stage);
+        $snapshot = $this->snapshots[$key] ?? Cache::get($key);
 
         if (! is_array($snapshot)) {
             return [
@@ -121,7 +162,8 @@ class GenerationStreamBuffer
 
     public function outputSnapshot(string $pageId, string $stage): array
     {
-        $snapshot = Cache::get($this->outputKey($pageId, $stage));
+        $key = $this->outputKey($pageId, $stage);
+        $snapshot = $this->snapshots[$key] ?? Cache::get($key);
 
         if (! is_array($snapshot)) {
             return [
@@ -161,5 +203,36 @@ class GenerationStreamBuffer
     private function outputKey(string $pageId, string $stage): string
     {
         return "generation-output-stream:{$pageId}:{$stage}";
+    }
+
+    private function persistIfDue(string $key, array $snapshot): void
+    {
+        $now = microtime(true);
+        $lastPersistedAt = $this->lastPersistedAt[$key] ?? 0.0;
+
+        if ($now - $lastPersistedAt < self::PERSIST_INTERVAL_SECONDS) {
+            return;
+        }
+
+        $this->persist($key, $snapshot, $now);
+    }
+
+    private function persist(string $key, array $snapshot, ?float $now = null): void
+    {
+        Cache::put($key, $snapshot, self::TTL_SECONDS);
+        $this->lastPersistedAt[$key] = $now ?? microtime(true);
+    }
+
+    private function flushKey(string $key): void
+    {
+        if (isset($this->snapshots[$key])) {
+            $this->persist($key, $this->snapshots[$key]);
+        }
+    }
+
+    private function forget(string $key): void
+    {
+        unset($this->snapshots[$key], $this->lastPersistedAt[$key]);
+        Cache::forget($key);
     }
 }

@@ -77,9 +77,13 @@ class TargetedEdit
             apiKey: $apiKey,
         );
 
-        $response = method_exists($this->provider, 'sendStructuredStream')
-            ? $this->provider->sendStructuredStream($request, $this->streamHtmlSource($page, $stage))
-            : $this->provider->sendStructured($request);
+        try {
+            $response = method_exists($this->provider, 'sendStructuredStream')
+                ? $this->provider->sendStructuredStream($request, $this->streamHtmlSource($page, $stage))
+                : $this->provider->sendStructured($request);
+        } finally {
+            $this->streamBuffer->flushRun($page->id, $stage);
+        }
 
         $replacement = $this->normalizeReplacementIds(
             (string) ($response->output['html_source'] ?? ''),
