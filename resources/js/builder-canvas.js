@@ -150,6 +150,23 @@ import { oneDark } from '@codemirror/theme-one-dark';
         view.focus();
     }
 
+    async function formatQuickEditHtml(value) {
+        try {
+            const [{ default: prettier }, { default: htmlPlugin }] = await Promise.all([
+                import('prettier/standalone'),
+                import('prettier/plugins/html'),
+            ]);
+
+            return (await prettier.format(value, {
+                parser: 'html',
+                plugins: [htmlPlugin],
+                printWidth: 100,
+            })).trim();
+        } catch {
+            return value;
+        }
+    }
+
     function hideQuickEditor() {
         const { panel, error } = quickEditorElements();
         window.builderQuickEdit.editId = null;
@@ -180,13 +197,15 @@ import { oneDark } from '@codemirror/theme-one-dark';
         panel.style.top = `${Math.max(24, Math.min(preferredTop, maxTop))}px`;
     }
 
-    function showQuickEditor(quickEdit) {
+    async function showQuickEditor(quickEdit) {
         const { panel, tag, target, textarea, error } = quickEditorElements();
 
         if (!panel || !textarea || !quickEdit?.editId || typeof quickEdit.outerHTML !== 'string') {
             return;
         }
 
+        const editId = quickEdit.editId;
+        const rawHtml = quickEdit.outerHTML;
         window.builderQuickEdit.editId = quickEdit.editId;
         window.builderQuickEdit.visible = true;
         tag.textContent = `<${quickEdit.tagName || 'element'}>`;
@@ -194,8 +213,14 @@ import { oneDark } from '@codemirror/theme-one-dark';
         error.textContent = '';
         error.classList.add('hidden');
         panel.classList.remove('hidden');
-        setQuickEditorValue(quickEdit.outerHTML);
+        setQuickEditorValue(rawHtml);
         positionQuickEditor(quickEdit);
+
+        const formattedHtml = await formatQuickEditHtml(rawHtml);
+
+        if (window.builderQuickEdit.editId === editId && currentEditorValue() === rawHtml) {
+            setQuickEditorValue(formattedHtml);
+        }
     }
 
     function resetQuickEditorSaveButton() {
