@@ -4,12 +4,14 @@ namespace App\Services\Generation;
 
 use App\Models\Page;
 use App\Services\Generation\Stages\HtmlMarker;
+use App\Services\Generation\Stages\SectionGenerationResult;
 use App\Services\Generation\Stages\SectionGenerator;
 use App\Services\Generation\Stages\TargetedEdit;
 use App\Services\Html\BlockIndexer;
 use App\Services\Html\DeterministicBlockMarker;
 use App\Services\Html\HtmlDocumentValidator;
 use App\Services\Html\HtmlFragmentRepairer;
+use App\Services\Html\HtmlSafetySanitizer;
 use App\Services\Html\HtmlValidationException;
 use App\Services\Rendering\Renderer;
 use Throwable;
@@ -24,6 +26,7 @@ class Pipeline
         private readonly DeterministicBlockMarker $deterministicMarker,
         private readonly HtmlDocumentValidator $htmlValidator,
         private readonly HtmlFragmentRepairer $htmlRepairer,
+        private readonly HtmlSafetySanitizer $htmlSanitizer,
         private readonly BlockIndexer $blockIndexer,
         private readonly Renderer $renderer,
     ) {}
@@ -35,21 +38,21 @@ class Pipeline
 
         try {
             $this->events->record($page, 'stage_started', 'section_generator', 'info', 'Designing raw Tailwind HTML.');
-            $artifact = $this->sections->generate($page, $provider, $model, $apiKey);
-            $artifact = $this->scrubArray($artifact);
-            $rawHtml = $this->scrubText($this->htmlRepairer->repair($this->rawHtml($artifact)));
+            $section = $this->sections->generate($page, $provider, $model, $apiKey);
+            $rawHtml = $this->cleanHtml($section->html);
             if ($rawHtml === '') {
                 throw new HtmlValidationException(['Section generator returned empty HTML.']);
             }
-            $recovery = $artifact['_recovered'] ?? null;
+            $artifact = $this->sectionArtifact($page, $rawHtml);
+            $recovery = $section->recovery;
             $this->events->record($page, 'stage_completed', 'section_generator', $recovery === null ? 'success' : 'warning', $this->sectionGeneratorSummary($recovery), payload: [
                 'html_bytes' => strlen($rawHtml),
                 'recovery' => $recovery,
-            ] + $this->payloadWithUsage($artifact));
+            ] + $this->payloadWithUsage($section));
 
             $this->events->record($page, 'stage_started', 'html_marker', 'info', 'Adding editable block markers locally.');
             [$htmlSource, $markerPayload, $markerSummary, $markerLevel] = $this->markHtml($page, $artifact, $rawHtml, $provider, $model, $apiKey);
-            $htmlSource = $this->scrubText($htmlSource);
+            $htmlSource = $this->cleanHtml($htmlSource);
             $this->events->record($page, 'stage_completed', 'html_marker', $markerLevel, $markerSummary, payload: $markerPayload);
 
             $this->events->record($page, 'stage_started', 'validation', 'info', 'Validating marked HTML.');
@@ -109,7 +112,7 @@ class Pipeline
                 $targetIds,
                 $result['html_source'],
             );
-            $htmlSource = $this->scrubText($htmlSource);
+            $htmlSource = $this->cleanHtml($htmlSource);
 
             $this->htmlValidator->assertValid($htmlSource);
             $blockIndex = $this->blockIndexer->index($htmlSource);
@@ -163,26 +166,15 @@ class Pipeline
         ];
     }
 
-    private function payloadWithUsage(array $value, array $payload = []): array
+    private function payloadWithUsage(array|SectionGenerationResult $value, array $payload = []): array
     {
-        $llm = $value['_llm'] ?? null;
+        $llm = $value instanceof SectionGenerationResult ? $value->llm : ($value['_llm'] ?? null);
 
         if (! is_array($llm)) {
             return $payload;
         }
 
         return $payload + ['llm' => $llm];
-    }
-
-    private function rawHtml(array $artifact): string
-    {
-        foreach ([$artifact['raw_html'] ?? null, $artifact['html_source'] ?? null] as $html) {
-            if (is_string($html) && trim($html) !== '') {
-                return $html;
-            }
-        }
-
-        return '';
     }
 
     /**
@@ -211,6 +203,11 @@ class Pipeline
         return mb_scrub($value, 'UTF-8');
     }
 
+    private function cleanHtml(string $html): string
+    {
+        return $this->scrubText($this->htmlSanitizer->sanitize($this->htmlRepairer->repair($html)));
+    }
+
     private function sectionGeneratorSummary(mixed $recovery): string
     {
         return match ($recovery) {
@@ -218,6 +215,18 @@ class Pipeline
             'deterministic_fallback' => 'Section generator returned empty HTML twice, so a fallback draft was created from the prompt.',
             default => 'Raw HTML draft generated.',
         };
+    }
+
+    private function sectionArtifact(Page $page, string $rawHtml): array
+    {
+        return [
+            'title' => $page->name !== '' ? $page->name : 'Generated page',
+            'page_type' => 'landing',
+            'goal' => $page->prompt !== '' ? str($page->prompt)->limit(180)->toString() : 'Generated from prompt.',
+            'audience' => 'Visitors',
+            'prompt_summary' => $page->prompt !== '' ? str($page->prompt)->limit(240)->toString() : 'Generated page',
+            'raw_html' => $rawHtml,
+        ];
     }
 
     private function markedHtml(array $marked): string

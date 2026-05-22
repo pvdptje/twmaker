@@ -22,12 +22,12 @@ class LlmManager implements LlmProvider
         return $driver->sendStructuredStream($request, $onPartialJson);
     }
 
-    public function sendTextStream(StructuredRequest $request, callable $onDelta): StructuredResponse
+    public function sendTextStream(TextRequest $request, callable $onDelta): TextResponse
     {
         $driver = $this->driver($request->provider);
 
         if (! method_exists($driver, 'sendTextStream')) {
-            return $driver->sendStructured($request);
+            throw new InvalidArgumentException("LLM provider [{$request->provider}] does not support text streaming.");
         }
 
         return $driver->sendTextStream($request, $onDelta);

@@ -210,7 +210,7 @@ class AnthropicProvider implements LlmProvider
         );
     }
 
-    public function sendTextStream(StructuredRequest $request, callable $onDelta): StructuredResponse
+    public function sendTextStream(TextRequest $request, callable $onDelta): TextResponse
     {
         $client = $this->client($request);
         $userContent = $this->buildUserContent($request);
@@ -305,16 +305,16 @@ class AnthropicProvider implements LlmProvider
             'output_log' => $debugLogPath,
         ]);
 
-        return new StructuredResponse(
+        return new TextResponse(
             stage: $request->stage,
             model: $request->model,
-            output: ['raw_html' => $this->stripCodeFence($text)],
+            text: $this->stripCodeFence($text),
             raw: ['id' => $messageId, 'stop_reason' => $stopReason],
             usage: $usage,
         );
     }
 
-    private function client(StructuredRequest $request): Client
+    private function client(StructuredRequest|TextRequest $request): Client
     {
         return $this->client ?? new Client(
             apiKey: $request->apiKey ?: (string) config("llm.providers.{$request->provider}.api_key"),
@@ -324,12 +324,29 @@ class AnthropicProvider implements LlmProvider
         );
     }
 
-    private function buildUserContent(StructuredRequest $request): string
+    private function buildUserContent(StructuredRequest|TextRequest $request): string
     {
+        if ($request instanceof TextRequest) {
+            return trim($request->userPrompt."\n\nContext:\n".$this->contextText($request->context));
+        }
+
         return trim($request->userPrompt."\n\nContext JSON:\n".json_encode(
             $request->context,
             JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
         ));
+    }
+
+    private function contextText(array $context): string
+    {
+        $lines = [];
+
+        foreach ($context as $key => $value) {
+            if (is_scalar($value) || $value === null) {
+                $lines[] = str_replace('_', ' ', (string) $key).': '.(string) $value;
+            }
+        }
+
+        return $lines !== [] ? implode("\n", $lines) : 'none';
     }
 
     private function extractToolInput(array $content, string $toolName): array
@@ -453,7 +470,7 @@ class AnthropicProvider implements LlmProvider
         return $text;
     }
 
-    private function startLlmOutputLog(StructuredRequest $request): ?string
+    private function startLlmOutputLog(TextRequest $request): ?string
     {
         if (! (bool) config('app.debug')) {
             return null;
@@ -482,7 +499,7 @@ class AnthropicProvider implements LlmProvider
         file_put_contents($path, $chunk, FILE_APPEND | LOCK_EX);
     }
 
-    private function finishLlmOutputLog(?string $path, StructuredRequest $request, string $text, array $usage, ?string $messageId, ?string $stopReason): void
+    private function finishLlmOutputLog(?string $path, TextRequest $request, string $text, array $usage, ?string $messageId, ?string $stopReason): void
     {
         if ($path === null) {
             return;
@@ -508,12 +525,26 @@ class AnthropicProvider implements LlmProvider
             && str_contains($message, 'model:');
     }
 
-    private function fallbackRequest(StructuredRequest $request): ?StructuredRequest
+    private function fallbackRequest(StructuredRequest|TextRequest $request): StructuredRequest|TextRequest|null
     {
         $fallbackModel = app(LlmRegistry::class)->defaultModel($request->provider, $request->stage, $request->apiKey);
 
         if ($fallbackModel === '' || $fallbackModel === $request->model) {
             return null;
+        }
+
+        if ($request instanceof TextRequest) {
+            return new TextRequest(
+                stage: $request->stage,
+                provider: $request->provider,
+                model: $fallbackModel,
+                systemPrompt: $request->systemPrompt,
+                userPrompt: $request->userPrompt,
+                context: $request->context,
+                maxTokens: $request->maxTokens,
+                temperature: $request->temperature,
+                apiKey: $request->apiKey,
+            );
         }
 
         return new StructuredRequest(

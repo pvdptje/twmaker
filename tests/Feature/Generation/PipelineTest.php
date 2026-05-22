@@ -11,6 +11,8 @@ use App\Services\Ids\IdGenerator;
 use App\Services\Llm\LlmProvider;
 use App\Services\Llm\StructuredRequest;
 use App\Services\Llm\StructuredResponse;
+use App\Services\Llm\TextRequest;
+use App\Services\Llm\TextResponse;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -106,6 +108,25 @@ HTML;
         $this->expectExceptionMessage('script tags');
 
         app(Pipeline::class)->generate($page);
+    }
+
+    public function test_pipeline_sanitizes_recoverable_inline_handlers_from_generated_html(): void
+    {
+        [$project, $page] = $this->makePage('Signup page');
+        $artifact = $this->htmlArtifact();
+        $artifact['raw_html'] = '<section><form onsubmit="return false;"><button onclick="alert(1)">Join</button></form></section>';
+        $artifact['marked_html'] = '<!-- tw:block id="block_form" type="form" label="Form" --><section data-node-id="block_form" data-node-type="form" data-tw-block="block_form"><form onsubmit="return false;"><button onclick="alert(1)">Join</button></form></section><!-- /tw:block -->';
+
+        $this->app->instance(LlmProvider::class, new FakeHtmlGenerationProvider($artifact));
+
+        app(Pipeline::class)->generate($page);
+
+        $page->refresh();
+
+        $this->assertSame('valid', $page->status);
+        $this->assertStringNotContainsString('onsubmit=', $page->html_source);
+        $this->assertStringNotContainsString('onclick=', $page->html_source);
+        $this->assertStringContainsString('<button>Join</button>', $page->html_source);
     }
 
     public function test_pipeline_retries_empty_section_generator_output(): void
@@ -385,12 +406,19 @@ class FakeHtmlGenerationProvider implements LlmProvider
 {
     public function __construct(private readonly array $artifact) {}
 
+    public function sendTextStream(TextRequest $request, callable $onDelta): TextResponse
+    {
+        $html = (string) ($this->artifact['raw_html'] ?? '');
+        $onDelta($html, 0);
+
+        return new TextResponse($request->stage, $request->model, $html);
+    }
+
     public function sendStructured(StructuredRequest $request): StructuredResponse
     {
         $output = match ($request->stage) {
-            'planner' => throw new \RuntimeException('Planner should not be called during page generation.'),
             'html_marker' => ['html_source' => $this->artifact['marked_html']],
-            default => array_diff_key($this->artifact, ['marked_html' => true]),
+            default => throw new \RuntimeException("Unexpected structured request [{$request->stage}]."),
         };
 
         return new StructuredResponse($request->stage, $request->model, $output);
@@ -438,13 +466,24 @@ class FakeRetrySectionProvider implements LlmProvider
 {
     public function __construct(private readonly array $artifact) {}
 
+    public function sendTextStream(TextRequest $request, callable $onDelta): TextResponse
+    {
+        $html = $request->stage === 'section_generator'
+            ? ''
+            : (string) ($this->artifact['raw_html'] ?? '');
+
+        if ($html !== '') {
+            $onDelta($html, 0);
+        }
+
+        return new TextResponse($request->stage, $request->model, $html);
+    }
+
     public function sendStructured(StructuredRequest $request): StructuredResponse
     {
         $output = match ($request->stage) {
-            'planner' => throw new \RuntimeException('Planner should not be called during page generation.'),
-            'section_generator' => array_merge(array_diff_key($this->artifact, ['marked_html' => true]), ['raw_html' => '']),
             'html_marker' => ['html_source' => $this->artifact['marked_html']],
-            default => array_diff_key($this->artifact, ['marked_html' => true]),
+            default => throw new \RuntimeException("Unexpected structured request [{$request->stage}]."),
         };
 
         return new StructuredResponse($request->stage, $request->model, $output);
@@ -453,19 +492,16 @@ class FakeRetrySectionProvider implements LlmProvider
 
 class FakeAlwaysEmptySectionProvider implements LlmProvider
 {
+    public function sendTextStream(TextRequest $request, callable $onDelta): TextResponse
+    {
+        return new TextResponse($request->stage, $request->model, '');
+    }
+
     public function sendStructured(StructuredRequest $request): StructuredResponse
     {
         $output = match ($request->stage) {
-            'planner' => throw new \RuntimeException('Planner should not be called during page generation.'),
             'html_marker' => ['html_source' => ''],
-            default => [
-                'title' => 'Recovery Page',
-                'page_type' => 'landing',
-                'goal' => 'Show a page even when generation returns empty output.',
-                'audience' => 'Operators',
-                'prompt_summary' => 'Recovery page',
-                'raw_html' => '',
-            ],
+            default => throw new \RuntimeException("Unexpected structured request [{$request->stage}]."),
         };
 
         return new StructuredResponse($request->stage, $request->model, $output);

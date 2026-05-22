@@ -4,6 +4,7 @@ namespace Tests\Unit\Llm;
 
 use App\Services\Llm\DeepSeekProvider;
 use App\Services\Llm\StructuredRequest;
+use App\Services\Llm\TextRequest;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
@@ -96,27 +97,19 @@ class DeepSeekProviderTest extends TestCase
         ]);
 
         $chunks = [];
-        $response = (new DeepSeekProvider)->sendTextStream(new StructuredRequest(
+        $response = (new DeepSeekProvider)->sendTextStream(new TextRequest(
             stage: 'section_generator',
             provider: 'deepseek',
             model: 'deepseek-v4-flash',
             systemPrompt: 'Return raw HTML.',
             userPrompt: 'A simple page',
-            toolName: 'submit_raw_html_document',
-            schema: [
-                'type' => 'object',
-                'required' => ['raw_html'],
-                'properties' => [
-                    'raw_html' => ['type' => 'string'],
-                ],
-            ],
             maxTokens: 8000,
             apiKey: 'test-deepseek-key',
         ), function (string $chunk, int $position) use (&$chunks): void {
             $chunks[] = [$chunk, $position];
         });
 
-        $this->assertSame(['raw_html' => '<section>Hello</section>'], $response->output);
+        $this->assertSame('<section>Hello</section>', $response->text);
         $this->assertSame([
             ['<section>Hello</section>', 0],
         ], $chunks);
@@ -144,28 +137,20 @@ class DeepSeekProviderTest extends TestCase
         ]);
 
         $chunks = [];
-        $response = (new DeepSeekProvider)->sendTextStream(new StructuredRequest(
+        $response = (new DeepSeekProvider)->sendTextStream(new TextRequest(
             stage: 'section_generator',
             provider: 'deepseek',
             model: 'deepseek-v4-flash',
             systemPrompt: 'Return raw HTML.',
             userPrompt: 'A simple page',
-            toolName: 'submit_raw_html_document',
-            schema: [
-                'type' => 'object',
-                'required' => ['raw_html'],
-                'properties' => [
-                    'raw_html' => ['type' => 'string'],
-                ],
-            ],
             maxTokens: 8000,
             apiKey: 'test-deepseek-key',
         ), function (string $chunk, int $position) use (&$chunks): void {
             $chunks[] = [$chunk, $position];
         });
 
-        $this->assertTrue(mb_check_encoding($response->output['raw_html'], 'UTF-8'));
-        $this->assertStringNotContainsString(chr(195).'(', $response->output['raw_html']);
+        $this->assertTrue(mb_check_encoding($response->text, 'UTF-8'));
+        $this->assertStringNotContainsString(chr(195).'(', $response->text);
         $this->assertSame(0, $chunks[0][1]);
         $this->assertTrue(mb_check_encoding($chunks[0][0], 'UTF-8'));
     }
@@ -181,24 +166,114 @@ class DeepSeekProviderTest extends TestCase
             ]), 200, ['Content-Type' => 'text/event-stream']),
         ]);
 
-        $response = (new DeepSeekProvider)->sendTextStream(new StructuredRequest(
+        $response = (new DeepSeekProvider)->sendTextStream(new TextRequest(
             stage: 'section_generator',
             provider: 'deepseek',
             model: 'deepseek-v4-flash',
             systemPrompt: 'Return raw HTML.',
             userPrompt: 'A simple page',
-            toolName: 'submit_raw_html_document',
-            schema: [
-                'type' => 'object',
-                'required' => ['raw_html'],
-                'properties' => [
-                    'raw_html' => ['type' => 'string'],
-                ],
-            ],
             maxTokens: 8000,
             apiKey: 'test-deepseek-key',
         ), fn (): null => null);
 
-        $this->assertSame(['raw_html' => 'Broken  control'], $response->output);
+        $this->assertSame('Broken  control', $response->text);
+    }
+
+    public function test_stream_repairs_literal_newlines_inside_content_payloads(): void
+    {
+        $payload = '{"id":"chatcmpl-stream","choices":[{"delta":{"content":"Line one
+Line two"}}]}';
+
+        Http::fake([
+            'https://api.deepseek.com/chat/completions' => Http::response(implode("\n\n", [
+                'data: '.$payload,
+                'data: [DONE]',
+            ]), 200, ['Content-Type' => 'text/event-stream']),
+        ]);
+
+        $response = (new DeepSeekProvider)->sendTextStream(new TextRequest(
+            stage: 'section_generator',
+            provider: 'deepseek',
+            model: 'deepseek-v4-flash',
+            systemPrompt: 'Return raw HTML.',
+            userPrompt: 'A simple page',
+            maxTokens: 8000,
+            apiKey: 'test-deepseek-key',
+        ), fn (): null => null);
+
+        $this->assertSame("Line one\nLine two", $response->text);
+    }
+
+    public function test_stream_skips_unrepairable_malformed_events(): void
+    {
+        Http::fake([
+            'https://api.deepseek.com/chat/completions' => Http::response(implode("\n\n", [
+                'data: {"choices":[{"delta":{"content":"Before "}}]}',
+                'data: {"choices":[{"delta":{"content":',
+                'data: {"choices":[{"delta":{"content":"after"}}]}',
+                'data: [DONE]',
+            ]), 200, ['Content-Type' => 'text/event-stream']),
+        ]);
+
+        $response = (new DeepSeekProvider)->sendTextStream(new TextRequest(
+            stage: 'section_generator',
+            provider: 'deepseek',
+            model: 'deepseek-v4-flash',
+            systemPrompt: 'Return raw HTML.',
+            userPrompt: 'A simple page',
+            maxTokens: 8000,
+            apiKey: 'test-deepseek-key',
+        ), fn (): null => null);
+
+        $this->assertSame('Before after', $response->text);
+    }
+
+    public function test_stream_strips_markdown_html_fences_from_text_and_chunks(): void
+    {
+        Http::fake([
+            'https://api.deepseek.com/chat/completions' => Http::response(implode("\n\n", [
+                'data: '.json_encode(['choices' => [['delta' => ['content' => '```']]]]),
+                'data: '.json_encode(['choices' => [['delta' => ['content' => "html\n<section>DeepSeek</section>\n```"]]]]),
+                'data: [DONE]',
+            ]), 200, ['Content-Type' => 'text/event-stream']),
+        ]);
+
+        $chunks = [];
+        $response = (new DeepSeekProvider)->sendTextStream(new TextRequest(
+            stage: 'section_generator',
+            provider: 'deepseek',
+            model: 'deepseek-v4-flash',
+            systemPrompt: 'Return raw HTML.',
+            userPrompt: 'A simple page',
+            maxTokens: 8000,
+            apiKey: 'test-deepseek-key',
+        ), function (string $chunk, int $position) use (&$chunks): void {
+            $chunks[] = [$chunk, $position];
+        });
+
+        $this->assertSame('<section>DeepSeek</section>', $response->text);
+        $this->assertSame([['<section>DeepSeek</section>', 0]], $chunks);
+    }
+
+    public function test_text_response_strips_unclosed_opening_code_fence(): void
+    {
+        Http::fake([
+            'https://api.deepseek.com/chat/completions' => Http::response(implode("\n\n", [
+                'data: '.json_encode(['choices' => [['delta' => ['content' => "```html\n<section>DeepSeek</section>"]]]]),
+                'data: [DONE]',
+            ]), 200, ['Content-Type' => 'text/event-stream']),
+        ]);
+
+        $response = (new DeepSeekProvider)->sendTextStream(new TextRequest(
+            stage: 'section_generator',
+            provider: 'deepseek',
+            model: 'deepseek-v4-flash',
+            systemPrompt: 'Return raw HTML.',
+            userPrompt: 'A simple page',
+            maxTokens: 8000,
+            apiKey: 'test-deepseek-key',
+        ), fn (): null => null);
+
+        $this->assertSame('<section>DeepSeek</section>', $response->text);
     }
 }

@@ -6,7 +6,7 @@ use App\Events\GenerationStreamChunk;
 use App\Models\Page;
 use App\Services\Generation\GenerationStreamBuffer;
 use App\Services\Llm\LlmProvider;
-use App\Services\Llm\StructuredRequest;
+use App\Services\Llm\TextRequest;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
@@ -18,16 +18,16 @@ class SectionGenerator
         private readonly GenerationStreamBuffer $streamBuffer,
     ) {}
 
-    public function generate(Page $page, ?string $provider = null, ?string $model = null, ?string $apiKey = null): array
+    public function generate(Page $page, ?string $provider = null, ?string $model = null, ?string $apiKey = null): SectionGenerationResult
     {
         $provider ??= (string) config('llm.default_provider', 'anthropic');
-        $artifact = $this->send($page, 'section_generator', $this->prompts->system('section_generator'), $page->prompt, 0.7, $provider, $model, $apiKey);
+        $result = $this->send($page, 'section_generator', $this->prompts->system('section_generator'), $page->prompt, 0.7, $provider, $model, $apiKey);
 
-        if ($this->hasRawHtml($artifact)) {
-            return $artifact;
+        if (trim($result->html) !== '') {
+            return $result;
         }
 
-        $artifact = $this->send(
+        $result = $this->send(
             $page,
             'section_generator_retry',
             $this->prompts->system('section_generator')."\n\nCritical recovery instruction: the previous response returned empty HTML. Return one complete standalone HTML document with balanced tw:block markers. Do not leave the response blank.",
@@ -38,25 +38,23 @@ class SectionGenerator
             $apiKey,
         );
 
-        if ($this->hasRawHtml($artifact)) {
-            return ['_recovered' => 'retry'] + $artifact;
+        if (trim($result->html) !== '') {
+            return new SectionGenerationResult($result->html, 'retry', $result->llm);
         }
 
-        return ['_recovered' => 'deterministic_fallback'] + $this->fallbackArtifact($page);
+        return new SectionGenerationResult($this->fallbackHtml($page), 'deterministic_fallback');
     }
 
-    private function send(Page $page, string $stage, string $systemPrompt, string $userPrompt, float $temperature, string $provider, ?string $model, ?string $apiKey): array
+    private function send(Page $page, string $stage, string $systemPrompt, string $userPrompt, float $temperature, string $provider, ?string $model, ?string $apiKey): SectionGenerationResult
     {
         $this->streamBuffer->resetRun($page->id, $stage);
 
-        $request = new StructuredRequest(
+        $request = new TextRequest(
             stage: $stage,
             provider: $provider,
             model: $model ?: (string) config("llm.providers.{$provider}.models.section_generator"),
             systemPrompt: $systemPrompt."\n\nStreaming instruction: return the complete HTML document directly as plain text. Do not use JSON, markdown, or code fences.",
             userPrompt: $userPrompt,
-            toolName: 'submit_raw_html_document',
-            schema: $this->schema(),
             context: [
                 'page_id' => $page->id,
                 'page_name' => $page->name,
@@ -67,18 +65,20 @@ class SectionGenerator
         );
 
         try {
-            $response = method_exists($this->provider, 'sendTextStream')
-                ? $this->provider->sendTextStream($request, $this->streamHtml($page, $stage))
-                : $this->provider->sendStructured($request);
+            if (! method_exists($this->provider, 'sendTextStream')) {
+                throw new \RuntimeException('The configured LLM provider does not support plain text streaming.');
+            }
+
+            $response = $this->provider->sendTextStream($request, $this->streamHtml($page, $stage));
         } finally {
             $this->streamBuffer->flushRun($page->id, $stage);
         }
 
-        return $response->output + ['_llm' => [
+        return new SectionGenerationResult($response->text, llm: [
             'provider' => $provider,
             'model' => $response->model,
             'usage' => $response->usage,
-        ]];
+        ]);
     }
 
     private function streamHtml(Page $page, string $stage): callable
@@ -128,36 +128,11 @@ class SectionGenerator
         return mb_scrub($value, 'UTF-8');
     }
 
-    private function hasRawHtml(array $artifact): bool
-    {
-        foreach ([$artifact['raw_html'] ?? null, $artifact['html_source'] ?? null] as $html) {
-            if (is_string($html) && trim($html) !== '') {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private function fallbackArtifact(Page $page): array
+    private function fallbackHtml(Page $page): string
     {
         $title = $page->name !== '' ? $page->name : 'Generated page';
         $goal = $page->prompt !== '' ? str($page->prompt)->limit(180)->toString() : 'Generated from prompt.';
         $audience = 'Visitors';
-        $summary = $page->prompt !== '' ? str($page->prompt)->limit(240)->toString() : 'Generated page';
-
-        return [
-            'title' => $title,
-            'page_type' => 'landing',
-            'goal' => $goal,
-            'audience' => $audience,
-            'prompt_summary' => $summary,
-            'raw_html' => $this->fallbackHtml($title, $goal, $audience),
-        ];
-    }
-
-    private function fallbackHtml(string $title, string $goal, string $audience): string
-    {
         $title = $this->escape($title);
         $goal = $this->escape($goal);
         $audience = $this->escape($audience);
@@ -202,17 +177,5 @@ HTML;
     private function escape(string $value): string
     {
         return htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-    }
-
-    private function schema(): array
-    {
-        return [
-            'type' => 'object',
-            'additionalProperties' => false,
-            'required' => ['raw_html'],
-            'properties' => [
-                'raw_html' => ['type' => 'string', 'minLength' => 1],
-            ],
-        ];
     }
 }

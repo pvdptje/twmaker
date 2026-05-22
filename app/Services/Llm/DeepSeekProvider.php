@@ -4,6 +4,7 @@ namespace App\Services\Llm;
 
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use JsonException;
 use RuntimeException;
 use Throwable;
 
@@ -84,7 +85,7 @@ class DeepSeekProvider implements LlmProvider
         );
     }
 
-    public function sendTextStream(StructuredRequest $request, callable $onDelta): StructuredResponse
+    public function sendTextStream(TextRequest $request, callable $onDelta): TextResponse
     {
         $userContent = $this->buildUserContent($request);
         $startedAt = microtime(true);
@@ -95,12 +96,23 @@ class DeepSeekProvider implements LlmProvider
         $pendingChunk = '';
         $pendingPosition = 0;
         $lastFlushAt = microtime(true);
-        $flush = function () use (&$pendingChunk, &$pendingPosition, &$lastFlushAt, $onDelta, $request): void {
+        $streamedText = '';
+        $prefixBuffer = '';
+        $prefixResolved = false;
+        $flush = function () use (&$pendingChunk, &$pendingPosition, &$lastFlushAt, &$streamedText, &$prefixBuffer, &$prefixResolved, $onDelta, $request): void {
             if ($pendingChunk === '') {
                 return;
             }
 
-            $onDelta($pendingChunk, $pendingPosition, $request);
+            $chunk = $this->stripStreamingCodeFencePrefix($pendingChunk, $prefixBuffer, $prefixResolved);
+            $chunk = $this->stripStreamingCodeFenceSuffix($chunk);
+
+            if ($chunk !== '') {
+                $position = strlen($streamedText);
+                $streamedText .= $chunk;
+                $onDelta($chunk, $position, $request);
+            }
+
             $pendingChunk = '';
             $lastFlushAt = microtime(true);
         };
@@ -190,16 +202,16 @@ class DeepSeekProvider implements LlmProvider
             'finish_reason' => $finishReason,
         ]);
 
-        return new StructuredResponse(
+        return new TextResponse(
             stage: $request->stage,
             model: $request->model,
-            output: ['raw_html' => $this->stripCodeFence($this->scrubText($text))],
+            text: $this->stripCodeFence($this->scrubText($text)),
             raw: ['id' => $messageId, 'finish_reason' => $finishReason],
             usage: $this->scrubArray($usage),
         );
     }
 
-    private function apiKey(StructuredRequest $request): string
+    private function apiKey(StructuredRequest|TextRequest $request): string
     {
         $apiKey = trim((string) ($request->apiKey ?: config("llm.providers.{$request->provider}.api_key")));
 
@@ -210,17 +222,34 @@ class DeepSeekProvider implements LlmProvider
         return $apiKey;
     }
 
-    private function baseUrl(StructuredRequest $request): string
+    private function baseUrl(StructuredRequest|TextRequest $request): string
     {
         return rtrim((string) config("llm.providers.{$request->provider}.base_url", 'https://api.deepseek.com'), '/');
     }
 
-    private function buildUserContent(StructuredRequest $request): string
+    private function buildUserContent(StructuredRequest|TextRequest $request): string
     {
+        if ($request instanceof TextRequest) {
+            return trim($request->userPrompt."\n\nContext:\n".$this->contextText($request->context));
+        }
+
         return trim($request->userPrompt."\n\nContext JSON:\n".json_encode(
             $request->context,
             JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
         ));
+    }
+
+    private function contextText(array $context): string
+    {
+        $lines = [];
+
+        foreach ($context as $key => $value) {
+            if (is_scalar($value) || $value === null) {
+                $lines[] = str_replace('_', ' ', (string) $key).': '.(string) $value;
+            }
+        }
+
+        return $lines !== [] ? implode("\n", $lines) : 'none';
     }
 
     private function systemPrompt(StructuredRequest $request): string
@@ -228,7 +257,7 @@ class DeepSeekProvider implements LlmProvider
         return trim($request->systemPrompt."\n\nReturn the result by calling the {$request->toolName} function.");
     }
 
-    private function plainTextSystemPrompt(StructuredRequest $request): string
+    private function plainTextSystemPrompt(TextRequest $request): string
     {
         return trim($request->systemPrompt."\n\nReturn the complete result directly as plain text. Do not use JSON, markdown, or code fences.");
     }
@@ -312,14 +341,20 @@ class DeepSeekProvider implements LlmProvider
     private function decodeStreamEvent(string $rawEvent): ?array
     {
         $payload = '';
+        $collectingData = false;
 
         foreach (preg_split('/\R/', $rawEvent) ?: [] as $line) {
-            $line = trim($line);
+            $line = rtrim($line, "\r\n");
 
             if (! str_starts_with($line, 'data:')) {
+                if ($collectingData) {
+                    $payload .= "\n".$line;
+                }
+
                 continue;
             }
 
+            $collectingData = true;
             $data = trim(substr($line, 5));
             if ($data === '[DONE]') {
                 return null;
@@ -332,7 +367,16 @@ class DeepSeekProvider implements LlmProvider
             return null;
         }
 
-        $decoded = $this->decodeJsonArray($payload);
+        try {
+            $decoded = $this->decodeJsonArray($payload);
+        } catch (JsonException $exception) {
+            Log::warning('DeepSeek stream event could not be decoded; skipping malformed SSE event.', [
+                'message' => $exception->getMessage(),
+                'bytes' => strlen($payload),
+            ]);
+
+            return null;
+        }
 
         return is_array($decoded) ? $decoded : null;
     }
@@ -345,7 +389,42 @@ class DeepSeekProvider implements LlmProvider
             return trim($matches[1]);
         }
 
-        return $text;
+        $text = preg_replace('/^\s*```[A-Za-z0-9_-]*[ \t]*(?:\R|$)/', '', $text, 1) ?? $text;
+        $text = preg_replace('/(?:\R|^)```[ \t]*$/', '', $text, 1) ?? $text;
+
+        return trim($text);
+    }
+
+    private function stripStreamingCodeFencePrefix(string $chunk, string &$prefixBuffer, bool &$prefixResolved): string
+    {
+        if ($prefixResolved) {
+            return $chunk;
+        }
+
+        $prefixBuffer .= $chunk;
+
+        if (preg_match('/^\s*```[A-Za-z0-9_-]*[ \t]*(?:\R|$)/', $prefixBuffer, $matches)) {
+            $prefixResolved = true;
+            $chunk = substr($prefixBuffer, strlen($matches[0]));
+            $prefixBuffer = '';
+
+            return $chunk;
+        }
+
+        if (strlen($prefixBuffer) < 32 && preg_match('/^\s*`{0,3}[A-Za-z0-9_-]*[ \t]*$/', $prefixBuffer)) {
+            return '';
+        }
+
+        $prefixResolved = true;
+        $chunk = $prefixBuffer;
+        $prefixBuffer = '';
+
+        return $chunk;
+    }
+
+    private function stripStreamingCodeFenceSuffix(string $chunk): string
+    {
+        return preg_replace('/(?:\R|^)```[ \t]*$/', '', $chunk, 1) ?? $chunk;
     }
 
     private function scrubText(string $value): string
@@ -359,14 +438,71 @@ class DeepSeekProvider implements LlmProvider
 
     private function sanitizeJson(string $value): string
     {
-        return preg_replace('/[\x00-\x1F\x7F]/', '', $this->scrubText($value)) ?? '';
+        return preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/', '', $this->scrubText($value)) ?? '';
     }
 
     private function decodeJsonArray(string $value): array
     {
-        $decoded = json_decode($this->sanitizeJson($value), true, 512, JSON_THROW_ON_ERROR);
+        $json = $this->sanitizeJson($value);
+
+        try {
+            $decoded = json_decode($json, true, 512, JSON_THROW_ON_ERROR | JSON_INVALID_UTF8_SUBSTITUTE);
+        } catch (JsonException $exception) {
+            $decoded = json_decode($this->repairJsonStringControlCharacters($json), true, 512, JSON_THROW_ON_ERROR | JSON_INVALID_UTF8_SUBSTITUTE);
+        }
 
         return is_array($decoded) ? $decoded : [];
+    }
+
+    private function repairJsonStringControlCharacters(string $json): string
+    {
+        $repaired = '';
+        $inString = false;
+        $escaped = false;
+        $length = strlen($json);
+
+        for ($i = 0; $i < $length; $i++) {
+            $char = $json[$i];
+            $ord = ord($char);
+
+            if ($escaped) {
+                $repaired .= $char;
+                $escaped = false;
+
+                continue;
+            }
+
+            if ($char === '\\') {
+                $repaired .= $char;
+                $escaped = true;
+
+                continue;
+            }
+
+            if ($char === '"') {
+                $repaired .= $char;
+                $inString = ! $inString;
+
+                continue;
+            }
+
+            if ($ord < 32 || $ord === 127) {
+                if ($inString) {
+                    $repaired .= match ($char) {
+                        "\n" => '\\n',
+                        "\r" => '\\r',
+                        "\t" => '\\t',
+                        default => '',
+                    };
+                }
+
+                continue;
+            }
+
+            $repaired .= $char;
+        }
+
+        return $repaired;
     }
 
     private function scrubArray(array $value): array
