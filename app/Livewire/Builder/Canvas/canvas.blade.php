@@ -52,8 +52,9 @@
                 id="builder-quick-editor-html"
                 rows="9"
                 spellcheck="false"
-                class="block w-full resize-y border-0 bg-neutral-950 px-3 py-3 font-mono text-xs leading-5 text-neutral-100 outline-none focus:ring-0"
+                class="hidden"
             ></textarea>
+            <div id="builder-quick-editor-code" class="min-h-56 border-0 bg-neutral-950"></div>
             <div id="builder-quick-editor-error" class="hidden border-t border-red-500/20 px-3 py-2 text-xs text-red-300"></div>
             <div class="flex items-center justify-end gap-2 border-t border-neutral-800 px-3 py-2">
                 <button

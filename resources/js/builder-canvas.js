@@ -1,8 +1,49 @@
+import { EditorView, basicSetup } from 'codemirror';
+import { html } from '@codemirror/lang-html';
+import { oneDark } from '@codemirror/theme-one-dark';
+
 (function () {
     window.builderQuickEdit = window.builderQuickEdit || {
         editId: null,
         visible: false,
+        editorView: null,
     };
+
+    const quickEditorTheme = EditorView.theme({
+        '&': {
+            minHeight: '14rem',
+            backgroundColor: '#0a0a0a',
+            color: '#f5f5f5',
+            fontSize: '0.75rem',
+        },
+        '.cm-scroller': {
+            minHeight: '14rem',
+            maxHeight: '24rem',
+            overflow: 'auto',
+            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+            lineHeight: '1.25rem',
+        },
+        '.cm-content': {
+            padding: '0.75rem',
+        },
+        '.cm-gutters': {
+            backgroundColor: '#0a0a0a',
+            borderRightColor: '#262626',
+            color: '#737373',
+        },
+        '.cm-activeLineGutter, .cm-activeLine': {
+            backgroundColor: '#171717',
+        },
+        '&.cm-focused': {
+            outline: 'none',
+        },
+        '&.cm-focused .cm-cursor': {
+            borderLeftColor: '#67e8f9',
+        },
+        '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection': {
+            backgroundColor: '#155e75',
+        },
+    }, { dark: true });
 
     function frame() {
         return document.getElementById('builder-preview-frame');
@@ -29,11 +70,84 @@
             tag: document.getElementById('builder-quick-editor-tag'),
             target: document.getElementById('builder-quick-editor-target'),
             textarea: document.getElementById('builder-quick-editor-html'),
+            editorHost: document.getElementById('builder-quick-editor-code'),
             error: document.getElementById('builder-quick-editor-error'),
             close: document.getElementById('builder-quick-editor-close'),
             cancel: document.getElementById('builder-quick-editor-cancel'),
             save: document.getElementById('builder-quick-editor-save'),
         };
+    }
+
+    function currentEditorValue() {
+        const { textarea } = quickEditorElements();
+        const view = window.builderQuickEdit.editorView;
+
+        if (view) {
+            return view.state.doc.toString();
+        }
+
+        return textarea?.value || '';
+    }
+
+    function ensureCodeEditor() {
+        const { editorHost, textarea } = quickEditorElements();
+
+        if (!editorHost || !textarea) {
+            return null;
+        }
+
+        const existingView = window.builderQuickEdit.editorView;
+        if (existingView && existingView.dom.parentElement === editorHost) {
+            return existingView;
+        }
+
+        existingView?.destroy();
+
+        window.builderQuickEdit.editorView = new EditorView({
+            doc: textarea.value,
+            parent: editorHost,
+            extensions: [
+                basicSetup,
+                html(),
+                oneDark,
+                quickEditorTheme,
+                EditorView.lineWrapping,
+                EditorView.updateListener.of((update) => {
+                    if (update.docChanged) {
+                        textarea.value = update.state.doc.toString();
+                    }
+                }),
+            ],
+        });
+
+        return window.builderQuickEdit.editorView;
+    }
+
+    function setQuickEditorValue(value) {
+        const { textarea } = quickEditorElements();
+
+        if (textarea) {
+            textarea.value = value;
+        }
+
+        const view = ensureCodeEditor();
+
+        if (!view) {
+            return;
+        }
+
+        view.dispatch({
+            changes: {
+                from: 0,
+                to: view.state.doc.length,
+                insert: value,
+            },
+            selection: {
+                anchor: 0,
+            },
+        });
+
+        view.focus();
     }
 
     function hideQuickEditor() {
@@ -56,7 +170,7 @@
         const frameRect = previewFrame.getBoundingClientRect();
         const rect = quickEdit?.rect || { x: 24, y: 24, width: 0, height: 0 };
         const panelWidth = panel.offsetWidth || 544;
-        const panelHeight = panel.offsetHeight || 320;
+        const panelHeight = panel.offsetHeight || 360;
         const preferredLeft = frameRect.left - stageRect.left + rect.x + Math.min(rect.width, 24) + 12;
         const preferredTop = frameRect.top - stageRect.top + rect.y;
         const maxLeft = Math.max(24, stage.clientWidth - panelWidth - 24);
@@ -77,13 +191,11 @@
         window.builderQuickEdit.visible = true;
         tag.textContent = `<${quickEdit.tagName || 'element'}>`;
         target.textContent = quickEdit.blockId || '';
-        textarea.value = quickEdit.outerHTML;
         error.textContent = '';
         error.classList.add('hidden');
         panel.classList.remove('hidden');
+        setQuickEditorValue(quickEdit.outerHTML);
         positionQuickEditor(quickEdit);
-        textarea.focus();
-        textarea.setSelectionRange(0, 0);
     }
 
     function resetQuickEditorSaveButton() {
@@ -97,24 +209,24 @@
         save.textContent = 'Save';
     }
 
-    function replaceQuickEditedElement(editId, html) {
+    function replaceQuickEditedElement(editId, htmlSource) {
         const previewFrame = frame();
 
-        if (!previewFrame?.contentWindow || !editId || typeof html !== 'string') {
+        if (!previewFrame?.contentWindow || !editId || typeof htmlSource !== 'string') {
             return;
         }
 
         previewFrame.contentWindow.postMessage({
             type: 'replace-quick-edit',
             editId,
-            html,
+            html: htmlSource,
         }, '*');
     }
 
     function saveQuickEditor() {
-        const { textarea, save } = quickEditorElements();
+        const { save } = quickEditorElements();
 
-        if (!window.builderQuickEdit.editId || !textarea || !window.Livewire?.dispatch) {
+        if (!window.builderQuickEdit.editId || !window.Livewire?.dispatch) {
             return;
         }
 
@@ -122,21 +234,22 @@
         save.textContent = 'Saving...';
         window.Livewire.dispatch('quick-edit-save', {
             editId: window.builderQuickEdit.editId,
-            html: textarea.value,
+            html: currentEditorValue(),
         });
     }
 
     function bindQuickEditorControls() {
-        const { close, cancel, save, textarea } = quickEditorElements();
+        const { close, cancel, save, editorHost } = quickEditorElements();
 
         if (save?.dataset.quickEditorBound === 'true') {
+            ensureCodeEditor();
             return;
         }
 
         close?.addEventListener('click', hideQuickEditor);
         cancel?.addEventListener('click', hideQuickEditor);
         save?.addEventListener('click', saveQuickEditor);
-        textarea?.addEventListener('keydown', (event) => {
+        editorHost?.addEventListener('keydown', (event) => {
             if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
                 event.preventDefault();
                 saveQuickEditor();
