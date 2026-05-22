@@ -46,6 +46,8 @@ class BuilderShellTest extends TestCase
             ->assertOk()
             ->assertSee('LLM setup')
             ->assertSee('Provider keys')
+            ->assertSee('stored only in this browser')
+            ->assertSee('Server env keys are optional fallbacks')
             ->assertSee('Primary generation')
             ->assertSee('Editing')
             ->assertSee('Anthropic')

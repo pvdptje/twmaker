@@ -38,13 +38,16 @@
         <div>
             <a href="{{ route('projects.index') }}" wire:navigate class="text-sm text-cyan-300 hover:text-cyan-200">Projects</a>
             <h1 class="mt-2 text-3xl font-semibold tracking-normal text-white">LLM setup</h1>
-            <p class="mt-1 text-sm text-neutral-400">Manage provider keys and choose the default models used by generation and edits.</p>
+            <p class="mt-1 text-sm text-neutral-400">Bring your own provider keys, stored only in this browser, and choose the default models used by generation and edits.</p>
         </div>
     </header>
 
     <form wire:submit="save" x-on:submit="persist()" class="grid gap-4 lg:grid-cols-[1fr_22rem]">
         <section class="rounded-lg border border-neutral-800 bg-neutral-900">
             <div class="border-b border-neutral-800 px-4 py-3 text-sm font-medium text-neutral-300">Provider keys</div>
+            <div class="border-b border-neutral-800 px-4 py-3 text-xs leading-5 text-neutral-400">
+                Keys are saved to your browser localStorage and sent only when you generate or edit. Server env keys are optional fallbacks for self-hosted demos or shared installs.
+            </div>
             <div class="divide-y divide-neutral-800">
                 @foreach ($providerOptions as $providerOption)
                     <div class="p-4">
@@ -60,6 +63,7 @@
                             API key
                             <input wire:model.blur="apiKeys.{{ $providerOption['id'] }}" x-model="apiKeys['{{ $providerOption['id'] }}']" type="password" autocomplete="off" class="mt-1 w-full rounded-md border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400" placeholder="Stored in this browser">
                         </label>
+                        <p class="mt-2 text-xs text-neutral-500">Leave this empty to use an optional server fallback key, when one is configured.</p>
                         @error("apiKeys.{$providerOption['id']}")
                             <div class="mt-2 text-xs text-red-300">{{ $message }}</div>
                         @enderror
