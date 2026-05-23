@@ -124,6 +124,10 @@ class LlmSetup extends Component
 
     private function hasModelFetchKey(string $provider): bool
     {
+        if (! (bool) config("llm.providers.{$provider}.requires_api_key", true)) {
+            return true;
+        }
+
         return $this->normalizedApiKey($provider) !== null
             || trim((string) config("llm.providers.{$provider}.api_key")) !== '';
     }

@@ -13,35 +13,35 @@ class LlmRegistryTest extends TestCase
         $registry = app(LlmRegistry::class);
 
         $this->assertSame([
-            [
-                'id' => 'anthropic',
-                'label' => 'Anthropic',
-                'driver' => 'prism',
-                'models_refreshed_at' => '2026-05-21',
-            ],
-            [
-                'id' => 'deepseek',
-                'label' => 'DeepSeek',
-                'driver' => 'prism',
-                'models_refreshed_at' => '2026-05-22',
-            ],
-        ], $registry->implementedProviders());
+            'anthropic',
+            'deepseek',
+            'openai',
+            'openrouter',
+            'ollama',
+            'mistral',
+            'groq',
+            'xai',
+            'gemini',
+            'perplexity',
+            'z',
+        ], array_column($registry->implementedProviders(), 'id'));
 
-        $this->assertContains('claude-sonnet-4-6', $registry->modelIds('anthropic'));
+        $this->assertSame([], $registry->modelIds('anthropic'));
         $this->assertNotContains('claude-3-7-sonnet-20250219', $registry->modelIds('anthropic'));
-        $this->assertSame('claude-sonnet-4-6', $registry->defaultModel('anthropic', 'section_generator'));
-        $this->assertContains('deepseek-v4-pro', $registry->modelIds('deepseek'));
-        $this->assertSame('deepseek-v4-pro', $registry->defaultModel('deepseek', 'targeted_edit'));
+        $this->assertSame('', $registry->defaultModel('anthropic', 'section_generator'));
+        $this->assertSame([], $registry->modelIds('openai'));
+        $this->assertSame('', $registry->defaultModel('deepseek', 'targeted_edit'));
     }
 
-    public function test_merges_fetched_models_with_configured_fallback_models(): void
+    public function test_uses_fetched_models_without_configured_fallback_models(): void
     {
         Cache::put('llm:models:deepseek:'.hash('sha256', 'test-key'), [
-            ['id' => 'deepseek-v4-pro', 'label' => 'DeepSeek V4 Pro'],
+            ['id' => 'deepseek-chat', 'label' => 'DeepSeek Chat'],
         ], now()->addMinute());
 
         $registry = app(LlmRegistry::class);
 
-        $this->assertContains('deepseek-v4-flash', $registry->modelIds('deepseek', 'test-key'));
+        $this->assertSame(['deepseek-chat'], $registry->modelIds('deepseek', 'test-key'));
+        $this->assertSame('deepseek-chat', $registry->defaultModel('deepseek', 'targeted_edit', 'test-key'));
     }
 }

@@ -53,11 +53,18 @@ class BuilderShellTest extends TestCase
             ->assertSee('Primary generation')
             ->assertSee('Editing')
             ->assertSee('Anthropic')
-            ->assertSee('DeepSeek');
+            ->assertSee('DeepSeek')
+            ->assertSee('OpenAI')
+            ->assertSee('Gemini');
     }
 
     public function test_llm_setup_saves_browser_backed_defaults(): void
     {
+        $this->cacheProviderModels('anthropic', 'test-setup-key', [
+            ['id' => 'claude-haiku-4-5-20251001', 'label' => 'Claude Haiku 4.5'],
+            ['id' => 'claude-sonnet-4-20250514', 'label' => 'Claude Sonnet 4'],
+        ]);
+
         Livewire::test(LlmSetup::class)
             ->set('apiKeys.anthropic', 'test-setup-key')
             ->set('primaryProvider', 'anthropic')
@@ -240,6 +247,9 @@ class BuilderShellTest extends TestCase
     public function test_generation_controls_enqueue_generate_page_job(): void
     {
         Queue::fake();
+        $this->cacheProviderModels('anthropic', 'test-generation-key', [
+            ['id' => 'claude-haiku-4-5-20251001', 'label' => 'Claude Haiku 4.5'],
+        ]);
 
         $project = Project::query()->create([
             'id' => app(IdGenerator::class)->project(),
@@ -301,16 +311,19 @@ class BuilderShellTest extends TestCase
         Livewire::test(GenerationControls::class, ['page' => $page])
             ->set('apiKey', 'test-model-key')
             ->call('refreshModels')
-            ->assertSet('model', 'claude-sonnet-4-6')
+            ->assertSet('model', 'claude-fresh-20260521')
             ->assertSee('Claude Fresh')
-            ->assertSee('10 models refreshed.');
+            ->assertSee('1 models refreshed.');
 
         Http::assertSentCount(1);
     }
 
-    public function test_generation_controls_enqueue_selected_deepseek_flash_model(): void
+    public function test_generation_controls_enqueue_selected_deepseek_model(): void
     {
         Queue::fake();
+        $this->cacheProviderModels('deepseek', 'test-deepseek-key', [
+            ['id' => 'deepseek-reasoner', 'label' => 'DeepSeek Reasoner'],
+        ]);
 
         $project = Project::query()->create([
             'id' => app(IdGenerator::class)->project(),
@@ -326,17 +339,20 @@ class BuilderShellTest extends TestCase
 
         Livewire::test(GenerationControls::class, ['page' => $page])
             ->set('prompt', 'A developer tool landing page')
-            ->call('generateWithSelection', 'deepseek', 'deepseek-v4-flash', 'test-deepseek-key')
+            ->call('generateWithSelection', 'deepseek', 'deepseek-reasoner', 'test-deepseek-key')
             ->assertDispatched('generation-started', pageId: $page->id);
 
         Queue::assertPushed(GeneratePageJob::class, fn (GeneratePageJob $job): bool => $job->provider === 'deepseek'
-            && $job->model === 'deepseek-v4-flash'
+            && $job->model === 'deepseek-reasoner'
             && $job->apiKey === 'test-deepseek-key');
     }
 
     public function test_edit_form_enqueues_targeted_edit_job_for_selected_node(): void
     {
         Queue::fake();
+        $this->cacheProviderModels('anthropic', 'test-edit-key', [
+            ['id' => 'claude-haiku-4-5-20251001', 'label' => 'Claude Haiku 4.5'],
+        ]);
 
         $project = Project::query()->create([
             'id' => app(IdGenerator::class)->project(),
@@ -378,6 +394,9 @@ class BuilderShellTest extends TestCase
     public function test_edit_form_enqueues_targeted_edit_job_for_selected_blocks(): void
     {
         Queue::fake();
+        $this->cacheProviderModels('anthropic', 'test-edit-key', [
+            ['id' => 'claude-haiku-4-5-20251001', 'label' => 'Claude Haiku 4.5'],
+        ]);
 
         $project = Project::query()->create([
             'id' => app(IdGenerator::class)->project(),
@@ -395,6 +414,7 @@ class BuilderShellTest extends TestCase
             ->set('instruction', 'Replace these with one product story section')
             ->set('provider', 'anthropic')
             ->set('model', 'claude-haiku-4-5-20251001')
+            ->set('apiKey', 'test-edit-key')
             ->call('applyEdit')
             ->assertSet('instruction', '')
             ->assertDispatched('generation-started', pageId: $page->id, stage: 'targeted_edit');
@@ -884,5 +904,10 @@ HTML,
     private function markedHtmlSource(): string
     {
         return '<!-- tw:block id="block_hero" type="hero" label="Hero" --><section class="px-6 py-24"><h1>Ship pages with marked blocks</h1></section><!-- /tw:block -->';
+    }
+
+    private function cacheProviderModels(string $provider, string $apiKey, array $models): void
+    {
+        Cache::put("llm:models:{$provider}:".hash('sha256', $apiKey), $models, now()->addMinute());
     }
 }

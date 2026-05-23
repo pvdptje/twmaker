@@ -69,11 +69,11 @@ class ProviderModelCatalogTest extends TestCase
     {
         Cache::flush();
         Http::fake([
-            'https://api.deepseek.com/models' => Http::response([
+            'https://api.deepseek.com/v1/models' => Http::response([
                 'object' => 'list',
                 'data' => [
                     [
-                        'id' => 'deepseek-v4-flash',
+                        'id' => 'deepseek-chat',
                         'object' => 'model',
                         'owned_by' => 'deepseek',
                     ],
@@ -85,12 +85,12 @@ class ProviderModelCatalogTest extends TestCase
 
         $this->assertSame([
             [
-                'id' => 'deepseek-v4-flash',
-                'label' => 'DeepSeek V4 Flash',
+                'id' => 'deepseek-chat',
+                'label' => 'DeepSeek Chat',
             ],
         ], $catalog->refresh('deepseek', 'test-key'));
 
-        $this->assertSame('deepseek-v4-flash', $catalog->models('deepseek', 'test-key')[0]['id']);
+        $this->assertSame('deepseek-chat', $catalog->models('deepseek', 'test-key')[0]['id']);
         Http::assertSent(fn ($request): bool => $request->hasHeader('Authorization', 'Bearer test-key'));
     }
 }

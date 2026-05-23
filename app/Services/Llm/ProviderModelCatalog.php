@@ -14,7 +14,11 @@ class ProviderModelCatalog
         $apiKey = $this->apiKey($provider, $apiKey);
 
         if ($apiKey === null) {
-            return null;
+            if (! $this->canFetchWithoutApiKey($provider)) {
+                return null;
+            }
+
+            $apiKey = '';
         }
 
         return Cache::get($this->cacheKey($provider, $apiKey));
@@ -25,7 +29,11 @@ class ProviderModelCatalog
         $apiKey = $this->apiKey($provider, $apiKey);
 
         if ($apiKey === null) {
-            return null;
+            if (! $this->canFetchWithoutApiKey($provider)) {
+                return null;
+            }
+
+            $apiKey = '';
         }
 
         $models = $this->fetch($provider, $apiKey);
@@ -46,7 +54,11 @@ class ProviderModelCatalog
         $apiKey = $this->apiKey($provider, $apiKey);
 
         if ($apiKey === null) {
-            return;
+            if (! $this->canFetchWithoutApiKey($provider)) {
+                return;
+            }
+
+            $apiKey = '';
         }
 
         $cacheKey = $this->cacheKey($provider, $apiKey);
@@ -78,7 +90,9 @@ class ProviderModelCatalog
     {
         return match (config("llm.providers.{$provider}.prism_provider", config("llm.providers.{$provider}.driver"))) {
             'anthropic' => $this->fetchAnthropic($apiKey),
-            'deepseek' => $this->fetchDeepSeek($provider, $apiKey),
+            'deepseek', 'openai', 'openrouter', 'mistral', 'groq', 'xai' => $this->fetchOpenAiCompatible($provider, $apiKey),
+            'gemini' => $this->fetchGemini($provider, $apiKey),
+            'ollama' => $this->fetchOllama($provider),
             default => null,
         };
     }
@@ -145,17 +159,23 @@ class ProviderModelCatalog
         }
     }
 
-    private function fetchDeepSeek(string $provider, string $apiKey): ?array
+    private function fetchOpenAiCompatible(string $provider, string $apiKey): ?array
     {
         try {
-            $baseUrl = rtrim((string) config("llm.providers.{$provider}.base_url", 'https://api.deepseek.com'), '/');
+            $baseUrl = rtrim((string) config("llm.providers.{$provider}.url", config("llm.providers.{$provider}.base_url", '')), '/');
+
+            if ($baseUrl === '') {
+                return null;
+            }
+
             $response = Http::withToken($apiKey)
                 ->acceptJson()
                 ->timeout(15)
                 ->get($baseUrl.'/models');
 
             if (! $response->successful()) {
-                Log::warning('Failed to fetch DeepSeek models.', [
+                Log::warning('Failed to fetch provider models.', [
+                    'provider' => $provider,
                     'status' => $response->status(),
                 ]);
 
@@ -178,7 +198,91 @@ class ProviderModelCatalog
 
             return $models === [] ? null : $models;
         } catch (Throwable $exception) {
-            Log::warning('Failed to fetch DeepSeek models.', [
+            Log::warning('Failed to fetch provider models.', [
+                'provider' => $provider,
+                'exception' => $exception::class,
+                'message' => $exception->getMessage(),
+            ]);
+
+            return null;
+        }
+    }
+
+    private function fetchGemini(string $provider, string $apiKey): ?array
+    {
+        try {
+            $baseUrl = rtrim((string) config("llm.providers.{$provider}.url", 'https://generativelanguage.googleapis.com/v1beta/models'), '/');
+            $response = Http::acceptJson()
+                ->timeout(15)
+                ->get($baseUrl, ['key' => $apiKey]);
+
+            if (! $response->successful()) {
+                Log::warning('Failed to fetch Gemini models.', [
+                    'status' => $response->status(),
+                ]);
+
+                return null;
+            }
+
+            $models = [];
+            foreach ($response->json('models', []) as $model) {
+                $name = (string) ($model['name'] ?? '');
+                $id = str($name)->afterLast('/')->toString();
+
+                if ($id === '') {
+                    continue;
+                }
+
+                $models[] = [
+                    'id' => $id,
+                    'label' => (string) ($model['displayName'] ?? $this->labelFromModelId($id)),
+                ];
+            }
+
+            return $models === [] ? null : $models;
+        } catch (Throwable $exception) {
+            Log::warning('Failed to fetch Gemini models.', [
+                'exception' => $exception::class,
+                'message' => $exception->getMessage(),
+            ]);
+
+            return null;
+        }
+    }
+
+    private function fetchOllama(string $provider): ?array
+    {
+        try {
+            $baseUrl = rtrim((string) config("llm.providers.{$provider}.url", 'http://localhost:11434'), '/');
+            $response = Http::acceptJson()
+                ->timeout(15)
+                ->get($baseUrl.'/api/tags');
+
+            if (! $response->successful()) {
+                Log::warning('Failed to fetch Ollama models.', [
+                    'status' => $response->status(),
+                ]);
+
+                return null;
+            }
+
+            $models = [];
+            foreach ($response->json('models', []) as $model) {
+                $id = (string) ($model['name'] ?? '');
+
+                if ($id === '') {
+                    continue;
+                }
+
+                $models[] = [
+                    'id' => $id,
+                    'label' => $this->labelFromModelId($id),
+                ];
+            }
+
+            return $models === [] ? null : $models;
+        } catch (Throwable $exception) {
+            Log::warning('Failed to fetch Ollama models.', [
                 'exception' => $exception::class,
                 'message' => $exception->getMessage(),
             ]);
@@ -193,6 +297,9 @@ class ProviderModelCatalog
             ->replace(['-', '_'], ' ')
             ->title()
             ->replace('Deepseek', 'DeepSeek')
+            ->replace('Openai', 'OpenAI')
+            ->replace('Gpt', 'GPT')
+            ->replace('Xai', 'xAI')
             ->toString();
     }
 
@@ -212,5 +319,10 @@ class ProviderModelCatalog
     private function cacheKey(string $provider, string $apiKey): string
     {
         return "llm:models:{$provider}:".hash('sha256', $apiKey);
+    }
+
+    private function canFetchWithoutApiKey(string $provider): bool
+    {
+        return ! (bool) config("llm.providers.{$provider}.requires_api_key", true);
     }
 }

@@ -43,10 +43,10 @@ class LlmRegistry
         $fetched = $this->catalog->models($provider, $apiKey);
 
         if (is_array($fetched) && $fetched !== []) {
-            return $this->normalizeModels(array_merge($fetched, $this->fallbackModelOptions($provider)));
+            return $this->normalizeModels($fetched);
         }
 
-        return $this->fallbackModelOptions($provider);
+        return [];
     }
 
     public function refreshModelOptions(string $provider, ?string $apiKey = null): array
@@ -58,10 +58,10 @@ class LlmRegistry
         $fetched = $this->catalog->refresh($provider, $apiKey);
 
         if (is_array($fetched) && $fetched !== []) {
-            return $this->normalizeModels(array_merge($fetched, $this->fallbackModelOptions($provider)));
+            return $this->normalizeModels($fetched);
         }
 
-        return $this->fallbackModelOptions($provider);
+        return [];
     }
 
     public function modelIds(string $provider, ?string $apiKey = null): array
@@ -79,13 +79,6 @@ class LlmRegistry
         }
 
         return (string) ($modelIds[0] ?? '');
-    }
-
-    private function fallbackModelOptions(string $provider): array
-    {
-        $configured = config("llm.providers.{$provider}.available_models", []);
-
-        return $this->normalizeModels($configured);
     }
 
     private function normalizeModels(array $models): array

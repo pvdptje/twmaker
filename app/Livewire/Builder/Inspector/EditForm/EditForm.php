@@ -176,6 +176,10 @@ class EditForm extends Component
 
     private function hasModelFetchKey(): bool
     {
+        if (! (bool) config("llm.providers.{$this->provider}.requires_api_key", true)) {
+            return true;
+        }
+
         return $this->normalizedApiKey() !== null
             || trim((string) config("llm.providers.{$this->provider}.api_key")) !== '';
     }

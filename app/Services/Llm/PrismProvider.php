@@ -76,10 +76,6 @@ class PrismProvider implements LlmProvider
 
     public function sendTextStream(TextRequest $request, callable $onDelta): TextResponse
     {
-        if ($legacyProvider = $this->legacyStreamingProvider($request->provider)) {
-            return $legacyProvider->sendTextStream($request, $onDelta);
-        }
-
         $userContent = $this->buildUserContent($request);
         $startedAt = microtime(true);
         $text = '';
@@ -176,25 +172,12 @@ class PrismProvider implements LlmProvider
 
     public function sendStructuredStream(StructuredRequest $request, callable $onPartialJson): StructuredResponse
     {
-        if ($request->provider === 'anthropic') {
-            return app(AnthropicProvider::class)->sendStructuredStream($request, $onPartialJson);
-        }
-
         return $this->sendStructured($request);
     }
 
     private function prismProvider(string $provider): string
     {
         return (string) config("llm.providers.{$provider}.prism_provider", $provider);
-    }
-
-    private function legacyStreamingProvider(string $provider): AnthropicProvider|DeepSeekProvider|null
-    {
-        return match ($provider) {
-            'anthropic' => app(AnthropicProvider::class),
-            'deepseek' => app(DeepSeekProvider::class),
-            default => null,
-        };
     }
 
     /**
@@ -219,7 +202,7 @@ class PrismProvider implements LlmProvider
 
     private function providerUrl(string $provider): ?string
     {
-        $url = trim((string) config("llm.providers.{$provider}.base_url", ''));
+        $url = trim((string) config("llm.providers.{$provider}.url", config("llm.providers.{$provider}.base_url", '')));
 
         if ($url === '') {
             return null;
