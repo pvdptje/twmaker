@@ -77,10 +77,19 @@ class TargetedEdit
             apiKey: $apiKey,
         );
 
+        $streamedHtml = '';
+
         try {
             $response = method_exists($this->provider, 'sendStructuredStream')
-                ? $this->provider->sendStructuredStream($request, $this->streamHtmlSource($page, $stage))
+                ? $this->provider->sendStructuredStream($request, $this->streamHtmlSource($page, $stage, $streamedHtml))
                 : $this->provider->sendStructured($request);
+
+            $this->streamFinalHtmlSourceIfMissing(
+                $page,
+                $stage,
+                (string) ($response->output['html_source'] ?? ''),
+                $streamedHtml,
+            );
         } finally {
             $this->streamBuffer->flushRun($page->id, $stage);
         }
@@ -117,10 +126,8 @@ class TargetedEdit
         ];
     }
 
-    private function streamHtmlSource(Page $page, string $stage): callable
+    private function streamHtmlSource(Page $page, string $stage, string &$streamed): callable
     {
-        $streamed = '';
-
         $rawOutput = '';
 
         return function (string $partialJson, string $delta = '') use ($page, $stage, &$streamed, &$rawOutput): void {
@@ -154,6 +161,29 @@ class TargetedEdit
 
             $this->broadcastChunk(new GenerationStreamChunk($page->id, $stage, $chunk, $position), $page);
         };
+    }
+
+    private function streamFinalHtmlSourceIfMissing(Page $page, string $stage, string $html, string &$streamed): void
+    {
+        if ($html === '' || $html === $streamed) {
+            return;
+        }
+
+        if ($streamed !== '' && str_starts_with($html, $streamed)) {
+            $position = strlen($streamed);
+            $chunk = substr($html, $position);
+        } else {
+            $position = 0;
+            $chunk = $html;
+        }
+
+        if ($chunk === '') {
+            return;
+        }
+
+        $streamed = $html;
+        $this->streamBuffer->append($page->id, $stage, $chunk, $position);
+        $this->broadcastChunk(new GenerationStreamChunk($page->id, $stage, $chunk, $position), $page);
     }
 
     private function broadcastChunk(GenerationStreamChunk $event, Page $page): void

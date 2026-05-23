@@ -23,9 +23,12 @@
     data-output-snapshot="{{ base64_encode($outputText) }}"
     data-output-stage="{{ $outputStage }}"
     data-output-position="{{ $outputPosition }}"
+    data-targeted-edit-patch="{{ base64_encode(json_encode($targetedEditPatch, JSON_THROW_ON_ERROR)) }}"
+    data-status-label="{{ $statusLabel }}"
     x-on:generation-started.window="if (!$event.detail?.pageId || $event.detail.pageId === pageId) resetForStage('section_generator')"
     x-data="{
         pageId: @js($page->id),
+        statusLabel: @js($statusLabel),
         open: @js($statusLabel === 'running'),
         html: @js($streamHtml),
         output: @js($outputText),
@@ -45,14 +48,16 @@
         revealFrame: null,
         lastRevealAt: 0,
         revealCarry: 0,
+        lastTargetedPatchKey: null,
         baseCharsPerSecond: 180,
         maxFrameChars: 48,
         init() {
             this.syncSnapshot();
+            this.syncTargetedEditPatch();
             this.observer = new MutationObserver(() => this.syncSnapshot());
             this.observer.observe(this.$el, {
                 attributes: true,
-                attributeFilter: ['data-stream-snapshot', 'data-stream-stage', 'data-stream-position', 'data-output-snapshot', 'data-output-stage', 'data-output-position'],
+                attributeFilter: ['data-stream-snapshot', 'data-stream-stage', 'data-stream-position', 'data-output-snapshot', 'data-output-stage', 'data-output-position', 'data-targeted-edit-patch', 'data-status-label'],
             });
             this.pollTimer = setInterval(() => {
                 this.now = Date.now();
@@ -61,6 +66,31 @@
             document.addEventListener('livewire:navigated', () => this.subscribe());
             document.addEventListener('livewire:init', () => this.subscribe());
             window.addEventListener('focus', () => this.subscribe());
+        },
+        syncStatus() {
+            const nextStatus = this.$el.dataset.statusLabel || this.statusLabel;
+            if (nextStatus === this.statusLabel) return;
+
+            this.statusLabel = nextStatus;
+
+            if (nextStatus === 'running') {
+                this.terminal = false;
+                this.open = !this.dismissed;
+
+                return;
+            }
+
+            if (nextStatus === 'valid') {
+                this.terminal = true;
+                this.open = false;
+                this.dismissed = false;
+
+                return;
+            }
+
+            if (nextStatus === 'error') {
+                this.terminal = true;
+            }
         },
         resetForStage(stage = 'section_generator') {
             this.open = true;
@@ -88,8 +118,10 @@
             }
         },
         syncSnapshot() {
+            this.syncStatus();
             const snapshot = this.decodeSnapshot(this.$el.dataset.streamSnapshot || '');
             const outputSnapshot = this.decodeSnapshot(this.$el.dataset.outputSnapshot || '');
+            this.syncTargetedEditPatch();
 
             const position = Number(this.$el.dataset.streamPosition || snapshot.length);
             const stage = this.$el.dataset.streamStage || this.stage;
@@ -109,13 +141,13 @@
                 this.cancelReveal();
                 this.stage = stage;
                 this.lastChunkAt = Date.now();
-                this.open = !this.dismissed;
+                this.open = !this.dismissed && !this.terminal;
                 this.scrollToBottom();
             } else if (snapshot.length > this.targetHtml.length) {
                 this.targetHtml = snapshot;
                 this.stage = stage;
                 this.lastChunkAt = Date.now();
-                this.open = !this.dismissed;
+                this.open = !this.dismissed && !this.terminal;
                 this.queueReveal();
             }
 
@@ -132,14 +164,46 @@
                 this.cancelReveal();
                 this.outputStage = outputStage;
                 this.lastChunkAt = Date.now();
-                this.open = !this.dismissed;
+                this.open = !this.dismissed && !this.terminal;
                 this.scrollToBottom();
             } else if (outputSnapshot.length > this.targetOutput.length) {
                 this.targetOutput = outputSnapshot;
                 this.outputStage = outputStage;
                 this.lastChunkAt = Date.now();
-                this.open = !this.dismissed;
+                this.open = !this.dismissed && !this.terminal;
                 this.queueReveal();
+            }
+        },
+        syncTargetedEditPatch() {
+            const raw = this.decodeSnapshot(this.$el.dataset.targetedEditPatch || '');
+            if (!raw) return;
+
+            let patch = null;
+            try {
+                patch = JSON.parse(raw);
+            } catch (error) {
+                return;
+            }
+
+            const key = patch?.eventId || `${(patch?.targetIds || []).join(',')}:${patch?.html?.length || 0}`;
+            if (!patch?.html || !Array.isArray(patch?.targetIds) || patch.targetIds.length === 0 || key === this.lastTargetedPatchKey) return;
+
+            this.lastTargetedPatchKey = key;
+            this.terminal = true;
+            this.open = false;
+            this.dismissed = false;
+            window.dispatchEvent(new CustomEvent('targeted-edit-applied', {
+                detail: {
+                    targetIds: patch.targetIds,
+                    html: patch.html,
+                },
+            }));
+            if (window.Livewire?.dispatch) {
+                window.Livewire.dispatch('generation-finished', {
+                    pageId: this.pageId,
+                    status: 'valid',
+                    incremental: true,
+                });
             }
         },
         cancelReveal() {
@@ -275,10 +339,23 @@
                     }
                     if (event.kind === 'generation_completed' || event.kind === 'generation_failed' || event.kind === 'edit_applied' || event.kind === 'edit_rejected') {
                         this.terminal = true;
+                        if (event.kind === 'generation_completed' || event.kind === 'edit_applied') {
+                            this.open = false;
+                            this.dismissed = false;
+                        }
+                        if (event.kind === 'edit_applied') {
+                            window.dispatchEvent(new CustomEvent('targeted-edit-applied', {
+                                detail: {
+                                    targetIds: Array.isArray(event.payload?.target_ids) ? event.payload.target_ids : [],
+                                    html: event.payload?.html_source || '',
+                                },
+                            }));
+                        }
                         if (window.Livewire?.dispatch) {
                             window.Livewire.dispatch('generation-finished', {
                                 pageId: this.pageId,
                                 status: (event.kind === 'generation_completed' || event.kind === 'edit_applied') ? 'valid' : 'error',
+                                incremental: event.kind === 'edit_applied',
                             });
                         }
                     }

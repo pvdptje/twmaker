@@ -83,8 +83,8 @@
         return null;
     }
 
-    function annotateBlocksFromComments() {
-        const walker = document.createTreeWalker(document.body || document, window.NodeFilter.SHOW_COMMENT);
+    function annotateBlocksFromComments(rootNode = document.body || document) {
+        const walker = document.createTreeWalker(rootNode, window.NodeFilter.SHOW_COMMENT);
 
         while (walker.nextNode()) {
             const marker = parseBlockMarker(walker.currentNode);
@@ -257,6 +257,58 @@
         return elements.length === 1 && !hasText ? elements[0] : null;
     }
 
+    function renderedFragment(html) {
+        const template = document.createElement('template');
+        template.innerHTML = String(html || '').trim();
+        annotateBlocksFromComments(template.content);
+
+        return template.content;
+    }
+
+    function replaceBlockRange(targetIds, html) {
+        if (!Array.isArray(targetIds) || targetIds.length === 0 || typeof html !== 'string') {
+            return false;
+        }
+
+        const roots = targetIds
+            .map((id) => typeof id === 'string' && id !== '' ? document.querySelector(blockSelector(id)) : null)
+            .filter(Boolean)
+            .sort((left, right) => {
+                if (left === right) {
+                    return 0;
+                }
+
+                return left.compareDocumentPosition(right) & Node.DOCUMENT_POSITION_PRECEDING ? 1 : -1;
+            });
+
+        if (roots.length === 0) {
+            return false;
+        }
+
+        const fragment = renderedFragment(html);
+        const firstReplacement = fragment.querySelector(blockSelector(targetIds[0]))
+            || elementChildren(fragment).find((node) => isBlockRootCandidate(node))
+            || null;
+
+        const range = document.createRange();
+        range.setStartBefore(roots[0]);
+        range.setEndAfter(roots[roots.length - 1]);
+        range.deleteContents();
+        range.insertNode(fragment);
+
+        const selectedRoot = firstReplacement?.isConnected
+            ? firstReplacement
+            : document.querySelector(blockSelector(targetIds[0]));
+
+        if (selectedRoot) {
+            selectElement(selectedRoot);
+        } else {
+            clearSelection();
+        }
+
+        return true;
+    }
+
     function editableTarget(from) {
         const clicked = from instanceof Element ? from : from?.parentElement;
         const target = clicked?.closest(editableSelector);
@@ -393,6 +445,12 @@
 
             element.replaceWith(replacement);
             selectElement(blockRoot?.isConnected ? blockRoot : replacement);
+
+            return;
+        }
+
+        if (event.data?.type === 'replace-block-range') {
+            replaceBlockRange(event.data.targetIds, event.data.html);
 
             return;
         }

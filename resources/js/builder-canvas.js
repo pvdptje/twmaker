@@ -248,6 +248,20 @@ import { oneDark } from '@codemirror/theme-one-dark';
         }, '*');
     }
 
+    function replaceTargetedBlocks(targetIds, htmlSource) {
+        const previewFrame = frame();
+
+        if (!previewFrame?.contentWindow || !Array.isArray(targetIds) || targetIds.length === 0 || typeof htmlSource !== 'string') {
+            return;
+        }
+
+        previewFrame.contentWindow.postMessage({
+            type: 'replace-block-range',
+            targetIds,
+            html: htmlSource,
+        }, '*');
+    }
+
     function saveQuickEditor() {
         const { save } = quickEditorElements();
 
@@ -345,6 +359,10 @@ import { oneDark } from '@codemirror/theme-one-dark';
             replaceQuickEditedElement(event.detail?.editId, event.detail?.html);
             resetQuickEditorSaveButton();
             hideQuickEditor();
+        });
+
+        window.addEventListener('targeted-edit-applied', (event) => {
+            replaceTargetedBlocks(event.detail?.targetIds || [], event.detail?.html || '');
         });
 
         window.addEventListener('quick-edit-failed', (event) => {

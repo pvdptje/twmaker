@@ -312,6 +312,40 @@ describe('preview bridge', () => {
         expect(document.querySelector('p').textContent).toBe('Better website copy here.');
     });
 
+    it('replaces targeted block ranges without reloading the preview', () => {
+        const { document, window } = bootPreview(`<body>
+            <main>
+                <!-- tw:block id="block_hero" type="hero" label="Hero" -->
+                <section><h1>Old hero</h1></section>
+                <!-- /tw:block -->
+                <!-- tw:block id="block_features" type="features" label="Features" -->
+                <section><p>Old features</p></section>
+                <!-- /tw:block -->
+                <!-- tw:block id="block_footer" type="footer" label="Footer" -->
+                <footer>Footer</footer>
+                <!-- /tw:block -->
+            </main>
+        </body>`);
+
+        window.dispatchEvent(new window.MessageEvent('message', {
+            data: {
+                type: 'replace-block-range',
+                targetIds: ['block_hero', 'block_features'],
+                html: `
+                    <!-- tw:block id="block_hero" type="story" label="Story" -->
+                    <article><h2>New story</h2></article>
+                    <!-- /tw:block -->
+                `,
+            },
+        }));
+
+        expect(document.querySelector('h1')).toBeNull();
+        expect(document.querySelector('p')).toBeNull();
+        expect(document.querySelector('article').dataset.builderBlockId).toBe('block_hero');
+        expect(document.querySelector('article').classList.contains('builder-selected')).toBe(true);
+        expect(document.querySelector('footer').textContent).toBe('Footer');
+    });
+
     it('applies a selection sent by the parent frame', () => {
         const { document, window } = bootPreview(`
             <main>

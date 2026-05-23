@@ -306,6 +306,34 @@ HTML;
         ]);
     }
 
+    public function test_pipeline_publishes_final_targeted_edit_html_when_provider_does_not_stream(): void
+    {
+        [$project, $page] = $this->makePage('A developer tool landing page');
+        $artifact = $this->htmlArtifact();
+
+        $page->forceFill([
+            'html_source' => $artifact['marked_html'],
+            'status' => 'valid',
+        ])->save();
+
+        $replacement = <<<'HTML'
+<!-- tw:block id="draft_story" type="story" label="Story" -->
+<section data-node-id="draft_story" data-node-type="story" data-tw-block="draft_story" class="bg-white px-6 py-24">
+  <div class="mx-auto max-w-4xl"><h2 class="text-4xl font-bold">Final edit result</h2></div>
+</section>
+<!-- /tw:block -->
+HTML;
+
+        $this->app->instance(LlmProvider::class, new FakeTargetedEditProvider($replacement));
+
+        app(Pipeline::class)->edit($page, 'block_hero', 'Publish this edit into the modal.');
+
+        $snapshot = app(GenerationStreamBuffer::class)->latestSectionSnapshot($page->id);
+
+        $this->assertSame('targeted_edit', $snapshot['stage']);
+        $this->assertStringContainsString('Final edit result', $snapshot['html']);
+    }
+
     public function test_pipeline_streams_targeted_edit_html_source(): void
     {
         [$project, $page] = $this->makePage('A developer tool landing page');

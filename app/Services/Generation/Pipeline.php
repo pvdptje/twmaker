@@ -130,6 +130,7 @@ class Pipeline
             $this->events->record($page, 'edit_applied', 'targeted_edit', 'success', $result['explanation'], $eventTargetId, [
                 'blocks' => $result['blocks'] ?? [],
                 'target_ids' => $targetIds,
+                'html_source' => $result['html_source'],
             ] + $this->payloadWithUsage($result));
 
             return $document;
