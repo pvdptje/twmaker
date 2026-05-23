@@ -27,8 +27,24 @@
             localStorage.setItem(this.selectionKey('provider'), this.provider);
             if (this.model) localStorage.setItem(this.selectionKey(`model.${this.provider}`), this.model);
         },
+        editRunning: false,
+        startEdit() {
+            this.saveSelection();
+            this.$wire.applyEditWithSelection(this.provider, this.model, this.apiKey);
+        },
+        beginEdit(event) {
+            if (event.detail?.pageId && event.detail.pageId !== @js($page->id)) return;
+            if (event.detail?.stage !== 'targeted_edit') return;
+            this.editRunning = true;
+        },
+        finishEdit(event) {
+            if (event.detail?.pageId && event.detail.pageId !== @js($page->id)) return;
+            this.editRunning = false;
+        },
     }"
     x-init="loadDefaults(); $watch('provider', () => { ensureModel(); loadKey(); saveSelection() }); $watch('model', () => saveSelection())"
+    x-on:generation-started.window="beginEdit($event)"
+    x-on:generation-finished.window="finishEdit($event)"
 >
     <div class="flex items-center justify-between gap-3">
         <div class="text-xs font-semibold uppercase tracking-normal text-neutral-500">Edit request</div>
@@ -77,12 +93,16 @@
     @enderror
     <button
         type="button"
-        x-on:click="saveSelection(); $wire.applyEditWithSelection(provider, model, apiKey)"
+        x-on:click="startEdit()"
         wire:loading.attr="disabled"
         wire:target="applyEditWithSelection,applyEdit"
+        x-bind:disabled="editRunning"
         @disabled(! $selectedNodeId && count($selectedBlockIds) === 0)
-        class="mt-3 w-full rounded-md bg-cyan-500 px-3 py-2 text-sm font-semibold text-neutral-950 hover:bg-cyan-400 disabled:bg-neutral-800 disabled:text-neutral-400"
+        class="mt-3 inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-md bg-cyan-500 px-3 py-2 text-sm font-semibold text-neutral-950 hover:bg-cyan-400 disabled:bg-neutral-800 disabled:text-neutral-400"
     >
-        {{ count($selectedBlockIds) > 1 ? 'Apply multi edit' : 'Apply edit' }}
+        <span wire:loading wire:target="applyEditWithSelection,applyEdit" class="h-4 w-4 animate-spin rounded-full border-2 border-neutral-500 border-t-cyan-200"></span>
+        <span x-show="editRunning" wire:loading.remove wire:target="applyEditWithSelection,applyEdit" class="h-4 w-4 animate-spin rounded-full border-2 border-neutral-500 border-t-cyan-200"></span>
+        <span wire:loading wire:target="applyEditWithSelection,applyEdit">Applying edit</span>
+        <span wire:loading.remove wire:target="applyEditWithSelection,applyEdit" x-text="editRunning ? 'Applying edit' : @js(count($selectedBlockIds) > 1 ? 'Apply multi edit' : 'Apply edit')"></span>
     </button>
 </section>

@@ -98,10 +98,12 @@ class Pipeline
         )));
         $eventTargetId = implode(',', $targetIds);
 
-        $this->events->record($page, 'edit_requested', 'targeted_edit', 'info', count($targetIds) > 1 ? 'Editing selected block range.' : 'Editing selected block.', $eventTargetId, [
-            'instruction' => $instruction,
-            'target_ids' => $targetIds,
-        ]);
+        if (! $this->hasFreshEditRequestEvent($page, $eventTargetId)) {
+            $this->events->record($page, 'edit_requested', 'targeted_edit', 'info', count($targetIds) > 1 ? 'Editing selected block range.' : 'Editing selected block.', $eventTargetId, [
+                'instruction' => $instruction,
+                'target_ids' => $targetIds,
+            ]);
+        }
 
         try {
             $result = $this->targetedEdit->editMany($page, $targetIds, $instruction, $provider, $model, $apiKey);
@@ -135,6 +137,7 @@ class Pipeline
 
             return $document;
         } catch (Throwable $exception) {
+            $page->forceFill(['status' => 'error'])->save();
             $this->events->record($page, 'edit_rejected', 'targeted_edit', 'error', $exception->getMessage(), $eventTargetId);
 
             throw $exception;
@@ -161,6 +164,20 @@ class Pipeline
             'block_index' => $blockIndex,
             'generation_history' => [],
         ];
+    }
+
+    private function hasFreshEditRequestEvent(Page $page, string $targetId): bool
+    {
+        $event = $page->generationEvents()
+            ->where('kind', 'edit_requested')
+            ->where('stage', 'targeted_edit')
+            ->latest('occurred_at')
+            ->first();
+
+        return $event !== null
+            && $event->target_id === $targetId
+            && $event->occurred_at !== null
+            && $event->occurred_at->greaterThan(now('UTC')->subMinutes(10));
     }
 
     private function payloadWithUsage(array|SectionGenerationResult $value, array $payload = []): array

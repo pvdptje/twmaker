@@ -357,9 +357,15 @@ class BuilderShellTest extends TestCase
             ->set('apiKey', 'test-edit-key')
             ->call('applyEdit')
             ->assertSet('instruction', '')
-            ->assertDispatched('generation-started', pageId: $page->id);
+            ->assertDispatched('generation-started', pageId: $page->id, stage: 'targeted_edit');
 
         $this->assertSame('generating', $page->refresh()->status);
+        $this->assertDatabaseHas('generation_events', [
+            'page_id' => $page->id,
+            'kind' => 'edit_requested',
+            'stage' => 'targeted_edit',
+            'target_id' => 'block_hero',
+        ]);
 
         Queue::assertPushed(TargetedEditJob::class, fn (TargetedEditJob $job): bool => $job->pageId === $page->id
             && $job->targetId === 'block_hero'
@@ -391,7 +397,7 @@ class BuilderShellTest extends TestCase
             ->set('model', 'claude-haiku-4-5-20251001')
             ->call('applyEdit')
             ->assertSet('instruction', '')
-            ->assertDispatched('generation-started', pageId: $page->id);
+            ->assertDispatched('generation-started', pageId: $page->id, stage: 'targeted_edit');
 
         Queue::assertPushed(TargetedEditJob::class, fn (TargetedEditJob $job): bool => $job->targetId === ['block_hero', 'block_features']
             && $job->instruction === 'Replace these with one product story section');
@@ -764,6 +770,64 @@ HTML,
             ->assertSee('Open stream')
             ->assertSee('x-bind:disabled="targetHtml === \'\' && !true"', false)
             ->assertDontSee('x-bind:disabled="open ||', false);
+    }
+
+    public function test_stream_panel_does_not_auto_open_for_targeted_edit_streams(): void
+    {
+        $project = Project::query()->create([
+            'id' => app(IdGenerator::class)->project(),
+            'name' => 'Acme',
+        ]);
+        $page = Page::query()->create([
+            'id' => app(IdGenerator::class)->page(),
+            'project_id' => $project->id,
+            'name' => 'Homepage',
+            'prompt' => '',
+            'status' => 'generating',
+        ]);
+        $page->generationEvents()->create([
+            'id' => app(IdGenerator::class)->generationEvent(),
+            'kind' => 'edit_requested',
+            'stage' => 'targeted_edit',
+            'target_id' => 'block_hero',
+            'level' => 'info',
+            'summary' => 'Editing selected block.',
+            'payload' => [
+                'target_ids' => ['block_hero'],
+            ],
+            'occurred_at' => now('UTC'),
+        ]);
+
+        Livewire::test(StreamPanel::class, ['page' => $page])
+            ->assertSet('activeStage', 'targeted_edit')
+            ->assertSee('open: false', false)
+            ->assertSee('data-stream-stage="targeted_edit"', false)
+            ->assertSee('data-output-stage="targeted_edit"', false)
+            ->assertSee('shouldAutoOpen(stage)', false)
+            ->assertSee("!String(stage || '').startsWith('targeted_edit')", false)
+            ->assertSee('resetForStage($event.detail?.stage || \'section_generator\'', false)
+            ->assertSee("edit_requested' && event.stage === 'targeted_edit'", false);
+    }
+
+    public function test_edit_form_button_shows_running_state_until_generation_finishes(): void
+    {
+        $project = Project::query()->create([
+            'id' => app(IdGenerator::class)->project(),
+            'name' => 'Acme',
+        ]);
+        $page = Page::query()->create([
+            'id' => app(IdGenerator::class)->page(),
+            'project_id' => $project->id,
+            'name' => 'Homepage',
+            'prompt' => '',
+            'status' => 'valid',
+        ]);
+
+        Livewire::test(EditForm::class, ['page' => $page, 'selectedNodeId' => 'block_hero'])
+            ->assertSee('editRunning', false)
+            ->assertSee('Applying edit', false)
+            ->assertSee('x-on:generation-finished.window="finishEdit($event)"', false)
+            ->assertSee('animate-spin', false);
     }
 
     public function test_right_inspector_shows_token_totals_per_model(): void

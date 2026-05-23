@@ -7,10 +7,14 @@
     };
 
     $streamHtml = (string) ($streamSnapshot['html'] ?? '');
-    $streamStage = (string) ($streamSnapshot['stage'] ?? 'section_generator');
+    $streamStage = $streamHtml === ''
+        ? (string) $activeStage
+        : (string) ($streamSnapshot['stage'] ?? $activeStage);
     $streamPosition = (int) ($streamSnapshot['position'] ?? strlen($streamHtml));
     $outputText = (string) ($outputSnapshot['output'] ?? '');
-    $outputStage = (string) ($outputSnapshot['stage'] ?? $streamStage);
+    $outputStage = $outputText === ''
+        ? (string) $activeStage
+        : (string) ($outputSnapshot['stage'] ?? $streamStage);
     $outputPosition = (int) ($outputSnapshot['position'] ?? strlen($outputText));
 @endphp
 
@@ -25,16 +29,16 @@
     data-output-position="{{ $outputPosition }}"
     data-targeted-edit-patch="{{ base64_encode(json_encode($targetedEditPatch, JSON_THROW_ON_ERROR)) }}"
     data-status-label="{{ $statusLabel }}"
-    x-on:generation-started.window="if (!$event.detail?.pageId || $event.detail.pageId === pageId) resetForStage('section_generator')"
+    x-on:generation-started.window="if (!$event.detail?.pageId || $event.detail.pageId === pageId) resetForStage($event.detail?.stage || 'section_generator', ($event.detail?.stage || 'section_generator') !== 'targeted_edit')"
     x-data="{
         pageId: @js($page->id),
         statusLabel: @js($statusLabel),
-        open: @js($statusLabel === 'running'),
+        open: @js($autoOpenStream),
         html: @js($streamHtml),
         output: @js($outputText),
         targetHtml: @js($streamHtml),
         targetOutput: @js($outputText),
-        stage: @js($streamStage),
+        stage: @js($activeStage),
         outputStage: @js($outputStage),
         connected: false,
         socketState: 'connecting',
@@ -51,6 +55,21 @@
         lastTargetedPatchKey: null,
         baseCharsPerSecond: 180,
         maxFrameChars: 48,
+        shouldAutoOpen(stage) {
+            return !String(stage || '').startsWith('targeted_edit');
+        },
+        notifyFinished(status, incremental = false) {
+            const detail = {
+                pageId: this.pageId,
+                status,
+                incremental,
+            };
+
+            window.dispatchEvent(new CustomEvent('generation-finished', { detail }));
+            if (window.Livewire?.dispatch) {
+                window.Livewire.dispatch('generation-finished', detail);
+            }
+        },
         init() {
             this.syncSnapshot();
             this.syncTargetedEditPatch();
@@ -75,7 +94,7 @@
 
             if (nextStatus === 'running') {
                 this.terminal = false;
-                this.open = !this.dismissed;
+                this.open = !this.dismissed && this.shouldAutoOpen(this.stage);
 
                 return;
             }
@@ -84,16 +103,18 @@
                 this.terminal = true;
                 this.open = false;
                 this.dismissed = false;
+                this.notifyFinished('valid', this.stage === 'targeted_edit');
 
                 return;
             }
 
             if (nextStatus === 'error') {
                 this.terminal = true;
+                this.notifyFinished('error', this.stage === 'targeted_edit');
             }
         },
-        resetForStage(stage = 'section_generator') {
-            this.open = true;
+        resetForStage(stage = 'section_generator', autoOpen = true) {
+            this.open = autoOpen;
             this.dismissed = false;
             this.terminal = false;
             this.html = '';
@@ -141,13 +162,13 @@
                 this.cancelReveal();
                 this.stage = stage;
                 this.lastChunkAt = Date.now();
-                this.open = !this.dismissed && !this.terminal;
+                this.open = this.open || (!this.dismissed && !this.terminal && this.shouldAutoOpen(stage));
                 this.scrollToBottom();
             } else if (snapshot.length > this.targetHtml.length) {
                 this.targetHtml = snapshot;
                 this.stage = stage;
                 this.lastChunkAt = Date.now();
-                this.open = !this.dismissed && !this.terminal;
+                this.open = this.open || (!this.dismissed && !this.terminal && this.shouldAutoOpen(stage));
                 this.queueReveal();
             }
 
@@ -164,13 +185,13 @@
                 this.cancelReveal();
                 this.outputStage = outputStage;
                 this.lastChunkAt = Date.now();
-                this.open = !this.dismissed && !this.terminal;
+                this.open = this.open || (!this.dismissed && !this.terminal && this.shouldAutoOpen(outputStage));
                 this.scrollToBottom();
             } else if (outputSnapshot.length > this.targetOutput.length) {
                 this.targetOutput = outputSnapshot;
                 this.outputStage = outputStage;
                 this.lastChunkAt = Date.now();
-                this.open = !this.dismissed && !this.terminal;
+                this.open = this.open || (!this.dismissed && !this.terminal && this.shouldAutoOpen(outputStage));
                 this.queueReveal();
             }
         },
@@ -198,13 +219,7 @@
                     html: patch.html,
                 },
             }));
-            if (window.Livewire?.dispatch) {
-                window.Livewire.dispatch('generation-finished', {
-                    pageId: this.pageId,
-                    status: 'valid',
-                    incremental: true,
-                });
-            }
+            this.notifyFinished('valid', true);
         },
         cancelReveal() {
             if (this.revealFrame) cancelAnimationFrame(this.revealFrame);
@@ -314,7 +329,7 @@
                         if (nextOutput === this.targetOutput) return;
 
                         this.targetOutput = nextOutput;
-                        this.open = !this.dismissed;
+                        this.open = this.open || (!this.dismissed && this.shouldAutoOpen(event.stage));
                         this.lastChunkAt = Date.now();
                         this.queueReveal();
 
@@ -327,7 +342,7 @@
                     if (nextHtml === this.targetHtml) return;
 
                     this.targetHtml = nextHtml;
-                    this.open = !this.dismissed;
+                    this.open = this.open || (!this.dismissed && this.shouldAutoOpen(event.stage));
                     this.lastChunkAt = Date.now();
 
                     this.queueReveal();
@@ -335,7 +350,7 @@
                 .listen('.GenerationEventBroadcast', (event) => {
                     if (!event) return;
                     if ((event.kind === 'stage_started' && event.stage === 'section_generator') || (event.kind === 'edit_requested' && event.stage === 'targeted_edit')) {
-                        this.resetForStage(event.stage);
+                        this.resetForStage(event.stage, this.shouldAutoOpen(event.stage));
                     }
                     if (event.kind === 'generation_completed' || event.kind === 'generation_failed' || event.kind === 'edit_applied' || event.kind === 'edit_rejected') {
                         this.terminal = true;
@@ -351,13 +366,7 @@
                                 },
                             }));
                         }
-                        if (window.Livewire?.dispatch) {
-                            window.Livewire.dispatch('generation-finished', {
-                                pageId: this.pageId,
-                                status: (event.kind === 'generation_completed' || event.kind === 'edit_applied') ? 'valid' : 'error',
-                                incremental: event.kind === 'edit_applied',
-                            });
-                        }
+                        this.notifyFinished((event.kind === 'generation_completed' || event.kind === 'edit_applied') ? 'valid' : 'error', event.kind === 'edit_applied');
                     }
                 });
         },

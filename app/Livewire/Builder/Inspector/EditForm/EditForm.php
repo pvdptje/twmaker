@@ -4,6 +4,7 @@ namespace App\Livewire\Builder\Inspector\EditForm;
 
 use App\Jobs\TargetedEditJob;
 use App\Models\Page;
+use App\Services\Generation\GenerationEventRecorder;
 use App\Services\Llm\LlmRegistry;
 use Illuminate\Contracts\View\View;
 use Livewire\Attributes\Reactive;
@@ -86,8 +87,21 @@ class EditForm extends Component
             return;
         }
 
+        app(GenerationEventRecorder::class)->record(
+            $this->page,
+            'edit_requested',
+            'targeted_edit',
+            'info',
+            count($targetIds) > 1 ? 'Editing selected block range.' : 'Editing selected block.',
+            implode(',', $targetIds),
+            [
+                'instruction' => $this->instruction,
+                'target_ids' => $targetIds,
+            ],
+        );
+
         $this->page->forceFill(['status' => 'generating'])->save();
-        $this->dispatch('generation-started', pageId: $this->page->id);
+        $this->dispatch('generation-started', pageId: $this->page->id, stage: 'targeted_edit');
 
         TargetedEditJob::dispatch($this->page->id, count($targetIds) === 1 ? $targetIds[0] : $targetIds, $this->instruction, $this->provider, $this->model, $this->normalizedApiKey());
         $this->instruction = '';

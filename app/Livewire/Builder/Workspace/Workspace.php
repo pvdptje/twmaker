@@ -98,7 +98,7 @@ class Workspace extends Component
     }
 
     #[On('generation-started')]
-    public function generationStarted(string $pageId): void
+    public function generationStarted(string $pageId, ?string $stage = null): void
     {
         if ($pageId === $this->page_id) {
             $this->generation_status = 'running';

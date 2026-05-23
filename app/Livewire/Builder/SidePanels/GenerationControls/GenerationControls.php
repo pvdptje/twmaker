@@ -75,7 +75,7 @@ class GenerationControls extends Component
             'status' => 'generating',
         ])->save();
 
-        $this->dispatch('generation-started', pageId: $this->page->id);
+        $this->dispatch('generation-started', pageId: $this->page->id, stage: 'section_generator');
 
         GeneratePageJob::dispatch($this->page->id, $this->provider, $this->model, $this->normalizedApiKey());
 
