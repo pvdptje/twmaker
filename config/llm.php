@@ -7,7 +7,8 @@ return [
     'providers' => [
         'anthropic' => [
             'label' => 'Anthropic',
-            'driver' => 'anthropic',
+            'driver' => 'prism',
+            'prism_provider' => 'anthropic',
             'implemented' => true,
             'api_key' => env('ANTHROPIC_API_KEY'),
             'models_refreshed_at' => '2026-05-21',
@@ -61,7 +62,8 @@ return [
         ],
         'deepseek' => [
             'label' => 'DeepSeek',
-            'driver' => 'deepseek',
+            'driver' => 'prism',
+            'prism_provider' => 'deepseek',
             'implemented' => true,
             'base_url' => env('DEEPSEEK_BASE_URL', 'https://api.deepseek.com'),
             'api_key' => env('DEEPSEEK_API_KEY'),

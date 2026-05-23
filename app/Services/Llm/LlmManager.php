@@ -42,6 +42,7 @@ class LlmManager implements LlmProvider
         $driver = config("llm.providers.{$provider}.driver");
 
         return match ($driver) {
+            'prism' => app(PrismProvider::class),
             'anthropic' => app(AnthropicProvider::class),
             'deepseek' => app(DeepSeekProvider::class),
             default => throw new InvalidArgumentException("LLM provider [{$provider}] is not implemented."),

@@ -16,13 +16,13 @@ class LlmRegistryTest extends TestCase
             [
                 'id' => 'anthropic',
                 'label' => 'Anthropic',
-                'driver' => 'anthropic',
+                'driver' => 'prism',
                 'models_refreshed_at' => '2026-05-21',
             ],
             [
                 'id' => 'deepseek',
                 'label' => 'DeepSeek',
-                'driver' => 'deepseek',
+                'driver' => 'prism',
                 'models_refreshed_at' => '2026-05-22',
             ],
         ], $registry->implementedProviders());

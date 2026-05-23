@@ -76,7 +76,7 @@ class ProviderModelCatalog
 
     private function fetch(string $provider, string $apiKey): ?array
     {
-        return match (config("llm.providers.{$provider}.driver")) {
+        return match (config("llm.providers.{$provider}.prism_provider", config("llm.providers.{$provider}.driver"))) {
             'anthropic' => $this->fetchAnthropic($apiKey),
             'deepseek' => $this->fetchDeepSeek($provider, $apiKey),
             default => null,

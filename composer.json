@@ -12,7 +12,8 @@
         "laravel/reverb": "^1.10",
         "laravel/tinker": "^3.0",
         "livewire/livewire": "^4.3",
-        "opis/json-schema": "^2.6"
+        "opis/json-schema": "^2.6",
+        "prism-php/prism": "^0.100.1"
     },
     "require-dev": {
         "fakerphp/faker": "^1.23",
