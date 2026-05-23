@@ -110,7 +110,7 @@ class PrismProvider implements LlmProvider
         try {
             $stream = Prism::text()
                 ->using($this->prismProvider($request->provider), $request->model, $this->providerConfig($request))
-                ->withClientOptions($this->clientOptions($request))
+                ->withClientOptions($this->clientOptions($request) + ['stream' => true])
                 ->withSystemPrompt($request->systemPrompt)
                 ->withPrompt($userContent)
                 ->withMaxTokens($request->maxTokens)
