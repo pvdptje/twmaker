@@ -28,8 +28,6 @@ class Workspace extends Component
 
     public string $preview_mount_key = '';
 
-    public bool $deferred_workspace_sync = false;
-
     public Project $project;
 
     public Page $page;
@@ -114,11 +112,16 @@ class Workspace extends Component
 
         $this->page->refresh();
         $this->block_index = $this->slimBlockIndex($this->currentBlockIndex($this->page));
+        $this->selected_block_ids = $this->validSelectedBlockIds($this->selected_block_ids);
         $this->preview_signature = $this->pageSignature($this->page);
 
         if (! $incremental) {
             $this->preview_mount_key = $this->preview_signature;
             $this->dispatchPreviewHtmlUpdated();
+
+            if ($this->selected_node_id !== null) {
+                $this->dispatch('preview-selection-changed', nodeId: $this->selected_node_id, scrollIntoView: true);
+            }
         }
 
         $this->generation_status = match ($status) {
@@ -127,76 +130,6 @@ class Workspace extends Component
             'error' => 'error',
             default => 'idle',
         };
-    }
-
-    public function refreshFromPage(): ?array
-    {
-        $this->page->refresh();
-
-        if ($this->deferred_workspace_sync) {
-            $this->block_index = $this->slimBlockIndex($this->currentBlockIndex($this->page));
-            $this->selected_block_ids = $this->validSelectedBlockIds($this->selected_block_ids);
-            $this->deferred_workspace_sync = false;
-        }
-
-        $signature = $this->pageSignature($this->page);
-        if ($signature !== $this->preview_signature) {
-            if ($patch = $this->latestTargetedEditPatch()) {
-                $this->block_index = $this->slimBlockIndex($this->currentBlockIndex($this->page));
-                $this->selected_block_ids = $this->validSelectedBlockIds($this->selected_block_ids);
-                $this->preview_signature = $signature;
-                $this->generation_status = 'valid';
-
-                $this->dispatchTargetedEditApplied($patch);
-
-                return $patch;
-            }
-
-            if ($this->generation_status === 'running' && $this->page->status === 'valid') {
-                return null;
-            }
-
-            $this->block_index = $this->slimBlockIndex($this->currentBlockIndex($this->page));
-            $this->selected_block_ids = $this->validSelectedBlockIds($this->selected_block_ids);
-            $this->preview_signature = $signature;
-            $this->preview_mount_key = $signature;
-            $this->dispatchPreviewHtmlUpdated();
-
-            if ($this->selected_node_id !== null) {
-                $this->dispatch('preview-selection-changed', nodeId: $this->selected_node_id, scrollIntoView: true);
-            }
-        }
-
-        $this->generation_status = match ($this->page->status) {
-            'generating' => 'running',
-            'valid' => 'valid',
-            'error' => 'error',
-            default => $this->generation_status,
-        };
-
-        return null;
-    }
-
-    public function refreshPreviewFromPage(): ?array
-    {
-        $this->page->refresh();
-
-        $signature = $this->pageSignature($this->page);
-        if ($signature === $this->preview_signature) {
-            return null;
-        }
-
-        $patch = $this->latestTargetedEditPatch();
-        if (! $patch) {
-            return null;
-        }
-
-        $this->preview_signature = $signature;
-        $this->generation_status = 'valid';
-        $this->deferred_workspace_sync = true;
-        $this->dispatchTargetedEditApplied($patch);
-
-        return $patch;
     }
 
     public function render(): View
@@ -252,37 +185,6 @@ class Workspace extends Component
             srcdoc: $this->previewSource(),
             selectedNodeId: $this->selected_node_id,
         );
-    }
-
-    private function latestTargetedEditPatch(): ?array
-    {
-        $event = $this->page->generationEvents()
-            ->where('kind', 'edit_applied')
-            ->where('stage', 'targeted_edit')
-            ->latest('occurred_at')
-            ->first();
-
-        $payload = is_array($event?->payload) ? $event->payload : [];
-        $targetIds = $payload['target_ids'] ?? null;
-        $htmlSource = $payload['html_source'] ?? null;
-
-        if (! is_array($targetIds) || $targetIds === [] || ! is_string($htmlSource) || $htmlSource === '') {
-            return null;
-        }
-
-        if (! str_contains((string) ($this->page->html_source ?? ''), $htmlSource)) {
-            return null;
-        }
-
-        return [
-            'targetIds' => array_values($targetIds),
-            'html' => $htmlSource,
-        ];
-    }
-
-    private function dispatchTargetedEditApplied(array $patch): void
-    {
-        $this->dispatch('targeted-edit-applied', targetIds: $patch['targetIds'], html: $patch['html']);
     }
 
     private function previewSource(): string

@@ -12,7 +12,6 @@ use App\Livewire\Builder\Workspace\Workspace;
 use App\Livewire\Projects\ProjectDashboard\ProjectDashboard;
 use App\Livewire\Projects\ProjectList\ProjectList;
 use App\Livewire\Setup\LlmSetup;
-use App\Models\GenerationEvent;
 use App\Models\Page;
 use App\Models\Project;
 use App\Services\Html\BlockIndexer;
@@ -114,7 +113,7 @@ class BuilderShellTest extends TestCase
             ->assertOk()
             ->assertSee('Canvas')
             ->assertSee('Inspector')
-            ->assertSee('Stream')
+            ->assertSee('Activity')
             ->assertSee('No generation events yet.')
             ->assertSee('maxRows: 80', false)
             ->assertSee('/preview.css', false);
@@ -444,7 +443,7 @@ class BuilderShellTest extends TestCase
             ->assertSet('generation_status', 'error');
     }
 
-    public function test_workspace_poll_refreshes_generated_html_state(): void
+    public function test_workspace_refreshes_generated_html_state_when_broadcast_finishes(): void
     {
         $project = Project::query()->create([
             'id' => app(IdGenerator::class)->project(),
@@ -467,7 +466,7 @@ class BuilderShellTest extends TestCase
         ])->save();
 
         $component
-            ->call('refreshFromPage')
+            ->dispatch('generation-finished', pageId: $page->id, status: 'valid')
             ->assertSet('generation_status', 'valid')
             ->assertSet('block_index', [
                 [
@@ -541,7 +540,7 @@ HTML,
         ])->save();
 
         $component
-            ->call('refreshFromPage')
+            ->dispatch('generation-finished', pageId: $page->id, status: 'valid')
             ->assertDispatched('preview-html-updated')
             ->assertDispatched('preview-selection-changed', nodeId: 'block_hero', scrollIntoView: true);
     }
@@ -574,105 +573,6 @@ HTML,
             ->assertSet('generation_status', 'valid')
             ->assertSet('preview_mount_key', $previewMountKey)
             ->assertNotDispatched('preview-html-updated');
-    }
-
-    public function test_workspace_poll_applies_targeted_edit_incrementally_without_refreshing_preview(): void
-    {
-        $project = Project::query()->create([
-            'id' => app(IdGenerator::class)->project(),
-            'name' => 'Acme',
-        ]);
-        $page = Page::query()->create([
-            'id' => app(IdGenerator::class)->page(),
-            'project_id' => $project->id,
-            'name' => 'Homepage',
-            'prompt' => '',
-            'html_source' => '<!-- tw:block id="block_hero" type="hero" label="Hero" --><section>Hero</section><!-- /tw:block --><!-- tw:block id="block_footer" type="footer" label="Footer" --><footer>Footer</footer><!-- /tw:block -->',
-            'status' => 'generating',
-        ]);
-        $replacement = '<!-- tw:block id="block_hero" type="hero" label="Hero" --><section>Edited hero</section><!-- /tw:block -->';
-
-        $component = Livewire::test(Workspace::class, ['project' => $project, 'page' => $page]);
-        $previewMountKey = $component->get('preview_mount_key');
-
-        $page->forceFill([
-            'html_source' => $replacement.'<!-- tw:block id="block_footer" type="footer" label="Footer" --><footer>Footer</footer><!-- /tw:block -->',
-            'status' => 'valid',
-        ])->save();
-
-        GenerationEvent::query()->create([
-            'id' => app(IdGenerator::class)->generationEvent(),
-            'page_id' => $page->id,
-            'kind' => 'edit_applied',
-            'stage' => 'targeted_edit',
-            'target_id' => 'block_hero',
-            'level' => 'success',
-            'summary' => 'Edited selected block.',
-            'payload' => [
-                'target_ids' => ['block_hero'],
-                'html_source' => $replacement,
-            ],
-            'occurred_at' => now('UTC'),
-        ]);
-
-        $component
-            ->call('refreshFromPage')
-            ->assertSet('generation_status', 'valid')
-            ->assertSet('preview_mount_key', $previewMountKey)
-            ->assertDispatched('targeted-edit-applied', targetIds: ['block_hero'], html: $replacement)
-            ->assertNotDispatched('preview-html-updated');
-    }
-
-    public function test_workspace_preview_only_poll_patches_targeted_edit_while_deferring_sidebar_sync(): void
-    {
-        $project = Project::query()->create([
-            'id' => app(IdGenerator::class)->project(),
-            'name' => 'Acme',
-        ]);
-        $page = Page::query()->create([
-            'id' => app(IdGenerator::class)->page(),
-            'project_id' => $project->id,
-            'name' => 'Homepage',
-            'prompt' => '',
-            'html_source' => '<!-- tw:block id="block_hero" type="hero" label="Hero" --><section>Hero</section><!-- /tw:block --><!-- tw:block id="block_footer" type="footer" label="Footer" --><footer>Footer</footer><!-- /tw:block -->',
-            'status' => 'generating',
-        ]);
-        $replacement = '<!-- tw:block id="block_hero" type="hero" label="Hero" --><section>Edited hero</section><!-- /tw:block -->';
-
-        $component = Livewire::test(Workspace::class, ['project' => $project, 'page' => $page]);
-        $previewMountKey = $component->get('preview_mount_key');
-
-        $page->forceFill([
-            'html_source' => $replacement.'<!-- tw:block id="block_footer" type="footer" label="Footer" --><footer>Footer</footer><!-- /tw:block -->',
-            'status' => 'valid',
-        ])->save();
-
-        GenerationEvent::query()->create([
-            'id' => app(IdGenerator::class)->generationEvent(),
-            'page_id' => $page->id,
-            'kind' => 'edit_applied',
-            'stage' => 'targeted_edit',
-            'target_id' => 'block_hero',
-            'level' => 'success',
-            'summary' => 'Edited selected block.',
-            'payload' => [
-                'target_ids' => ['block_hero'],
-                'html_source' => $replacement,
-            ],
-            'occurred_at' => now('UTC'),
-        ]);
-
-        $component
-            ->call('refreshPreviewFromPage')
-            ->assertSet('generation_status', 'valid')
-            ->assertSet('preview_mount_key', $previewMountKey)
-            ->assertSet('deferred_workspace_sync', true)
-            ->assertDispatched('targeted-edit-applied', targetIds: ['block_hero'], html: $replacement)
-            ->assertNotDispatched('preview-html-updated');
-
-        $component
-            ->call('refreshFromPage')
-            ->assertSet('deferred_workspace_sync', false);
     }
 
     public function test_workspace_saves_quick_dom_element_edits(): void
@@ -742,17 +642,15 @@ HTML,
 
         Livewire::test(StreamPanel::class, ['page' => $page])
             ->assertSee('running')
-            ->assertSee('data-status-label="running"', false)
-            ->assertSee('LLM output')
-            ->assertSee('Waiting for the first HTML tokens.')
-            ->assertSee('Waiting for visible model output.')
-            ->assertSee('syncStatus()', false)
-            ->assertSee("window.Livewire.dispatch('generation-finished'", false)
-            ->assertSee('animate-bounce', false)
+            ->assertSee('Activity')
+            ->assertSee('generation-event-received', false)
+            ->assertDontSee('data-stream-url=', false)
+            ->assertDontSee('fetchSnapshot()', false)
+            ->assertDontSee('wire:poll', false)
             ->assertSee('bg-gradient-to-r', false);
     }
 
-    public function test_stream_panel_exposes_polled_terminal_status_to_modal_state(): void
+    public function test_workspace_contains_broadcast_only_realtime_bridge(): void
     {
         $project = Project::query()->create([
             'id' => app(IdGenerator::class)->project(),
@@ -766,13 +664,14 @@ HTML,
             'status' => 'valid',
         ]);
 
-        Livewire::test(StreamPanel::class, ['page' => $page, 'generationStatus' => 'running'])
-            ->assertSee('data-status-label="valid"', false)
-            ->assertSee("if (nextStatus === 'valid')", false)
-            ->assertSee('this.open = false', false);
+        Livewire::test(Workspace::class, ['project' => $project, 'page' => $page])
+            ->assertSee('data-builder-workspace-page-id="'.$page->id.'"', false)
+            ->assertSee('generation-event-received', false)
+            ->assertDontSee('setInterval', false)
+            ->assertDontSee('refreshTimer', false);
     }
 
-    public function test_stream_panel_can_reopen_modal_while_running_after_it_was_hidden(): void
+    public function test_stream_panel_has_no_stream_modal_controls(): void
     {
         $project = Project::query()->create([
             'id' => app(IdGenerator::class)->project(),
@@ -787,12 +686,13 @@ HTML,
         ]);
 
         Livewire::test(StreamPanel::class, ['page' => $page])
-            ->assertSee('Open stream')
-            ->assertSee('x-bind:disabled="targetHtml === \'\' && !true"', false)
-            ->assertDontSee('x-bind:disabled="open ||', false);
+            ->assertSee('Activity')
+            ->assertDontSee('Open stream')
+            ->assertDontSee('Template stream')
+            ->assertDontSee('x-show="open"', false);
     }
 
-    public function test_stream_panel_does_not_auto_open_for_targeted_edit_streams(): void
+    public function test_stream_panel_tracks_targeted_edit_activity_without_modal_state(): void
     {
         $project = Project::query()->create([
             'id' => app(IdGenerator::class)->project(),
@@ -820,13 +720,10 @@ HTML,
 
         Livewire::test(StreamPanel::class, ['page' => $page])
             ->assertSet('activeStage', 'targeted_edit')
-            ->assertSee('open: false', false)
-            ->assertSee('data-stream-stage="targeted_edit"', false)
-            ->assertSee('data-output-stage="targeted_edit"', false)
-            ->assertSee('shouldAutoOpen(stage)', false)
-            ->assertSee("!String(stage || '').startsWith('targeted_edit')", false)
-            ->assertSee('resetForStage($event.detail?.stage || \'section_generator\'', false)
-            ->assertSee("edit_requested' && event.stage === 'targeted_edit'", false);
+            ->assertSee('targeted_edit')
+            ->assertSee('Editing selected block.')
+            ->assertDontSee('open:', false)
+            ->assertDontSee('shouldAutoOpen', false);
     }
 
     public function test_edit_form_button_shows_running_state_until_generation_finishes(): void
@@ -896,6 +793,8 @@ HTML,
         ]);
 
         Livewire::test(RightInspector::class, ['page' => $page])
+            ->assertSee('LLM output')
+            ->assertSee('generation-stream-chunk', false)
             ->assertSee('Tokens')
             ->assertSee('claude-sonnet-4-20250514')
             ->assertSee('200 total');

@@ -1,0 +1,195 @@
+(function () {
+    const state = {
+        pageId: null,
+        channel: null,
+        subscribedChannel: null,
+        chunks: 0,
+        chars: 0,
+        html: '',
+        output: '',
+        connectionBound: false,
+    };
+
+    function workspace() {
+        return document.querySelector('[data-builder-workspace-page-id]');
+    }
+
+    function emit(name, detail = {}) {
+        window.dispatchEvent(new CustomEvent(name, { detail }));
+    }
+
+    function setText(selector, value) {
+        document.querySelectorAll(selector).forEach((element) => {
+            element.textContent = value;
+        });
+    }
+
+    function appendText(selector, value) {
+        document.querySelectorAll(selector).forEach((element) => {
+            element.textContent = value;
+            element.scrollTop = element.scrollHeight;
+        });
+    }
+
+    function setRealtimeState(value) {
+        setText('[data-realtime-state]', value);
+        emit('generation-realtime-status', { state: value });
+    }
+
+    function applyChunk(text, chunk, position) {
+        if (position < text.length) {
+            if (text.slice(position, position + chunk.length) === chunk) {
+                return text;
+            }
+
+            return text.slice(0, position) + chunk;
+        }
+
+        return text + chunk;
+    }
+
+    function updateStreamDom(event) {
+        const chunk = String(event.chunk || '');
+        const stream = String(event.stream || 'html');
+        const position = Number(event.position ?? (stream === 'output' ? state.output.length : state.html.length));
+
+        state.chunks += 1;
+        state.chars += chunk.length;
+
+        if (stream === 'output') {
+            state.output = applyChunk(state.output, chunk, position);
+        } else {
+            state.html = applyChunk(state.html, chunk, position);
+        }
+
+        setText('[data-generation-status]', 'running');
+        setText('[data-stream-stage]', event.stage || 'section_generator');
+        setText('[data-stream-count]', String(state.chunks));
+        setText('[data-stream-chars]', String(state.chars));
+        appendText('[data-live-stream-output]', state.output || state.html || 'Waiting for broadcast chunks.');
+    }
+
+    function updateEventDom(event) {
+        if (!event) return;
+
+        if (event.stage) {
+            setText('[data-stream-stage]', event.stage);
+        }
+
+        if (event.kind === 'stage_started' || event.kind === 'edit_requested') {
+            setText('[data-generation-status]', 'running');
+        }
+
+        if (event.kind === 'generation_completed' || event.kind === 'edit_applied') {
+            setText('[data-generation-status]', 'valid');
+        }
+
+        if (event.kind === 'generation_failed' || event.kind === 'edit_rejected') {
+            setText('[data-generation-status]', 'error');
+        }
+    }
+
+    function handleChunk(event) {
+        if (!event || String(event.page_id || '') !== String(state.pageId)) return;
+
+        updateStreamDom(event);
+        emit('generation-stream-chunk', event);
+    }
+
+    function handleGenerationEvent(event) {
+        if (!event || String(event.page_id || '') !== String(state.pageId)) return;
+
+        updateEventDom(event);
+        emit('generation-event-received', event);
+
+        if ((event.kind === 'stage_started' && event.stage === 'section_generator') || (event.kind === 'edit_requested' && event.stage === 'targeted_edit')) {
+            const detail = { pageId: state.pageId, stage: event.stage };
+            emit('generation-started', detail);
+            window.Livewire?.dispatch?.('generation-started', detail);
+        }
+
+        if (event.kind === 'edit_applied') {
+            const targetIds = Array.isArray(event.payload?.target_ids) ? event.payload.target_ids : [];
+            const html = typeof event.payload?.html_source === 'string' ? event.payload.html_source : '';
+            if (targetIds.length > 0 && html !== '') {
+                emit('targeted-edit-applied', { targetIds, html });
+            }
+        }
+
+        const terminal = {
+            generation_completed: ['valid', false],
+            generation_failed: ['error', false],
+            edit_applied: ['valid', true],
+            edit_rejected: ['error', true],
+        }[event.kind];
+
+        if (!terminal) return;
+
+        const [status, incremental] = terminal;
+        const detail = { pageId: state.pageId, status, incremental };
+        emit('generation-finished', detail);
+        window.Livewire?.dispatch?.('generation-finished', detail);
+    }
+
+    function bindConnection() {
+        if (state.connectionBound) return;
+
+        const connection = window.Echo?.connector?.pusher?.connection;
+        if (!connection) return;
+
+        state.connectionBound = true;
+        setRealtimeState(connection.state || 'subscribed');
+        connection.bind('state_change', (states) => {
+            setRealtimeState(states.current || 'unknown');
+        });
+        connection.bind('error', () => {
+            setRealtimeState('error');
+        });
+    }
+
+    function subscribe() {
+        const root = workspace();
+        if (!root) return;
+
+        const pageId = root.dataset.builderWorkspacePageId;
+        if (!pageId) return;
+
+        state.pageId = pageId;
+
+        if (!window.Echo) {
+            setRealtimeState('waiting');
+            window.setTimeout(subscribe, 250);
+
+            return;
+        }
+
+        bindConnection();
+
+        const channelName = `pages.${pageId}.generation`;
+        if (state.subscribedChannel === channelName) return;
+
+        if (state.subscribedChannel && window.Echo.leave) {
+            window.Echo.leave(state.subscribedChannel);
+        }
+
+        state.chunks = 0;
+        state.chars = 0;
+        state.html = '';
+        state.output = '';
+        setText('[data-stream-count]', '0');
+        setText('[data-stream-chars]', '0');
+        appendText('[data-live-stream-output]', 'Waiting for broadcast chunks.');
+
+        state.channel = window.Echo.channel(channelName)
+            .listen('.GenerationStreamChunk', handleChunk)
+            .listen('.GenerationEventBroadcast', handleGenerationEvent);
+        state.subscribedChannel = channelName;
+        setRealtimeState(window.Echo.connector?.pusher?.connection?.state || 'subscribed');
+    }
+
+    window.builderRealtimeSubscribe = subscribe;
+
+    document.addEventListener('DOMContentLoaded', subscribe);
+    document.addEventListener('livewire:navigated', subscribe);
+    document.addEventListener('livewire:init', subscribe);
+})();

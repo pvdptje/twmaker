@@ -39,7 +39,7 @@ class GenerationEventRecorder
         ]);
 
         try {
-            broadcast(new GenerationEventBroadcast($event))->toOthers();
+            broadcast(new GenerationEventBroadcast($event));
         } catch (Throwable $exception) {
             Log::warning('Generation event broadcast failed.', [
                 'page_id' => $page->id,

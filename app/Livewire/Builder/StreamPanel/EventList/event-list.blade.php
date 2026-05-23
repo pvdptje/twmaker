@@ -1,11 +1,9 @@
 <div
     class="min-h-0 overflow-y-auto p-3"
-    wire:poll.5s
     x-data="{
-        now: Date.now(),
         maxRows: 80,
         elapsed(iso) {
-            const seconds = Math.max(0, Math.floor((this.now - Date.parse(iso)) / 1000));
+            const seconds = Math.max(0, Math.floor((Date.now() - Date.parse(iso)) / 1000));
             if (seconds < 60) return `${seconds}s`;
             const minutes = Math.floor(seconds / 60);
             const rest = seconds % 60;
@@ -17,7 +15,6 @@
         },
     }"
     x-init="
-        setInterval(() => now = Date.now(), 1000);
         prune();
         new MutationObserver(() => prune()).observe($el, { childList: true, subtree: false });
     "

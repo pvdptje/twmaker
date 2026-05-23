@@ -326,7 +326,7 @@ HTML;
 
         $this->app->instance(LlmProvider::class, new FakeTargetedEditProvider($replacement));
 
-        app(Pipeline::class)->edit($page, 'block_hero', 'Publish this edit into the modal.');
+        app(Pipeline::class)->edit($page, 'block_hero', 'Publish this edit into the inspector stream.');
 
         $snapshot = app(GenerationStreamBuffer::class)->latestSectionSnapshot($page->id);
 
@@ -355,7 +355,7 @@ HTML;
 
         $this->app->instance(LlmProvider::class, new FakeStreamingTargetedEditProvider($replacement));
 
-        app(Pipeline::class)->edit($page, 'block_hero', 'Stream this edit into the modal.');
+        app(Pipeline::class)->edit($page, 'block_hero', 'Stream this edit into the inspector.');
 
         $snapshot = app(GenerationStreamBuffer::class)->latestSectionSnapshot($page->id);
         $outputSnapshot = app(GenerationStreamBuffer::class)->latestOutputSnapshot($page->id);

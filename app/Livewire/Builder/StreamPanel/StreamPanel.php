@@ -3,7 +3,6 @@
 namespace App\Livewire\Builder\StreamPanel;
 
 use App\Models\Page;
-use App\Services\Generation\GenerationStreamBuffer;
 use Illuminate\Contracts\View\View;
 use Livewire\Attributes\On;
 use Livewire\Component;
@@ -27,9 +26,7 @@ class StreamPanel extends Component
     public function render(): View
     {
         $this->page->refresh();
-        $streamSnapshot = app(GenerationStreamBuffer::class)->latestSectionSnapshot($this->page->id);
-        $outputSnapshot = app(GenerationStreamBuffer::class)->latestOutputSnapshot($this->page->id);
-        $activeStage = $this->activeStage($streamSnapshot, $outputSnapshot);
+        $activeStage = $this->activeStage();
         $statusLabel = match ($this->page->status) {
             'generating' => 'running',
             'valid' => 'valid',
@@ -40,18 +37,27 @@ class StreamPanel extends Component
         return view()->file(__DIR__.'/stream-panel.blade.php', [
             'statusLabel' => $statusLabel,
             'activeStage' => $activeStage,
-            'autoOpenStream' => $statusLabel === 'running' && ! str_starts_with($activeStage, 'targeted_edit'),
-            'events' => $this->page->generationEvents()->latest('occurred_at')->limit(12)->get(),
-            'streamSnapshot' => $streamSnapshot,
-            'outputSnapshot' => $outputSnapshot,
-            'targetedEditPatch' => $this->latestTargetedEditPatch(),
+            'events' => $this->page->generationEvents()
+                ->latest('occurred_at')
+                ->limit(20)
+                ->get()
+                ->map(fn ($event): array => [
+                    'id' => $event->id,
+                    'kind' => $event->kind,
+                    'stage' => $event->stage,
+                    'level' => $event->level,
+                    'summary' => $event->summary,
+                    'occurred_at' => $event->occurred_at?->toIso8601String(),
+                ])
+                ->values()
+                ->all(),
         ]);
     }
 
-    private function activeStage(array $streamSnapshot, array $outputSnapshot): string
+    private function activeStage(): string
     {
         if ($this->page->status !== 'generating') {
-            return (string) ($streamSnapshot['stage'] ?? $this->activeStage);
+            return $this->activeStage;
         }
 
         $event = $this->page->generationEvents()
@@ -65,48 +71,6 @@ class StreamPanel extends Component
             return $event->stage;
         }
 
-        if ($this->activeStage !== '') {
-            return $this->activeStage;
-        }
-
-        foreach ([$streamSnapshot, $outputSnapshot] as $snapshot) {
-            $stage = $snapshot['stage'] ?? null;
-            if (is_string($stage) && $stage !== '') {
-                return $stage;
-            }
-        }
-
         return $this->activeStage;
-    }
-
-    private function latestTargetedEditPatch(): array
-    {
-        if ($this->page->status !== 'valid') {
-            return [];
-        }
-
-        $event = $this->page->generationEvents()
-            ->where('kind', 'edit_applied')
-            ->where('stage', 'targeted_edit')
-            ->latest('occurred_at')
-            ->first();
-
-        $payload = is_array($event?->payload) ? $event->payload : [];
-        $targetIds = $payload['target_ids'] ?? null;
-        $htmlSource = $payload['html_source'] ?? null;
-
-        if (! is_array($targetIds) || $targetIds === [] || ! is_string($htmlSource) || $htmlSource === '') {
-            return [];
-        }
-
-        if (! str_contains((string) ($this->page->html_source ?? ''), $htmlSource)) {
-            return [];
-        }
-
-        return [
-            'eventId' => $event->id,
-            'targetIds' => array_values($targetIds),
-            'html' => $htmlSource,
-        ];
     }
 }
