@@ -88,19 +88,10 @@ class SectionGenerator
                 return;
             }
 
-            Log::debug('Broadcasting generation stream chunk.', [
-                'page_id' => $page->id,
-                'stage' => $stage,
-                'position' => $position,
-                'bytes' => strlen($chunk),
-            ]);
-
             $chunk = $this->scrubText($chunk);
             $this->streamBuffer->append($page->id, $stage, $chunk, $position);
-            $this->streamBuffer->appendOutput($page->id, $stage, $chunk, $position);
 
             $this->broadcastChunk(new GenerationStreamChunk($page->id, $stage, $chunk, $position), $page);
-            $this->broadcastChunk(new GenerationStreamChunk($page->id, $stage, $chunk, $position, 'output'), $page);
         };
     }
 

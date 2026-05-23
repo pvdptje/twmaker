@@ -86,6 +86,19 @@ class PrismProvider implements LlmProvider
         $prefixBuffer = '';
         $prefixResolved = false;
 
+        $pendingChunk = '';
+        $pendingPosition = 0;
+        $lastFlushAt = microtime(true);
+        $flush = function () use (&$pendingChunk, &$pendingPosition, &$lastFlushAt, $onDelta, $request): void {
+            if ($pendingChunk === '') {
+                return;
+            }
+
+            $onDelta($pendingChunk, $pendingPosition, $request);
+            $pendingChunk = '';
+            $lastFlushAt = microtime(true);
+        };
+
         Log::info('Prism text stream started.', [
             'stage' => $request->stage,
             'provider' => $request->provider,
@@ -122,9 +135,16 @@ class PrismProvider implements LlmProvider
                         continue;
                     }
 
-                    $position = strlen($streamedText);
+                    if ($pendingChunk === '') {
+                        $pendingPosition = strlen($streamedText);
+                    }
+
+                    $pendingChunk .= $chunk;
                     $streamedText .= $chunk;
-                    $onDelta($chunk, $position, $request);
+
+                    if (strlen($pendingChunk) >= 512 || microtime(true) - $lastFlushAt >= 0.075) {
+                        $flush();
+                    }
 
                     continue;
                 }
@@ -135,6 +155,8 @@ class PrismProvider implements LlmProvider
                     $usage = is_array($eventData['usage'] ?? null) ? $eventData['usage'] : $usage;
                 }
             }
+
+            $flush();
         } catch (Throwable $exception) {
             if ($fallbackRequest = $this->fallbackRequestForRejectedModel($request, $exception)) {
                 return $this->sendTextStream($fallbackRequest, $onDelta);
