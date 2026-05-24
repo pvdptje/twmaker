@@ -8,8 +8,6 @@
         streamStage: @js($activeStage),
         htmlPreview: '',
         outputPreview: '',
-        chunkCount: 0,
-        byteCount: 0,
         maxRows: 80,
         applyChunk(text, chunk, position) {
             if (position < text.length) {
@@ -33,8 +31,6 @@
 
             this.streamStage = detail.stage || this.streamStage;
             this.statusLabel = 'running';
-            this.chunkCount += 1;
-            this.byteCount += chunk.length;
 
             if (stream === 'output') {
                 this.outputPreview = this.applyChunk(this.outputPreview, chunk, position);
@@ -115,10 +111,6 @@
             </div>
         </template>
 
-        <div class="mt-4 rounded-md border border-neutral-800 bg-neutral-950 px-2 py-2">
-            <div class="text-xs font-medium text-neutral-300">Stream</div>
-            <div class="mt-1 text-xs text-neutral-500"><span data-stream-count x-text="chunkCount">0</span> chunks / <span data-stream-chars x-text="byteCount">0</span> chars</div>
-        </div>
     </div>
 
     <div class="grid min-h-0 grid-cols-[minmax(0,1fr)_minmax(18rem,32rem)]">

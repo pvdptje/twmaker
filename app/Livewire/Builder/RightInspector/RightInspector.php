@@ -65,9 +65,9 @@ class RightInspector extends Component
             return ['input' => 0, 'output' => 0, 'cache' => 0, 'total' => 0];
         }
 
-        $input = $this->usageInt($usage, ['input_tokens', 'inputTokens']);
-        $output = $this->usageInt($usage, ['output_tokens', 'outputTokens']);
-        $cache = $this->usageInt($usage, ['cache_creation_input_tokens', 'cacheCreationInputTokens'])
+        $input = $this->usageInt($usage, ['prompt_tokens', 'input_tokens', 'inputTokens']);
+        $output = $this->usageInt($usage, ['completion_tokens', 'output_tokens', 'outputTokens']);
+        $cache = $this->usageInt($usage, ['cache_write_input_tokens', 'cache_creation_input_tokens', 'cacheCreationInputTokens'])
             + $this->usageInt($usage, ['cache_read_input_tokens', 'cacheReadInputTokens']);
 
         return [
