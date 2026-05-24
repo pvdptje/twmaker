@@ -315,7 +315,6 @@ class BuilderShellTest extends TestCase
             ->set('apiKey', 'test-model-key')
             ->call('refreshModels')
             ->assertSet('model', 'claude-fresh-20260521')
-            ->assertSee('Claude Fresh')
             ->assertSee('1 models refreshed.');
 
         Http::assertSentCount(1);

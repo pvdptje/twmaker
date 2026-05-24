@@ -4,32 +4,32 @@
         provider: @js($provider),
         model: @js($model),
         apiKey: '',
-        modelOptionsByProvider: @js($modelOptionsByProvider),
+        sharedKey: 'twmaker.builder.modelSelection',
         storageKey(provider) { return `twmaker.apiKey.${provider}`; },
         defaultKey(field) { return `twmaker.llmDefaults.editing.${field}`; },
         selectionKey(field) { return `twmaker.builder.editing.${field}`; },
-        loadKey() { this.apiKey = localStorage.getItem(this.storageKey(this.provider)) || ''; },
-        modelOptions() { return this.modelOptionsByProvider[this.provider] || []; },
-        ensureModel() {
-            if (this.modelOptions().some((option) => option.id === this.model)) return;
-            this.model = this.modelOptions()[0]?.id || '';
+        loadSelection() {
+            try {
+                const stored = JSON.parse(localStorage.getItem(this.sharedKey) || 'null');
+                if (stored?.provider && stored?.model) {
+                    this.provider = stored.provider;
+                    this.model = stored.model;
+                } else {
+                    this.provider = localStorage.getItem(this.selectionKey('provider')) || localStorage.getItem(this.defaultKey('provider')) || this.provider;
+                    this.model = this.provider ? (localStorage.getItem(this.selectionKey(`model.${this.provider}`)) || localStorage.getItem(this.defaultKey('model')) || this.model) : this.model;
+                }
+            } catch (error) {}
+
+            this.apiKey = this.provider ? (localStorage.getItem(this.storageKey(this.provider)) || '') : '';
         },
-        loadDefaults() {
-            this.provider = localStorage.getItem(this.selectionKey('provider')) || localStorage.getItem(this.defaultKey('provider')) || this.provider;
-            this.$nextTick(() => {
-                this.model = localStorage.getItem(this.selectionKey(`model.${this.provider}`)) || localStorage.getItem(this.defaultKey('model')) || this.model;
-                this.ensureModel();
-                this.loadKey();
-            });
-        },
-        saveSelection() {
-            if (!this.provider) return;
-            localStorage.setItem(this.selectionKey('provider'), this.provider);
-            if (this.model) localStorage.setItem(this.selectionKey(`model.${this.provider}`), this.model);
+        updateSelection(event) {
+            this.provider = event.detail?.provider || this.provider;
+            this.model = event.detail?.model || this.model;
+            this.apiKey = event.detail?.apiKey || '';
         },
         editRunning: false,
         startEdit() {
-            this.saveSelection();
+            this.loadSelection();
             this.$wire.applyEditWithSelection(this.provider, this.model, this.apiKey);
         },
         beginEdit(event) {
@@ -42,13 +42,13 @@
             this.editRunning = false;
         },
     }"
-    x-init="loadDefaults(); $watch('provider', () => { ensureModel(); loadKey(); saveSelection() }); $watch('model', () => saveSelection())"
+    x-init="loadSelection()"
+    x-on:builder-model-selection-changed.window="updateSelection($event)"
     x-on:generation-started.window="beginEdit($event)"
     x-on:generation-finished.window="finishEdit($event)"
 >
     <div class="flex items-center justify-between gap-3">
         <div class="text-xs font-semibold uppercase tracking-normal text-neutral-500">Edit request</div>
-        <a href="{{ route('setup.llm') }}" wire:navigate class="text-xs font-medium text-cyan-300 hover:text-cyan-200">Setup</a>
     </div>
     @if (count($selectedBlockIds) > 1)
         <div class="mt-2 rounded-md border border-cyan-500/40 bg-cyan-500/10 px-3 py-2 text-xs text-cyan-100">
@@ -59,25 +59,9 @@
     @error('instruction')
         <div class="mt-2 text-xs text-red-300">{{ $message }}</div>
     @enderror
-    <label class="mt-3 block text-xs font-medium text-neutral-400">
-        Provider
-        <select x-model="provider" class="mt-1 w-full rounded-md border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400">
-            @foreach ($providerOptions as $providerOption)
-                <option value="{{ $providerOption['id'] }}">{{ $providerOption['label'] }}</option>
-            @endforeach
-        </select>
-    </label>
     @error('provider')
         <div class="mt-2 text-xs text-red-300">{{ $message }}</div>
     @enderror
-    <label class="mt-3 block text-xs font-medium text-neutral-400">
-        Model
-        <select x-model="model" class="mt-1 w-full rounded-md border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400">
-            <template x-for="modelOption in modelOptions()" :key="modelOption.id">
-                <option :value="modelOption.id" x-text="`${modelOption.label} (${modelOption.id})`"></option>
-            </template>
-        </select>
-    </label>
     @error('model')
         <div class="mt-2 text-xs text-red-300">{{ $message }}</div>
     @enderror

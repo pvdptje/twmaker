@@ -120,12 +120,7 @@ class EditForm extends Component
 
     public function render(): View
     {
-        return view()->file(__DIR__.'/edit-form.blade.php', [
-            'providerOptions' => $this->providerOptions(),
-            'modelOptionsByProvider' => collect($this->providerIds())
-                ->mapWithKeys(fn (string $provider): array => [$provider => $this->registry()->modelOptions($provider, $this->normalizedApiKey())])
-                ->all(),
-        ]);
+        return view()->file(__DIR__.'/edit-form.blade.php');
     }
 
     private function providerOptions(): array

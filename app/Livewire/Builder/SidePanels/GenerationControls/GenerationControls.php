@@ -95,12 +95,7 @@ class GenerationControls extends Component
 
     public function render(): View
     {
-        return view()->file(__DIR__.'/generation-controls.blade.php', [
-            'providerOptions' => $this->providerOptions(),
-            'modelOptionsByProvider' => collect($this->providerIds())
-                ->mapWithKeys(fn (string $provider): array => [$provider => $this->registry()->modelOptions($provider, $this->normalizedApiKey())])
-                ->all(),
-        ]);
+        return view()->file(__DIR__.'/generation-controls.blade.php');
     }
 
     private function providerOptions(): array

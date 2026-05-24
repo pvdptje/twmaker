@@ -5,16 +5,31 @@
         model: '',
         apiKey: '',
         insertRunning: false,
+        sharedKey: 'twmaker.builder.modelSelection',
         storageKey(provider) { return `twmaker.apiKey.${provider}`; },
         defaultKey(field) { return `twmaker.llmDefaults.editing.${field}`; },
         selectionKey(field) { return `twmaker.builder.editing.${field}`; },
-        loadDefaults() {
-            this.provider = localStorage.getItem(this.selectionKey('provider')) || localStorage.getItem(this.defaultKey('provider')) || '';
-            this.model = this.provider ? (localStorage.getItem(this.selectionKey(`model.${this.provider}`)) || localStorage.getItem(this.defaultKey('model')) || '') : '';
+        loadSelection() {
+            try {
+                const stored = JSON.parse(localStorage.getItem(this.sharedKey) || 'null');
+                if (stored?.provider && stored?.model) {
+                    this.provider = stored.provider;
+                    this.model = stored.model;
+                } else {
+                    this.provider = localStorage.getItem(this.selectionKey('provider')) || localStorage.getItem(this.defaultKey('provider')) || '';
+                    this.model = this.provider ? (localStorage.getItem(this.selectionKey(`model.${this.provider}`)) || localStorage.getItem(this.defaultKey('model')) || '') : '';
+                }
+            } catch (error) {}
+
             this.apiKey = this.provider ? (localStorage.getItem(this.storageKey(this.provider)) || '') : '';
         },
+        updateSelection(event) {
+            this.provider = event.detail?.provider || this.provider;
+            this.model = event.detail?.model || this.model;
+            this.apiKey = event.detail?.apiKey || '';
+        },
         startInsert() {
-            this.loadDefaults();
+            this.loadSelection();
             this.$wire.insertSectionWithSelection(this.provider || null, this.model || null, this.apiKey || null);
         },
         beginInsert(event) {
@@ -27,7 +42,8 @@
             this.insertRunning = false;
         },
     }"
-    x-init="loadDefaults()"
+    x-init="loadSelection()"
+    x-on:builder-model-selection-changed.window="updateSelection($event)"
     x-on:generation-started.window="beginInsert($event)"
     x-on:generation-finished.window="finishInsert($event)"
 >
