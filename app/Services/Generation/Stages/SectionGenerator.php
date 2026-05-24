@@ -88,7 +88,6 @@ class SectionGenerator
                 return;
             }
 
-            $chunk = $this->scrubText($chunk);
             $this->streamBuffer->append($page->id, $stage, $chunk, $position);
 
             $this->broadcastChunk(new GenerationStreamChunk($page->id, $stage, $chunk, $position), $page);
@@ -108,15 +107,6 @@ class SectionGenerator
                 'message' => $exception->getMessage(),
             ]);
         }
-    }
-
-    private function scrubText(string $value): string
-    {
-        if (mb_check_encoding($value, 'UTF-8')) {
-            return $value;
-        }
-
-        return mb_scrub($value, 'UTF-8');
     }
 
     private function fallbackHtml(Page $page): string

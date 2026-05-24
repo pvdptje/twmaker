@@ -5,9 +5,14 @@ namespace App\Services\Llm;
 use Illuminate\Support\Facades\Log;
 use Prism\Prism\Enums\StreamEventType;
 use Prism\Prism\Facades\Prism;
+use Prism\Prism\Providers\Anthropic\Enums\AnthropicCacheType;
 use Prism\Prism\Schema\RawSchema;
 use Prism\Prism\Streaming\Events\StreamEndEvent;
 use Prism\Prism\Streaming\Events\TextDeltaEvent;
+use Prism\Prism\Streaming\Events\ToolCallDeltaEvent;
+use Prism\Prism\Streaming\Events\ToolCallEvent;
+use Prism\Prism\Tool;
+use Prism\Prism\ValueObjects\Messages\SystemMessage;
 use Throwable;
 
 class PrismProvider implements LlmProvider
@@ -29,7 +34,7 @@ class PrismProvider implements LlmProvider
             $response = Prism::structured()
                 ->using($this->prismProvider($request->provider), $request->model, $this->providerConfig($request))
                 ->withClientOptions($this->clientOptions($request))
-                ->withSystemPrompt($request->systemPrompt)
+                ->withSystemPrompt($this->systemMessage($request))
                 ->withPrompt($userContent)
                 ->withSchema(new RawSchema($request->toolName, $request->schema))
                 ->withMaxTokens($request->maxTokens)
@@ -111,7 +116,7 @@ class PrismProvider implements LlmProvider
             $stream = Prism::text()
                 ->using($this->prismProvider($request->provider), $request->model, $this->providerConfig($request))
                 ->withClientOptions($this->clientOptions($request) + ['stream' => true])
-                ->withSystemPrompt($request->systemPrompt)
+                ->withSystemPrompt($this->systemMessage($request))
                 ->withPrompt($userContent)
                 ->withMaxTokens($request->maxTokens)
                 ->usingTemperature($request->temperature)
@@ -194,7 +199,138 @@ class PrismProvider implements LlmProvider
 
     public function sendStructuredStream(StructuredRequest $request, callable $onPartialJson): StructuredResponse
     {
-        return $this->sendStructured($request);
+        if ($this->prismProvider($request->provider) !== 'anthropic') {
+            return $this->sendStructured($request);
+        }
+
+        $userContent = $this->buildUserContent($request);
+        $startedAt = microtime(true);
+        $tool = $this->toolFromSchema($request);
+
+        $partialJson = '';
+        $finalArguments = null;
+        $usage = [];
+        $messageId = null;
+        $finishReason = null;
+
+        Log::info('Prism structured stream started.', [
+            'stage' => $request->stage,
+            'provider' => $request->provider,
+            'model' => $request->model,
+            'max_tokens' => $request->maxTokens,
+            'prompt_bytes' => strlen($userContent),
+        ]);
+
+        try {
+            $stream = Prism::text()
+                ->using($this->prismProvider($request->provider), $request->model, $this->providerConfig($request))
+                ->withClientOptions($this->clientOptions($request) + ['stream' => true])
+                ->withSystemPrompt($this->systemMessage($request))
+                ->withPrompt($userContent)
+                ->withMaxTokens($request->maxTokens)
+                ->usingTemperature($request->temperature)
+                ->withTools([$tool])
+                ->withToolChoice($request->toolName)
+                ->asStream();
+
+            foreach ($stream as $event) {
+                if ($event instanceof ToolCallDeltaEvent || $event->type() === StreamEventType::ToolCallDelta) {
+                    $delta = $event instanceof ToolCallDeltaEvent
+                        ? $event->delta
+                        : (string) ($event->toArray()['delta'] ?? '');
+
+                    if ($delta === '') {
+                        continue;
+                    }
+
+                    $messageId = $event instanceof ToolCallDeltaEvent
+                        ? ($event->messageId ?: $messageId)
+                        : ((string) ($event->toArray()['message_id'] ?? '') ?: $messageId);
+
+                    $partialJson .= $delta;
+                    $onPartialJson($partialJson, $delta);
+
+                    continue;
+                }
+
+                if ($event instanceof ToolCallEvent || $event->type() === StreamEventType::ToolCall) {
+                    $arguments = $event instanceof ToolCallEvent
+                        ? $event->toolCall->arguments()
+                        : ($event->toArray()['arguments'] ?? null);
+
+                    if (is_array($arguments)) {
+                        $finalArguments = $arguments;
+                    }
+
+                    continue;
+                }
+
+                if ($event instanceof StreamEndEvent || $event->type() === StreamEventType::StreamEnd) {
+                    $eventData = $event->toArray();
+                    $finishReason = (string) ($eventData['finish_reason'] ?? $finishReason ?? '');
+                    $usage = is_array($eventData['usage'] ?? null) ? $eventData['usage'] : $usage;
+                }
+            }
+        } catch (Throwable $exception) {
+            if ($fallbackRequest = $this->fallbackRequestForRejectedModel($request, $exception)) {
+                return $this->sendStructuredStream($fallbackRequest, $onPartialJson);
+            }
+
+            Log::error('Prism structured stream failed.', [
+                'stage' => $request->stage,
+                'provider' => $request->provider,
+                'model' => $request->model,
+                'duration_ms' => (int) round((microtime(true) - $startedAt) * 1000),
+                'exception' => $exception::class,
+                'message' => $exception->getMessage(),
+            ]);
+
+            throw $exception;
+        }
+
+        if (! is_array($finalArguments) && $partialJson !== '' && json_validate($partialJson)) {
+            $finalArguments = json_decode($partialJson, true);
+        }
+
+        Log::info('Prism structured stream completed.', [
+            'stage' => $request->stage,
+            'provider' => $request->provider,
+            'model' => $request->model,
+            'duration_ms' => (int) round((microtime(true) - $startedAt) * 1000),
+            'json_bytes' => strlen($partialJson),
+            'finish_reason' => $finishReason,
+        ]);
+
+        return new StructuredResponse(
+            stage: $request->stage,
+            model: $request->model,
+            output: is_array($finalArguments) ? $finalArguments : [],
+            raw: ['id' => $messageId ?: null, 'finish_reason' => $finishReason],
+            usage: $this->scrubArray($usage),
+        );
+    }
+
+    private function toolFromSchema(StructuredRequest $request): Tool
+    {
+        $tool = (new Tool)
+            ->as($request->toolName)
+            ->for("Return the structured {$request->stage} result.")
+            ->using(static function (...$args): string {
+                return '';
+            });
+
+        $properties = $request->schema['properties'] ?? [];
+        $required = array_flip($request->schema['required'] ?? []);
+
+        foreach ($properties as $name => $propertySchema) {
+            if (! is_array($propertySchema)) {
+                continue;
+            }
+
+            $tool->withParameter(new RawSchema((string) $name, $propertySchema), isset($required[$name]));
+        }
+
+        return $tool;
     }
 
     private function prismProvider(string $provider): string
@@ -259,6 +395,17 @@ class PrismProvider implements LlmProvider
         }
 
         return ['use_tool_calling' => true];
+    }
+
+    private function systemMessage(StructuredRequest|TextRequest $request): SystemMessage|string
+    {
+        if ($this->prismProvider($request->provider) !== 'anthropic') {
+            return $request->systemPrompt;
+        }
+
+        $message = new SystemMessage($request->systemPrompt);
+
+        return $message->withProviderOptions(['cacheType' => AnthropicCacheType::Ephemeral]);
     }
 
     private function buildUserContent(StructuredRequest|TextRequest $request): string

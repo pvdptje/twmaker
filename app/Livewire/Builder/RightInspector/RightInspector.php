@@ -28,7 +28,12 @@ class RightInspector extends Component
     {
         $totals = [];
 
-        foreach ($this->page->generationEvents()->get(['payload']) as $event) {
+        $events = $this->page->generationEvents()
+            ->whereNotNull('payload->llm->model')
+            ->select(['payload'])
+            ->cursor();
+
+        foreach ($events as $event) {
             $llm = $event->payload['llm'] ?? null;
 
             if (! is_array($llm)) {

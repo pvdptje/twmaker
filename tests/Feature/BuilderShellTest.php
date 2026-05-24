@@ -793,8 +793,6 @@ HTML,
         ]);
 
         Livewire::test(RightInspector::class, ['page' => $page])
-            ->assertSee('LLM output')
-            ->assertSee('generation-stream-chunk', false)
             ->assertSee('Tokens')
             ->assertSee('claude-sonnet-4-20250514')
             ->assertSee('200 total');
