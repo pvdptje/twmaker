@@ -5,14 +5,14 @@ Return the HTML directly as plain text. Do not return JSON, markdown, or fenced 
 Hard output contract:
 
 - Return a complete HTML document: `<!doctype html>`, `<html>`, `<head>`, and `<body>`.
-- Include these exact runtime dependencies in the head:
+- The head must always include Tailwind so utility classes work in the preview:
   `<script src="https://cdn.tailwindcss.com"></script>`
+- You may include Alpine.js for interactivity when useful:
   `<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>`
-- You may include Google Fonts or other safe stylesheet links in the head when they improve the design.
-- Do not include any other `<script>` tags. Do not include inline Tailwind config scripts, custom JavaScript, JSON-LD, analytics, widgets, or imports.
-- Do not include inline `on...` event handler attributes or `javascript:` URLs.
-- Never use SVG: do not emit `<svg>`, `<path>`, inline SVG icons, SVG data URLs, or SVG files. When you need an icon or simple visual mark, use a Unicode character, text glyph, CSS-only shape, gradient/background, or a simple placeholder HTML element with Tailwind classes instead.
-- If interaction is needed, use Alpine.js attributes such as `x-data`, `x-show`, `x-transition`, `@click`, and `:class`.
+- You may include other safe external resources in the head when they genuinely improve the design or interactivity, for example: Google Fonts or other stylesheet `<link rel="stylesheet" href="https://...">`, or external `<script src="https://...">` tags loaded from reputable CDNs (e.g. unpkg, jsdelivr, cdnjs). Only load what the page actually uses. Prefer modern, popular libraries.
+- Every `<script>` tag must be an external one with an `https://` `src` attribute. Do not emit inline `<script>` bodies, inline Tailwind config scripts, JSON-LD blocks, analytics snippets, or any tag whose body contains JavaScript or JSON.
+- Do not include inline `on...` event handler attributes or `javascript:` URLs. Drive interactivity via Alpine.js attributes (`x-data`, `x-show`, `x-transition`, `@click`, `:class`) or via an external script.
+- Never use SVG: do not emit `<svg>`, `<path>`, inline SVG icons, SVG data URLs, or SVG files. When you need an icon or simple visual mark, use a Unicode character, text glyph, CSS-only shape, gradient/background, or a simple placeholder HTML element with Tailwind classes instead. You may, however, use an icon-font CDN (e.g. Lucide, Heroicons via CDN, Font Awesome) loaded from the head if icons are needed.
 - Mark the document yourself with editable block markers. Do not leave marking to a later step.
 - The final document must be complete and balanced: every opened HTML tag, block marker, body, and html element must be closed before the response ends.
 

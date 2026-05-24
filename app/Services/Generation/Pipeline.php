@@ -339,7 +339,7 @@ class Pipeline
     private function hasUnsafeHtmlError(array $errors): bool
     {
         foreach ($errors as $error) {
-            if (str_contains($error, 'script tags')
+            if (str_contains($error, 'script tag')
                 || str_contains($error, 'inline event handler')
                 || str_contains($error, 'javascript: URLs')) {
                 return true;

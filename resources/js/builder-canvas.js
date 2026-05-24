@@ -302,6 +302,87 @@ import { oneDark } from '@codemirror/theme-one-dark';
         }, '*');
     }
 
+    const sectionStreamShell = `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Generating preview...</title>
+<link rel="stylesheet" href="/preview.css">
+<script src="https://cdn.tailwindcss.com"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+<style>
+body { margin: 0; background: #fff; color: #171717; font-family: ui-sans-serif, system-ui, sans-serif; }
+[data-builder-section-stream-root]:empty::before {
+  content: 'Generating page...';
+  display: flex;
+  min-height: 100vh;
+  align-items: center;
+  justify-content: center;
+  color: #737373;
+  font-size: 0.875rem;
+}
+</style>
+</head>
+<body>
+<div data-builder-section-stream-root></div>
+</body>
+</html>`;
+
+    let sectionStreamState = null;
+
+    function frameRoot() {
+        const previewFrame = frame();
+        const doc = previewFrame?.contentDocument;
+        return doc?.querySelector('[data-builder-section-stream-root]') || null;
+    }
+
+    function startStreamingSection() {
+        const previewFrame = frame();
+        if (!previewFrame) return;
+
+        sectionStreamState = { active: true, lastRender: '' };
+        previewFrame.dataset.canvasBound = 'false';
+        previewFrame.srcdoc = sectionStreamShell;
+    }
+
+    function extractStreamingBody(html) {
+        if (typeof html !== 'string' || html === '') return '';
+        const bodyMatch = html.match(/<body\b[^>]*>/i);
+        if (!bodyMatch) {
+            return /<\s*(?:!doctype|html|head)\b/i.test(html) ? '' : html;
+        }
+        const after = html.slice(bodyMatch.index + bodyMatch[0].length);
+        const closeMatch = after.match(/<\s*\/\s*body\s*>/i);
+        return closeMatch ? after.slice(0, closeMatch.index) : after;
+    }
+
+    function updateStreamingSection(html) {
+        if (!sectionStreamState?.active) return;
+
+        const previewFrame = frame();
+        const doc = previewFrame?.contentDocument;
+        if (!doc) return;
+
+        if (doc.readyState === 'loading') {
+            doc.addEventListener('DOMContentLoaded', () => updateStreamingSection(html), { once: true });
+            return;
+        }
+
+        const body = extractStreamingBody(html);
+        if (body === sectionStreamState.lastRender) return;
+        sectionStreamState.lastRender = body;
+
+        const root = doc.querySelector('[data-builder-section-stream-root]');
+        if (!root) return;
+
+        root.innerHTML = body;
+    }
+
+    function stopStreamingSection() {
+        sectionStreamState = null;
+    }
+
     function saveQuickEditor() {
         const { save } = quickEditorElements();
 
@@ -392,7 +473,16 @@ import { oneDark } from '@codemirror/theme-one-dark';
         });
 
         window.addEventListener('preview-html-updated', (event) => {
+            stopStreamingSection();
             updatePreviewHtml(event.detail?.srcdoc, event.detail?.selectedNodeId || '');
+        });
+
+        window.addEventListener('section-generation-stream-start', () => {
+            startStreamingSection();
+        });
+
+        window.addEventListener('section-generation-stream', (event) => {
+            updateStreamingSection(event.detail?.html || '');
         });
 
         window.addEventListener('quick-edit-saved', (event) => {

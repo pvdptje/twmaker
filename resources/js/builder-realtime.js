@@ -104,6 +104,10 @@
                 html: state.html,
             });
         }
+
+        if (event.stage === 'section_generator' || event.stage === 'section_generator_retry') {
+            emit('section-generation-stream', { html: state.html });
+        }
     }
 
     function handleGenerationEvent(event) {
@@ -116,6 +120,12 @@
             const detail = { pageId: state.pageId, stage: event.stage };
             emit('generation-started', detail);
             window.Livewire?.dispatch?.('generation-started', detail);
+        }
+
+        if (event.kind === 'stage_started' && event.stage === 'section_generator') {
+            state.html = '';
+            state.output = '';
+            emit('section-generation-stream-start', {});
         }
 
         if (event.kind === 'edit_requested' && event.stage === 'targeted_edit') {

@@ -19,7 +19,7 @@ class HtmlDocumentValidator
 
         foreach ($this->scriptTags($html) as $scriptTag) {
             if (! $this->isAllowedScriptTag($scriptTag)) {
-                $errors[] = 'HTML source must not contain script tags except the approved Tailwind and Alpine CDN tags.';
+                $errors[] = 'HTML source may only contain external https script tags with no inline body.';
                 break;
             }
         }
@@ -75,11 +75,8 @@ class HtmlDocumentValidator
             return false;
         }
 
-        $src = $match[1];
-        if (! in_array($src, [
-            'https://cdn.tailwindcss.com',
-            'https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js',
-        ], true)) {
+        $src = trim($match[1]);
+        if (! preg_match('#^https://[^\s"\'<>]+$#i', $src)) {
             return false;
         }
 

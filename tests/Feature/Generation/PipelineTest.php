@@ -115,7 +115,7 @@ HTML;
         $this->assertStringContainsString('€', $blockIndex[0]['summary']);
     }
 
-    public function test_pipeline_rejects_unsafe_generated_html(): void
+    public function test_pipeline_rejects_inline_script_tags(): void
     {
         [$project, $page] = $this->makePage('Unsafe page');
         $artifact = $this->htmlArtifact();
@@ -123,9 +123,31 @@ HTML;
 
         $this->app->instance(LlmProvider::class, new FakeHtmlGenerationProvider($artifact));
 
-        $this->expectExceptionMessage('script tags');
+        $this->expectExceptionMessage('script tag');
 
         app(Pipeline::class)->generate($page);
+    }
+
+    public function test_pipeline_accepts_external_https_script_tags(): void
+    {
+        [$project, $page] = $this->makePage('Page with external scripts');
+        $artifact = $this->htmlArtifact();
+        $artifact['raw_html'] = '<!-- tw:block id="block_hero" type="hero" label="Hero" -->'
+            .'<section><script src="https://unpkg.com/htmx.org@1.9.10"></script>'
+            .'<script src="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js"></script>'
+            .'<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter">'
+            .'<h1>Hello</h1></section><!-- /tw:block -->';
+        $artifact['marked_html'] = $artifact['raw_html'];
+
+        $this->app->instance(LlmProvider::class, new FakeHtmlGenerationProvider($artifact));
+
+        app(Pipeline::class)->generate($page);
+
+        $page->refresh();
+
+        $this->assertSame('valid', $page->status);
+        $this->assertStringContainsString('https://unpkg.com/htmx.org', $page->html_source);
+        $this->assertStringContainsString('https://cdn.jsdelivr.net/npm/swiper', $page->html_source);
     }
 
     public function test_pipeline_sanitizes_recoverable_inline_handlers_from_generated_html(): void
