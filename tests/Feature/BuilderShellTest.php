@@ -842,6 +842,46 @@ HTML,
         $this->assertStringContainsString('Previous', $page->html_source);
     }
 
+    public function test_version_list_keeps_restored_version_active_after_self_dispatched_event(): void
+    {
+        $project = Project::query()->create([
+            'id' => app(IdGenerator::class)->project(),
+            'name' => 'Acme',
+        ]);
+        $page = Page::query()->create([
+            'id' => app(IdGenerator::class)->page(),
+            'project_id' => $project->id,
+            'name' => 'Homepage',
+            'prompt' => 'A landing page',
+            'html_source' => '<!-- tw:block id="block_hero" type="hero" label="Hero" --><section><h1>Latest</h1></section><!-- /tw:block -->',
+            'status' => 'valid',
+        ]);
+        $older = PageVersion::query()->create([
+            'id' => app(IdGenerator::class)->pageVersion(),
+            'page_id' => $page->id,
+            'html_source' => '<!-- tw:block id="block_hero" type="hero" label="Hero" --><section><h1>Older</h1></section><!-- /tw:block -->',
+            'created_by_kind' => 'generation',
+            'summary' => 'Initial generation',
+            'created_at' => now('UTC')->subMinutes(2),
+        ]);
+        $newest = PageVersion::query()->create([
+            'id' => app(IdGenerator::class)->pageVersion(),
+            'page_id' => $page->id,
+            'html_source' => $page->html_source,
+            'created_by_kind' => 'edit',
+            'summary' => 'Latest edit',
+            'created_at' => now('UTC'),
+        ]);
+
+        Livewire::test(VersionList::class, ['page' => $page])
+            ->assertSet('activeVersionId', $newest->id)
+            ->call('restore', $older->id)
+            ->assertSet('activeVersionId', $older->id)
+            ->call('refreshOnGenerationFinish', pageId: $page->id, status: 'valid', incremental: false)
+            ->assertSet('activeVersionId', $older->id)
+            ->assertSet('pendingRestoreVersionId', null);
+    }
+
     public function test_version_list_renders_empty_state_when_no_versions_exist(): void
     {
         $project = Project::query()->create([

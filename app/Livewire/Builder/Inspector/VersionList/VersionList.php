@@ -15,6 +15,8 @@ class VersionList extends Component
 
     public string $activeVersionId = '';
 
+    public ?string $pendingRestoreVersionId = null;
+
     public function render(): View
     {
         $versions = $this->page->versions()
@@ -51,6 +53,7 @@ class VersionList extends Component
         ])->save();
 
         $this->activeVersionId = (string) $version->id;
+        $this->pendingRestoreVersionId = (string) $version->id;
 
         $this->dispatch('generation-finished', pageId: $this->page->id, status: 'valid', incremental: false);
     }
@@ -59,6 +62,13 @@ class VersionList extends Component
     public function refreshOnGenerationFinish(string $pageId, string $status = 'valid', bool $incremental = false): void
     {
         if ($pageId !== $this->page->id) {
+            return;
+        }
+
+        if ($this->pendingRestoreVersionId !== null) {
+            $this->activeVersionId = $this->pendingRestoreVersionId;
+            $this->pendingRestoreVersionId = null;
+
             return;
         }
 
