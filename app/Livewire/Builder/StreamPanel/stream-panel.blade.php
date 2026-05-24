@@ -4,7 +4,7 @@
         statusLabel: @js($statusLabel),
         activeStage: @js($activeStage),
         events: @js($events),
-        socketState: 'connecting',
+        socketState: window.builderRealtimeState?.() || 'connecting',
         streamStage: @js($activeStage),
         htmlPreview: '',
         outputPreview: '',

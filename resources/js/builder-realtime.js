@@ -9,6 +9,7 @@
         output: '',
         connectionBound: false,
         activeTargetedEdit: null,
+        realtimeState: 'connecting',
     };
 
     function workspace() {
@@ -33,6 +34,7 @@
     }
 
     function setRealtimeState(value) {
+        state.realtimeState = value;
         setText('[data-realtime-state]', value);
         emit('generation-realtime-status', { state: value });
     }
@@ -191,6 +193,11 @@
 
         bindConnection();
 
+        const liveState = window.Echo.connector?.pusher?.connection?.state;
+        if (liveState) {
+            setRealtimeState(liveState);
+        }
+
         const channelName = `pages.${pageId}.generation`;
         if (state.subscribedChannel === channelName) return;
 
@@ -214,6 +221,7 @@
     }
 
     window.builderRealtimeSubscribe = subscribe;
+    window.builderRealtimeState = () => state.realtimeState;
 
     document.addEventListener('DOMContentLoaded', subscribe);
     document.addEventListener('livewire:navigated', subscribe);
