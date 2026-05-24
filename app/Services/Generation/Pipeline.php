@@ -3,6 +3,7 @@
 namespace App\Services\Generation;
 
 use App\Models\Page;
+use App\Models\PageVersion;
 use App\Services\Generation\Stages\HtmlMarker;
 use App\Services\Generation\Stages\SectionGenerationResult;
 use App\Services\Generation\Stages\SectionGenerator;
@@ -13,6 +14,7 @@ use App\Services\Html\HtmlDocumentValidator;
 use App\Services\Html\HtmlFragmentRepairer;
 use App\Services\Html\HtmlSafetySanitizer;
 use App\Services\Html\HtmlValidationException;
+use App\Services\Ids\IdGenerator;
 use App\Services\Rendering\Renderer;
 use Throwable;
 
@@ -29,7 +31,25 @@ class Pipeline
         private readonly HtmlSafetySanitizer $htmlSanitizer,
         private readonly BlockIndexer $blockIndexer,
         private readonly Renderer $renderer,
+        private readonly IdGenerator $ids,
     ) {}
+
+    private function snapshotVersion(Page $page, string $kind, string $summary): void
+    {
+        $html = (string) ($page->html_source ?? '');
+        if (trim($html) === '') {
+            return;
+        }
+
+        PageVersion::query()->create([
+            'id' => $this->ids->pageVersion(),
+            'page_id' => $page->id,
+            'html_source' => $html,
+            'created_by_kind' => $kind,
+            'summary' => $this->scrubText(str($summary)->limit(280)->toString()),
+            'created_at' => now('UTC'),
+        ]);
+    }
 
     public function generate(Page $page, ?string $provider = null, ?string $model = null, ?string $apiKey = null): array
     {
@@ -69,6 +89,8 @@ class Pipeline
                 'status' => 'valid',
                 'last_generation_summary' => $document['page_metadata']['prompt_summary'] ?? null,
             ])->save();
+
+            $this->snapshotVersion($page, 'generation', $page->prompt !== '' ? $page->prompt : 'Initial generation');
 
             $this->events->record($page, 'generation_completed', 'validation', 'success', 'Generated document is valid.');
 
@@ -128,6 +150,8 @@ class Pipeline
                 'status' => 'valid',
                 'last_generation_summary' => $document['page_metadata']['prompt_summary'] ?? null,
             ])->save();
+
+            $this->snapshotVersion($page, 'edit', 'Edit: '.$instruction);
 
             $this->events->record($page, 'edit_applied', 'targeted_edit', 'success', $result['explanation'], $eventTargetId, [
                 'blocks' => $result['blocks'] ?? [],

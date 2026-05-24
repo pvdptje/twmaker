@@ -115,6 +115,38 @@ HTML;
         $this->assertStringContainsString('€', $blockIndex[0]['summary']);
     }
 
+    public function test_pipeline_snapshots_a_version_after_each_generation_and_edit(): void
+    {
+        [$project, $page] = $this->makePage('A versioned landing page');
+
+        $this->app->instance(LlmProvider::class, new FakeHtmlGenerationProvider($this->htmlArtifact()));
+
+        app(Pipeline::class)->generate($page);
+
+        $page->refresh();
+        $this->assertCount(1, $page->versions()->get());
+        $generationVersion = $page->versions()->orderByDesc('created_at')->first();
+        $this->assertSame('generation', $generationVersion->created_by_kind);
+        $this->assertStringContainsString('A versioned landing page', (string) $generationVersion->summary);
+        $this->assertStringContainsString('tw:block id="block_hero"', (string) $generationVersion->html_source);
+
+        $replacement = <<<'HTML'
+<!-- tw:block id="draft_story" type="story" label="Story" -->
+<section class="bg-white px-6 py-20"><h2>Edited story</h2></section>
+<!-- /tw:block -->
+HTML;
+        $this->app->instance(LlmProvider::class, new FakeTargetedEditProvider($replacement));
+
+        app(Pipeline::class)->edit($page, 'block_hero', 'Replace the hero with an edited story.');
+
+        $page->refresh();
+        $this->assertCount(2, $page->versions()->get());
+        $editVersion = $page->versions()->orderByDesc('created_at')->first();
+        $this->assertSame('edit', $editVersion->created_by_kind);
+        $this->assertStringContainsString('Replace the hero with an edited story', (string) $editVersion->summary);
+        $this->assertStringContainsString('Edited story', (string) $editVersion->html_source);
+    }
+
     public function test_pipeline_rejects_inline_script_tags(): void
     {
         [$project, $page] = $this->makePage('Unsafe page');

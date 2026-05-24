@@ -18,6 +18,7 @@ class PageVersion extends Model
         'page_id',
         'html_source',
         'created_by_kind',
+        'summary',
         'created_at',
     ];
 

@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Jobs\GeneratePageJob;
 use App\Jobs\TargetedEditJob;
 use App\Livewire\Builder\Inspector\EditForm\EditForm;
+use App\Livewire\Builder\Inspector\VersionList\VersionList;
 use App\Livewire\Builder\RightInspector\RightInspector;
 use App\Livewire\Builder\SidePanels\GenerationControls\GenerationControls;
 use App\Livewire\Builder\StreamPanel\StreamPanel;
@@ -13,6 +14,7 @@ use App\Livewire\Projects\ProjectDashboard\ProjectDashboard;
 use App\Livewire\Projects\ProjectList\ProjectList;
 use App\Livewire\Setup\LlmSetup;
 use App\Models\Page;
+use App\Models\PageVersion;
 use App\Models\Project;
 use App\Services\Html\BlockIndexer;
 use App\Services\Ids\IdGenerator;
@@ -796,6 +798,66 @@ HTML,
             ->assertSee('Tokens')
             ->assertSee('claude-sonnet-4-20250514')
             ->assertSee('200 total');
+    }
+
+    public function test_version_list_restores_a_previous_version(): void
+    {
+        $project = Project::query()->create([
+            'id' => app(IdGenerator::class)->project(),
+            'name' => 'Acme',
+        ]);
+        $page = Page::query()->create([
+            'id' => app(IdGenerator::class)->page(),
+            'project_id' => $project->id,
+            'name' => 'Homepage',
+            'prompt' => 'A landing page',
+            'html_source' => '<!-- tw:block id="block_hero" type="hero" label="Hero" --><section><h1>Current</h1></section><!-- /tw:block -->',
+            'status' => 'valid',
+        ]);
+        $previousHtml = '<!-- tw:block id="block_hero" type="hero" label="Hero" --><section><h1>Previous</h1></section><!-- /tw:block -->';
+        $previousVersion = PageVersion::query()->create([
+            'id' => app(IdGenerator::class)->pageVersion(),
+            'page_id' => $page->id,
+            'html_source' => $previousHtml,
+            'created_by_kind' => 'generation',
+            'summary' => 'Initial generation',
+            'created_at' => now('UTC')->subMinute(),
+        ]);
+        PageVersion::query()->create([
+            'id' => app(IdGenerator::class)->pageVersion(),
+            'page_id' => $page->id,
+            'html_source' => $page->html_source,
+            'created_by_kind' => 'edit',
+            'summary' => 'Latest edit',
+            'created_at' => now('UTC'),
+        ]);
+
+        Livewire::test(VersionList::class, ['page' => $page])
+            ->assertSee('Initial generation')
+            ->assertSee('Latest edit')
+            ->call('restore', $previousVersion->id)
+            ->assertDispatched('generation-finished', pageId: $page->id, status: 'valid', incremental: false);
+
+        $page->refresh();
+        $this->assertStringContainsString('Previous', $page->html_source);
+    }
+
+    public function test_version_list_renders_empty_state_when_no_versions_exist(): void
+    {
+        $project = Project::query()->create([
+            'id' => app(IdGenerator::class)->project(),
+            'name' => 'Acme',
+        ]);
+        $page = Page::query()->create([
+            'id' => app(IdGenerator::class)->page(),
+            'project_id' => $project->id,
+            'name' => 'Homepage',
+            'prompt' => '',
+            'status' => 'draft',
+        ]);
+
+        Livewire::test(VersionList::class, ['page' => $page])
+            ->assertSee('No snapshots yet');
     }
 
     private function markedHtmlSource(): string

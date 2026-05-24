@@ -9,6 +9,7 @@
     <div class="min-h-0 flex-1 overflow-y-auto">
         <livewire:builder.inspector.node-summary.node-summary :selected-node-id="$selectedNodeId" />
         <livewire:builder.inspector.edit-form.edit-form :page="$page" :selected-node-id="$selectedNodeId" :selected-block-ids="$selectedBlockIds" />
+        <livewire:builder.inspector.version-list.version-list :page="$page" />
     </div>
     <div class="border-t border-neutral-800 p-4">
         <div class="text-xs font-semibold uppercase tracking-normal text-neutral-500">Tokens</div>
