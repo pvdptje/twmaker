@@ -93,6 +93,33 @@ class BlockIndexer
             .substr($html, $last['end_offset']);
     }
 
+    public function insertBlocks(string $html, string $anchorBlockId, string $position, string $newBlocksHtml): string
+    {
+        if ($position !== 'before' && $position !== 'after') {
+            throw new HtmlValidationException(["Insert position must be 'before' or 'after'."]);
+        }
+
+        if ($anchorBlockId === '') {
+            return $position === 'before'
+                ? $newBlocksHtml."\n".$html
+                : $html."\n".$newBlocksHtml;
+        }
+
+        foreach ($this->index($html) as $block) {
+            if ($block['id'] !== $anchorBlockId) {
+                continue;
+            }
+
+            $offset = $position === 'before' ? $block['start_offset'] : $block['end_offset'];
+
+            return substr($html, 0, $offset)
+                ."\n".$newBlocksHtml."\n"
+                .substr($html, $offset);
+        }
+
+        throw new HtmlValidationException(["Block [{$anchorBlockId}] was not found."]);
+    }
+
     /**
      * @return array<string, string>
      */

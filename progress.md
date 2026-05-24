@@ -84,13 +84,14 @@ in_progress
 - [2026-05-22] M5.block-index-utf8-persistence-fix: made block summary truncation UTF-8 aware and scrubbed derived block/document arrays before JSON persistence so multibyte generated copy cannot break `document_json` encoding.
 - [2026-05-23] M5.stream-modal-terminal-fix: stream modal now closes from polled terminal page status and targeted edits publish final HTML into the modal even when the provider does not stream structured deltas.
 - [2026-05-23] M5.targeted-edit-quiet-stream-ux: targeted edits no longer auto-open the stream modal, the stream remains manually available through Open stream, and the Apply edit button shows a running state until completion or rejection.
+- [2026-05-24] M5.insert-section-pipeline: added an AI insert-new-section flow with block insertion, `SectionInserter`, queued `InsertSectionJob`, pipeline orchestration, stream events, section-tree plus buttons, and inline prompt UI.
 
 ## In Progress
-- M5 prep: refactor targeted editing around marked block extraction and replacement.
-- Started: 2026-05-20
-- Last activity: 2026-05-23
-- Files touched: app/Livewire/Builder/Inspector/EditForm/EditForm.php, app/Livewire/Builder/Inspector/EditForm/edit-form.blade.php, app/Livewire/Builder/SidePanels/GenerationControls/GenerationControls.php, app/Livewire/Builder/StreamPanel/StreamPanel.php, app/Livewire/Builder/StreamPanel/stream-panel.blade.php, app/Livewire/Builder/Workspace/Workspace.php, app/Services/Generation/Pipeline.php, tests/Feature/BuilderShellTest.php, progress.md
-- Current state: Flexible block-level targeted editing is wired through the inspector and pipeline, with livelier stream/status feedback. Full generation still auto-opens the stream modal, but targeted edits reset and stream quietly so fast flash-model edits do not pop stale modal output; users can still inspect the stream manually through Open stream. Apply edit now shows a running button state from accepted edit start until the stream/status completion event, and rejected edits move the page out of generating so the button can recover. Verified with `php artisan test --filter=BuilderShellTest`, `php artisan test --filter=PipelineTest`, `vendor\bin\pint.bat --dirty --test`, and `npm.cmd run build`.
+- M5 follow-up: browser-test insert-section with a real provider call and decide whether it needs incremental preview insertion later.
+- Started: 2026-05-24
+- Last activity: 2026-05-24
+- Files touched: app/Jobs/InsertSectionJob.php, app/Livewire/Builder/LeftSidebar/left-sidebar.blade.php, app/Livewire/Builder/SidePanels/SectionTree/SectionTree.php, app/Livewire/Builder/SidePanels/SectionTree/section-tree.blade.php, app/Livewire/Builder/StreamPanel/EventList/event-list.blade.php, app/Livewire/Builder/StreamPanel/StreamPanel.php, app/Livewire/Builder/StreamPanel/stream-panel.blade.php, app/Services/Generation/GenerationStreamBuffer.php, app/Services/Generation/Pipeline.php, app/Services/Generation/Stages/SectionInserter.php, app/Services/Html/BlockIndexer.php, app/Services/Schema/DocumentSchema.php, resources/js/builder-realtime.js, resources/prompts/section_inserter.system.md, tests/Feature/BuilderShellTest.php, tests/Feature/Generation/PipelineTest.php, tests/Unit/Html/BlockIndexerTest.php, progress.md
+- Current state: Insert-section is wired end to end. The section tree shows plus buttons and an inline prompt, uses browser-stored editing provider/model/API key defaults, records `insert_requested`, dispatches `InsertSectionJob`, runs `Pipeline::insertSection`, validates the inserted marked block, saves a version snapshot, records `insert_applied` or `insert_rejected`, and refreshes the preview through the existing generation-finished path. Verified with focused tests, full PHP tests, JS tests, Pint, and Vite build.
 
 ## Blocked
 - None.
@@ -272,8 +273,8 @@ in_progress
 - [2026-05-22] M5.preview-selection-overlay-polish: single-click now selects blocks without opening quick edit, double-click opens the quick HTML editor, generated click handlers still run, preview links cannot navigate the iframe, blocks that start with local setup tags such as `<style>` annotate their first rendered element, and the selected block is shown with a non-interactive overlay that follows scroll/resize and hides when offscreen.
 
 ## Next Up (Top 3)
-1. M5: add stale-selection and malformed-edit UX handling in the inspector.
-2. M5: manually browser-test targeted edit with a real provider call.
+1. M5: manually browser-test insert-section with a real provider call.
+2. M5: add stale-selection and malformed-edit UX handling in the inspector.
 3. M5: consider streaming progress for non-HTML LLM fields such as edit explanations or usage summaries.
 
 ## Notes
@@ -322,3 +323,4 @@ in_progress
 - M5 preview form focus verification passed: `npm.cmd run test:js`, `php artisan test`, and `npm.cmd run build`.
 - M5 preview selection outline verification passed: `php artisan test --filter=BuilderShellTest`, `npm.cmd run test:js`, and `npm.cmd run build`.
 - M5 preview selection overlay polish verification passed: `vendor\bin\pint.bat --dirty --test`, `php artisan test` (145 tests, 300 assertions), `npm.cmd run test:js` (16 tests), and `npm.cmd run build`.
+- M5 insert-section pipeline verification passed: `php artisan test --filter=BlockIndexerTest`, `php artisan test --filter=PipelineTest`, `php artisan test --filter=BuilderShellTest`, `vendor\bin\pint.bat --dirty`, `php artisan test` (150 tests, 338 assertions), `npm.cmd run test:js` (19 tests), and `npm.cmd run build`.

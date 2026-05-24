@@ -7,6 +7,7 @@ use App\Models\PageVersion;
 use App\Services\Generation\Stages\HtmlMarker;
 use App\Services\Generation\Stages\SectionGenerationResult;
 use App\Services\Generation\Stages\SectionGenerator;
+use App\Services\Generation\Stages\SectionInserter;
 use App\Services\Generation\Stages\TargetedEdit;
 use App\Services\Html\BlockIndexer;
 use App\Services\Html\DeterministicBlockMarker;
@@ -25,6 +26,7 @@ class Pipeline
         private readonly SectionGenerator $sections,
         private readonly HtmlMarker $htmlMarker,
         private readonly TargetedEdit $targetedEdit,
+        private readonly SectionInserter $sectionInserter,
         private readonly DeterministicBlockMarker $deterministicMarker,
         private readonly HtmlDocumentValidator $htmlValidator,
         private readonly HtmlFragmentRepairer $htmlRepairer,
@@ -106,6 +108,63 @@ class Pipeline
     public function edit(Page $page, string $targetId, string $instruction, ?string $provider = null, ?string $model = null, ?string $apiKey = null): array
     {
         return $this->editMany($page, [$targetId], $instruction, $provider, $model, $apiKey);
+    }
+
+    public function insertSection(Page $page, ?string $anchorBlockId, string $position, string $instruction, ?string $provider = null, ?string $model = null, ?string $apiKey = null): array
+    {
+        $provider ??= (string) config('llm.default_provider', 'anthropic');
+        $position = $position === 'before' ? 'before' : 'after';
+        $eventTargetId = $anchorBlockId !== null && $anchorBlockId !== '' ? $anchorBlockId : null;
+
+        if (! $this->hasFreshInsertRequestEvent($page, $eventTargetId, $position)) {
+            $this->events->record($page, 'insert_requested', 'section_inserter', 'info', $this->insertRequestedSummary($eventTargetId, $position), $eventTargetId, [
+                'instruction' => $instruction,
+                'anchor_id' => $eventTargetId,
+                'position' => $position,
+            ]);
+        }
+
+        try {
+            $result = $this->sectionInserter->insert($page, $eventTargetId, $position, $instruction, $provider, $model, $apiKey);
+            $htmlSource = $this->blockIndexer->insertBlocks(
+                (string) ($page->html_source ?? ''),
+                (string) ($eventTargetId ?? ''),
+                $position,
+                $result['html_source'],
+            );
+            $htmlSource = $this->cleanHtml($htmlSource);
+
+            $this->htmlValidator->assertValid($htmlSource);
+            $blockIndex = $this->scrubArray($this->blockIndexer->index($htmlSource));
+            $document = $this->scrubArray($this->htmlArtifact(
+                $this->insertArtifact($page, $instruction),
+                $htmlSource,
+                $blockIndex,
+            ));
+
+            $page->forceFill([
+                'html_source' => $htmlSource,
+                'rendered_html_cache' => $this->renderer->renderPreviewHtml($htmlSource, $page->name),
+                'status' => 'valid',
+                'last_generation_summary' => $document['page_metadata']['prompt_summary'] ?? null,
+            ])->save();
+
+            $this->snapshotVersion($page, 'edit', 'Insert: '.$instruction);
+
+            $this->events->record($page, 'insert_applied', 'section_inserter', 'success', $result['explanation'], $eventTargetId, [
+                'blocks' => $result['blocks'] ?? [],
+                'anchor_id' => $eventTargetId,
+                'position' => $position,
+                'html_source' => $result['html_source'],
+            ] + $this->payloadWithUsage($result));
+
+            return $document;
+        } catch (Throwable $exception) {
+            $page->forceFill(['status' => 'error'])->save();
+            $this->events->record($page, 'insert_rejected', 'section_inserter', 'error', $exception->getMessage(), $eventTargetId);
+
+            throw $exception;
+        }
     }
 
     /**
@@ -200,6 +259,21 @@ class Pipeline
 
         return $event !== null
             && $event->target_id === $targetId
+            && $event->occurred_at !== null
+            && $event->occurred_at->greaterThan(now('UTC')->subMinutes(10));
+    }
+
+    private function hasFreshInsertRequestEvent(Page $page, ?string $targetId, string $position): bool
+    {
+        $event = $page->generationEvents()
+            ->where('kind', 'insert_requested')
+            ->where('stage', 'section_inserter')
+            ->latest('occurred_at')
+            ->first();
+
+        return $event !== null
+            && $event->target_id === $targetId
+            && ($event->payload['position'] ?? null) === $position
             && $event->occurred_at !== null
             && $event->occurred_at->greaterThan(now('UTC')->subMinutes(10));
     }
@@ -395,5 +469,25 @@ class Pipeline
             'audience' => 'Visitors',
             'prompt_summary' => 'Targeted edit: '.str($instruction)->limit(120),
         ];
+    }
+
+    private function insertArtifact(Page $page, string $instruction): array
+    {
+        return [
+            'title' => $page->name,
+            'page_type' => 'generic',
+            'goal' => $page->prompt !== '' ? str($page->prompt)->limit(180)->toString() : 'Edited from builder instruction.',
+            'audience' => 'Visitors',
+            'prompt_summary' => 'Inserted section: '.str($instruction)->limit(120),
+        ];
+    }
+
+    private function insertRequestedSummary(?string $anchorBlockId, string $position): string
+    {
+        if ($anchorBlockId === null || $anchorBlockId === '') {
+            return $position === 'before' ? 'Inserting section at top of page.' : 'Inserting section at end of page.';
+        }
+
+        return 'Inserting section '.$position.' selected block.';
     }
 }

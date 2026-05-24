@@ -20,4 +20,26 @@ class BlockIndexerTest extends TestCase
         $this->assertStringContainsString('€', $block['summary']);
         $this->assertJson(json_encode($block, JSON_THROW_ON_ERROR));
     }
+
+    public function test_insert_blocks_places_new_block_after_anchor(): void
+    {
+        $html = <<<'HTML'
+<!-- tw:block id="block_hero" type="hero" label="Hero" -->
+<section>Hero</section>
+<!-- /tw:block -->
+<!-- tw:block id="block_features" type="features" label="Features" -->
+<section>Features</section>
+<!-- /tw:block -->
+HTML;
+        $inserted = <<<'HTML'
+<!-- tw:block id="block_logos" type="logo_cloud" label="Logos" -->
+<section>Logos</section>
+<!-- /tw:block -->
+HTML;
+
+        $updated = (new BlockIndexer)->insertBlocks($html, 'block_hero', 'after', $inserted);
+        $blocks = (new BlockIndexer)->index($updated);
+
+        $this->assertSame(['block_hero', 'block_logos', 'block_features'], array_column($blocks, 'id'));
+    }
 }

@@ -7,6 +7,7 @@
     <div class="min-h-0 flex-1 overflow-y-auto">
         <livewire:builder.side-panels.project-switcher.project-switcher :project="$project" />
         <livewire:builder.side-panels.section-tree.section-tree
+            :page="$page"
             :block-index="$blockIndex"
             :selected-block-ids="$selectedBlockIds"
             :key="'section-tree-'.md5(json_encode($blockIndex)).'-'.md5(json_encode($selectedBlockIds))"

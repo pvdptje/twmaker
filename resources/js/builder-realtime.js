@@ -79,15 +79,15 @@
             setText('[data-stream-stage]', event.stage);
         }
 
-        if (event.kind === 'stage_started' || event.kind === 'edit_requested') {
+        if (event.kind === 'stage_started' || event.kind === 'edit_requested' || event.kind === 'insert_requested') {
             setText('[data-generation-status]', 'running');
         }
 
-        if (event.kind === 'generation_completed' || event.kind === 'edit_applied') {
+        if (event.kind === 'generation_completed' || event.kind === 'edit_applied' || event.kind === 'insert_applied') {
             setText('[data-generation-status]', 'valid');
         }
 
-        if (event.kind === 'generation_failed' || event.kind === 'edit_rejected') {
+        if (event.kind === 'generation_failed' || event.kind === 'edit_rejected' || event.kind === 'insert_rejected') {
             setText('[data-generation-status]', 'error');
         }
     }
@@ -116,7 +116,9 @@
         updateEventDom(event);
         emit('generation-event-received', event);
 
-        if ((event.kind === 'stage_started' && event.stage === 'section_generator') || (event.kind === 'edit_requested' && event.stage === 'targeted_edit')) {
+        if ((event.kind === 'stage_started' && event.stage === 'section_generator')
+            || (event.kind === 'edit_requested' && event.stage === 'targeted_edit')
+            || (event.kind === 'insert_requested' && event.stage === 'section_inserter')) {
             const detail = { pageId: state.pageId, stage: event.stage };
             emit('generation-started', detail);
             window.Livewire?.dispatch?.('generation-started', detail);
@@ -136,6 +138,11 @@
                 state.output = '';
                 emit('targeted-edit-stream-start', { targetIds });
             }
+        }
+
+        if (event.kind === 'insert_requested' && event.stage === 'section_inserter') {
+            state.html = '';
+            state.output = '';
         }
 
         if (event.kind === 'edit_applied') {
@@ -159,6 +166,8 @@
             generation_failed: ['error', false],
             edit_applied: ['valid', true],
             edit_rejected: ['error', true],
+            insert_applied: ['valid', false],
+            insert_rejected: ['error', false],
         }[event.kind];
 
         if (!terminal) return;

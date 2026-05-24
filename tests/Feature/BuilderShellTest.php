@@ -3,11 +3,13 @@
 namespace Tests\Feature;
 
 use App\Jobs\GeneratePageJob;
+use App\Jobs\InsertSectionJob;
 use App\Jobs\TargetedEditJob;
 use App\Livewire\Builder\Inspector\EditForm\EditForm;
 use App\Livewire\Builder\Inspector\VersionList\VersionList;
 use App\Livewire\Builder\RightInspector\RightInspector;
 use App\Livewire\Builder\SidePanels\GenerationControls\GenerationControls;
+use App\Livewire\Builder\SidePanels\SectionTree\SectionTree;
 use App\Livewire\Builder\StreamPanel\StreamPanel;
 use App\Livewire\Builder\Workspace\Workspace;
 use App\Livewire\Projects\ProjectDashboard\ProjectDashboard;
@@ -422,6 +424,51 @@ class BuilderShellTest extends TestCase
 
         Queue::assertPushed(TargetedEditJob::class, fn (TargetedEditJob $job): bool => $job->targetId === ['block_hero', 'block_features']
             && $job->instruction === 'Replace these with one product story section');
+    }
+
+    public function test_section_tree_enqueues_insert_section_job(): void
+    {
+        Queue::fake();
+        $this->cacheProviderModels('anthropic', 'test-insert-key', [
+            ['id' => 'claude-haiku-4-5-20251001', 'label' => 'Claude Haiku 4.5'],
+        ]);
+
+        $project = Project::query()->create([
+            'id' => app(IdGenerator::class)->project(),
+            'name' => 'Acme',
+        ]);
+        $page = Page::query()->create([
+            'id' => app(IdGenerator::class)->page(),
+            'project_id' => $project->id,
+            'name' => 'Homepage',
+            'prompt' => '',
+            'html_source' => $this->markedHtmlSource(),
+            'status' => 'valid',
+        ]);
+        $blockIndex = app(BlockIndexer::class)->index($page->html_source);
+
+        Livewire::test(SectionTree::class, ['page' => $page, 'blockIndex' => $blockIndex])
+            ->call('openInsert', 'block_hero', 'after')
+            ->set('insertInstruction', 'Add a compact customer logo band')
+            ->call('insertSectionWithSelection', 'anthropic', 'claude-haiku-4-5-20251001', 'test-insert-key')
+            ->assertSet('insertOpen', false)
+            ->assertDispatched('generation-started', pageId: $page->id, stage: 'section_inserter');
+
+        $this->assertSame('generating', $page->refresh()->status);
+        $this->assertDatabaseHas('generation_events', [
+            'page_id' => $page->id,
+            'kind' => 'insert_requested',
+            'stage' => 'section_inserter',
+            'target_id' => 'block_hero',
+        ]);
+
+        Queue::assertPushed(InsertSectionJob::class, fn (InsertSectionJob $job): bool => $job->pageId === $page->id
+            && $job->anchorBlockId === 'block_hero'
+            && $job->position === 'after'
+            && $job->instruction === 'Add a compact customer logo band'
+            && $job->provider === 'anthropic'
+            && $job->model === 'claude-haiku-4-5-20251001'
+            && $job->apiKey === 'test-insert-key');
     }
 
     public function test_workspace_updates_generation_status_from_generation_events(): void

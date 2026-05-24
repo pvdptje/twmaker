@@ -21,7 +21,7 @@
 >
     @forelse ($events as $event)
         @php
-            $isRunning = $loop->first && (($event->level === 'info' && str_ends_with((string) $event->kind, 'started')) || $event->kind === 'edit_requested');
+            $isRunning = $loop->first && (($event->level === 'info' && str_ends_with((string) $event->kind, 'started')) || in_array($event->kind, ['edit_requested', 'insert_requested'], true));
             $rowClass = match ($event->level) {
                 'success' => 'border-emerald-400/25 bg-gradient-to-r from-emerald-400/10 via-neutral-950 to-neutral-950',
                 'error' => 'border-red-400/30 bg-gradient-to-r from-red-500/10 via-neutral-950 to-neutral-950',

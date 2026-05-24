@@ -14,6 +14,7 @@ class GenerationStreamBuffer
         'section_generator',
         'section_generator_retry',
         'targeted_edit',
+        'section_inserter',
     ];
 
     /**
@@ -149,7 +150,7 @@ class GenerationStreamBuffer
 
     public function latestSectionSnapshot(string $pageId): array
     {
-        foreach (['targeted_edit', 'section_generator_retry', 'section_generator'] as $stage) {
+        foreach (['section_inserter', 'targeted_edit', 'section_generator_retry', 'section_generator'] as $stage) {
             $snapshot = $this->snapshot($pageId, $stage);
 
             if ($snapshot['html'] !== '') {
@@ -184,7 +185,7 @@ class GenerationStreamBuffer
 
     public function latestOutputSnapshot(string $pageId): array
     {
-        foreach (['targeted_edit', 'section_generator_retry', 'section_generator'] as $stage) {
+        foreach (['section_inserter', 'targeted_edit', 'section_generator_retry', 'section_generator'] as $stage) {
             $snapshot = $this->outputSnapshot($pageId, $stage);
 
             if ($snapshot['output'] !== '') {

@@ -61,7 +61,7 @@ class StreamPanel extends Component
         }
 
         $event = $this->page->generationEvents()
-            ->whereIn('kind', ['edit_requested', 'stage_started'])
+            ->whereIn('kind', ['edit_requested', 'insert_requested', 'stage_started'])
             ->latest('occurred_at')
             ->first();
 

@@ -103,8 +103,8 @@ class DocumentSchema
             'properties' => [
                 'id' => ['type' => 'string', 'pattern' => '^evt_[0-9a-hjkmnp-tv-z]{26}$', 'maxLength' => 32],
                 'occurred_at' => ['type' => 'string', 'format' => 'date-time'],
-                'kind' => ['enum' => ['planner_started', 'planner_proposed_structure', 'planner_finished', 'section_generation_started', 'section_generation_partial', 'section_generation_finished', 'element_resolution_started', 'element_resolution_finished', 'assembly_finished', 'validation_failed', 'validation_succeeded', 'repair_attempt', 'repair_exhausted', 'render_succeeded', 'render_failed', 'edit_requested', 'edit_applied', 'edit_rejected']],
-                'stage' => ['enum' => ['planner', 'section_generation', 'element_resolution', 'assembly', 'validation', 'repair', 'render', 'targeted_edit']],
+                'kind' => ['enum' => ['planner_started', 'planner_proposed_structure', 'planner_finished', 'section_generation_started', 'section_generation_partial', 'section_generation_finished', 'element_resolution_started', 'element_resolution_finished', 'assembly_finished', 'validation_failed', 'validation_succeeded', 'repair_attempt', 'repair_exhausted', 'render_succeeded', 'render_failed', 'edit_requested', 'edit_applied', 'edit_rejected', 'insert_requested', 'insert_applied', 'insert_rejected']],
+                'stage' => ['enum' => ['planner', 'section_generation', 'element_resolution', 'assembly', 'validation', 'repair', 'render', 'targeted_edit', 'section_inserter']],
                 'target_id' => ['type' => ['string', 'null'], 'maxLength' => 32],
                 'summary' => ['type' => 'string', 'maxLength' => 200],
                 'payload' => ['type' => 'object'],

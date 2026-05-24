@@ -388,6 +388,50 @@ HTML;
         $this->assertStringContainsString('Final edit result', $snapshot['html']);
     }
 
+    public function test_pipeline_inserts_a_new_section_after_an_anchor_block(): void
+    {
+        [$project, $page] = $this->makePage('A developer tool landing page');
+        $artifact = $this->htmlArtifact();
+
+        $page->forceFill([
+            'html_source' => $artifact['marked_html'],
+            'status' => 'valid',
+        ])->save();
+
+        $inserted = <<<'HTML'
+<!-- tw:block id="block_logos" type="logo_cloud" label="Logos" -->
+<section class="bg-neutral-50 px-6 py-12">
+  <div class="mx-auto max-w-5xl"><p>Trusted by careful teams</p></div>
+</section>
+<!-- /tw:block -->
+HTML;
+
+        $this->app->instance(LlmProvider::class, new FakeTargetedEditProvider($inserted));
+
+        app(Pipeline::class)->insertSection($page, 'block_hero', 'after', 'Add a compact customer logo band.');
+
+        $page->refresh();
+
+        $this->assertSame('valid', $page->status);
+        $blockIndex = app(BlockIndexer::class)->index($page->html_source);
+        $this->assertCount(3, $blockIndex);
+        $this->assertSame('block_hero', $blockIndex[0]['id']);
+        $this->assertSame('block_logos', $blockIndex[1]['id']);
+        $this->assertSame('block_features', $blockIndex[2]['id']);
+        $this->assertStringContainsString('Trusted by careful teams', $page->html_source);
+        $this->assertDatabaseHas('generation_events', [
+            'page_id' => $page->id,
+            'kind' => 'insert_applied',
+            'stage' => 'section_inserter',
+            'level' => 'success',
+            'target_id' => 'block_hero',
+        ]);
+
+        $snapshot = app(GenerationStreamBuffer::class)->latestSectionSnapshot($page->id);
+        $this->assertSame('section_inserter', $snapshot['stage']);
+        $this->assertStringContainsString('Trusted by careful teams', $snapshot['html']);
+    }
+
     public function test_pipeline_streams_targeted_edit_html_source(): void
     {
         [$project, $page] = $this->makePage('A developer tool landing page');
