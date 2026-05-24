@@ -262,6 +262,46 @@ import { oneDark } from '@codemirror/theme-one-dark';
         }, '*');
     }
 
+    function startStreamingTargetedBlocks(targetIds) {
+        const previewFrame = frame();
+
+        if (!previewFrame?.contentWindow || !Array.isArray(targetIds) || targetIds.length === 0) {
+            return;
+        }
+
+        previewFrame.contentWindow.postMessage({
+            type: 'stream-block-range-start',
+            targetIds,
+        }, '*');
+    }
+
+    function updateStreamingTargetedBlocks(targetIds, htmlSource) {
+        const previewFrame = frame();
+
+        if (!previewFrame?.contentWindow || !Array.isArray(targetIds) || targetIds.length === 0 || typeof htmlSource !== 'string') {
+            return;
+        }
+
+        previewFrame.contentWindow.postMessage({
+            type: 'stream-block-range-update',
+            targetIds,
+            html: htmlSource,
+        }, '*');
+    }
+
+    function cancelStreamingTargetedBlocks(targetIds) {
+        const previewFrame = frame();
+
+        if (!previewFrame?.contentWindow) {
+            return;
+        }
+
+        previewFrame.contentWindow.postMessage({
+            type: 'stream-block-range-cancel',
+            targetIds: Array.isArray(targetIds) ? targetIds : [],
+        }, '*');
+    }
+
     function saveQuickEditor() {
         const { save } = quickEditorElements();
 
@@ -359,6 +399,18 @@ import { oneDark } from '@codemirror/theme-one-dark';
             replaceQuickEditedElement(event.detail?.editId, event.detail?.html);
             resetQuickEditorSaveButton();
             hideQuickEditor();
+        });
+
+        window.addEventListener('targeted-edit-stream-start', (event) => {
+            startStreamingTargetedBlocks(event.detail?.targetIds || []);
+        });
+
+        window.addEventListener('targeted-edit-stream', (event) => {
+            updateStreamingTargetedBlocks(event.detail?.targetIds || [], event.detail?.html || '');
+        });
+
+        window.addEventListener('targeted-edit-stream-cancel', (event) => {
+            cancelStreamingTargetedBlocks(event.detail?.targetIds || []);
         });
 
         window.addEventListener('targeted-edit-applied', (event) => {

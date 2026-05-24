@@ -1,6 +1,7 @@
 (function () {
     let selected = null;
     let selectionOverlay = null;
+    let streamingRange = null;
     const editableSelector = [
         'a',
         'article',
@@ -265,12 +266,8 @@
         return template.content;
     }
 
-    function replaceBlockRange(targetIds, html) {
-        if (!Array.isArray(targetIds) || targetIds.length === 0 || typeof html !== 'string') {
-            return false;
-        }
-
-        const roots = targetIds
+    function collectRangeRoots(targetIds) {
+        return targetIds
             .map((id) => typeof id === 'string' && id !== '' ? document.querySelector(blockSelector(id)) : null)
             .filter(Boolean)
             .sort((left, right) => {
@@ -280,7 +277,88 @@
 
                 return left.compareDocumentPosition(right) & Node.DOCUMENT_POSITION_PRECEDING ? 1 : -1;
             });
+    }
 
+    function startStreamingRange(targetIds) {
+        if (streamingRange) {
+            cancelStreamingRange();
+        }
+
+        if (!Array.isArray(targetIds) || targetIds.length === 0) {
+            return false;
+        }
+
+        const roots = collectRangeRoots(targetIds);
+        if (roots.length === 0) {
+            return false;
+        }
+
+        const parent = roots[0].parentNode;
+        if (!parent) {
+            return false;
+        }
+
+        const placeholder = document.createElement('div');
+        placeholder.dataset.builderStreamPlaceholder = 'true';
+        parent.insertBefore(placeholder, roots[0]);
+
+        const hiddenRoots = roots.map((root) => ({
+            root,
+            previousDisplay: root.style.display,
+        }));
+        hiddenRoots.forEach(({ root }) => { root.style.display = 'none'; });
+
+        streamingRange = { targetIds: targetIds.slice(), placeholder, hiddenRoots };
+        clearSelection();
+
+        return true;
+    }
+
+    function updateStreamingRange(targetIds, html) {
+        if (!streamingRange) {
+            if (!startStreamingRange(targetIds)) {
+                return false;
+            }
+        }
+
+        streamingRange.placeholder.innerHTML = String(html || '');
+        annotateBlocksFromComments(streamingRange.placeholder);
+
+        return true;
+    }
+
+    function restoreHiddenRoots(state) {
+        state?.hiddenRoots?.forEach(({ root, previousDisplay }) => {
+            if (!root.isConnected) {
+                return;
+            }
+
+            if (previousDisplay) {
+                root.style.display = previousDisplay;
+            } else {
+                root.style.removeProperty('display');
+            }
+        });
+    }
+
+    function cancelStreamingRange() {
+        if (!streamingRange) {
+            return;
+        }
+
+        streamingRange.placeholder.remove();
+        restoreHiddenRoots(streamingRange);
+        streamingRange = null;
+    }
+
+    function replaceBlockRange(targetIds, html) {
+        if (!Array.isArray(targetIds) || targetIds.length === 0 || typeof html !== 'string') {
+            return false;
+        }
+
+        cancelStreamingRange();
+
+        const roots = collectRangeRoots(targetIds);
         if (roots.length === 0) {
             return false;
         }
@@ -445,6 +523,24 @@
 
             element.replaceWith(replacement);
             selectElement(blockRoot?.isConnected ? blockRoot : replacement);
+
+            return;
+        }
+
+        if (event.data?.type === 'stream-block-range-start') {
+            startStreamingRange(event.data.targetIds);
+
+            return;
+        }
+
+        if (event.data?.type === 'stream-block-range-update') {
+            updateStreamingRange(event.data.targetIds, event.data.html);
+
+            return;
+        }
+
+        if (event.data?.type === 'stream-block-range-cancel') {
+            cancelStreamingRange();
 
             return;
         }

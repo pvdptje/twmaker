@@ -312,6 +312,86 @@ describe('preview bridge', () => {
         expect(document.querySelector('p').textContent).toBe('Better website copy here.');
     });
 
+    it('streams partial html into a placeholder while hiding the original blocks', () => {
+        const { document, window } = bootPreview(`<body>
+            <main>
+                <!-- tw:block id="block_hero" type="hero" label="Hero" -->
+                <section><h1>Old hero</h1></section>
+                <!-- /tw:block -->
+                <!-- tw:block id="block_features" type="features" label="Features" -->
+                <section><p>Old features</p></section>
+                <!-- /tw:block -->
+                <!-- tw:block id="block_footer" type="footer" label="Footer" -->
+                <footer>Footer</footer>
+                <!-- /tw:block -->
+            </main>
+        </body>`);
+
+        window.dispatchEvent(new window.MessageEvent('message', {
+            data: { type: 'stream-block-range-start', targetIds: ['block_hero', 'block_features'] },
+        }));
+
+        const placeholder = document.querySelector('[data-builder-stream-placeholder="true"]');
+        expect(placeholder).not.toBeNull();
+        expect(document.querySelector('[data-builder-block-id="block_hero"]').style.display).toBe('none');
+        expect(document.querySelector('[data-builder-block-id="block_features"]').style.display).toBe('none');
+        expect(document.querySelector('[data-builder-block-id="block_footer"]').style.display).toBe('');
+
+        window.dispatchEvent(new window.MessageEvent('message', {
+            data: {
+                type: 'stream-block-range-update',
+                targetIds: ['block_hero', 'block_features'],
+                html: '<!-- tw:block id="block_hero" type="story" label="Story" --><article><h2>Streaming...',
+            },
+        }));
+
+        expect(placeholder.innerHTML).toContain('Streaming...');
+        expect(placeholder.querySelector('article').dataset.builderBlockId).toBe('block_hero');
+
+        window.dispatchEvent(new window.MessageEvent('message', {
+            data: {
+                type: 'replace-block-range',
+                targetIds: ['block_hero', 'block_features'],
+                html: `
+                    <!-- tw:block id="block_hero" type="story" label="Story" -->
+                    <article><h2>Final story</h2></article>
+                    <!-- /tw:block -->
+                `,
+            },
+        }));
+
+        expect(document.querySelector('[data-builder-stream-placeholder="true"]')).toBeNull();
+        expect(document.querySelector('h1')).toBeNull();
+        expect(document.querySelector('p')).toBeNull();
+        expect(document.querySelector('article').dataset.builderBlockId).toBe('block_hero');
+        expect(document.querySelector('article').textContent.trim()).toBe('Final story');
+        expect(document.querySelector('footer').textContent).toBe('Footer');
+    });
+
+    it('restores the original blocks when streaming is cancelled', () => {
+        const { document, window } = bootPreview(`<body>
+            <main>
+                <!-- tw:block id="block_hero" type="hero" label="Hero" -->
+                <section style="display: flex"><h1>Original</h1></section>
+                <!-- /tw:block -->
+            </main>
+        </body>`);
+
+        window.dispatchEvent(new window.MessageEvent('message', {
+            data: { type: 'stream-block-range-start', targetIds: ['block_hero'] },
+        }));
+
+        expect(document.querySelector('[data-builder-block-id="block_hero"]').style.display).toBe('none');
+
+        window.dispatchEvent(new window.MessageEvent('message', {
+            data: { type: 'stream-block-range-cancel', targetIds: ['block_hero'] },
+        }));
+
+        expect(document.querySelector('[data-builder-stream-placeholder="true"]')).toBeNull();
+        expect(document.querySelector('[data-builder-block-id="block_hero"]').style.display).toBe('flex');
+        expect(document.querySelector('h1').textContent).toBe('Original');
+    });
+
     it('replaces targeted block ranges without reloading the preview', () => {
         const { document, window } = bootPreview(`<body>
             <main>

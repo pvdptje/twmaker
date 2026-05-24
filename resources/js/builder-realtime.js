@@ -8,6 +8,7 @@
         html: '',
         output: '',
         connectionBound: false,
+        activeTargetedEdit: null,
     };
 
     function workspace() {
@@ -94,6 +95,13 @@
 
         updateStreamDom(event);
         emit('generation-stream-chunk', event);
+
+        if (event.stage === 'targeted_edit' && state.activeTargetedEdit) {
+            emit('targeted-edit-stream', {
+                targetIds: state.activeTargetedEdit.targetIds,
+                html: state.html,
+            });
+        }
     }
 
     function handleGenerationEvent(event) {
@@ -108,12 +116,30 @@
             window.Livewire?.dispatch?.('generation-started', detail);
         }
 
+        if (event.kind === 'edit_requested' && event.stage === 'targeted_edit') {
+            const targetIds = Array.isArray(event.payload?.target_ids) ? event.payload.target_ids.filter((id) => typeof id === 'string' && id !== '') : [];
+            if (targetIds.length > 0) {
+                state.activeTargetedEdit = { targetIds };
+                state.html = '';
+                state.output = '';
+                emit('targeted-edit-stream-start', { targetIds });
+            }
+        }
+
         if (event.kind === 'edit_applied') {
             const targetIds = Array.isArray(event.payload?.target_ids) ? event.payload.target_ids : [];
             const html = typeof event.payload?.html_source === 'string' ? event.payload.html_source : '';
             if (targetIds.length > 0 && html !== '') {
                 emit('targeted-edit-applied', { targetIds, html });
             }
+        }
+
+        if (event.kind === 'edit_rejected' && state.activeTargetedEdit) {
+            emit('targeted-edit-stream-cancel', { targetIds: state.activeTargetedEdit.targetIds });
+        }
+
+        if (event.kind === 'edit_applied' || event.kind === 'edit_rejected') {
+            state.activeTargetedEdit = null;
         }
 
         const terminal = {

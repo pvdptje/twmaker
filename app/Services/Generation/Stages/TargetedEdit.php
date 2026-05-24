@@ -10,7 +10,7 @@ use App\Services\Html\HtmlDocumentValidator;
 use App\Services\Html\HtmlValidationException;
 use App\Services\Ids\IdGenerator;
 use App\Services\Llm\LlmProvider;
-use App\Services\Llm\StructuredRequest;
+use App\Services\Llm\TextRequest;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
@@ -46,56 +46,34 @@ class TargetedEdit
         $stage = 'targeted_edit';
         $this->streamBuffer->resetRun($page->id, $stage);
 
-        $request = new StructuredRequest(
-            stage: 'targeted_edit',
+        $request = new TextRequest(
+            stage: $stage,
             provider: $provider,
             model: $model ?: (string) config("llm.providers.{$provider}.models.targeted_edit"),
             systemPrompt: $this->prompts->system('targeted_edit'),
-            userPrompt: $instruction,
-            toolName: 'submit_targeted_edit',
-            schema: $this->schema(),
+            userPrompt: $this->buildUserPrompt($instruction, $targetIds, $targetBlocks, $htmlSource, $blockIndex),
             context: [
                 'page_id' => $page->id,
                 'page_name' => $page->name,
-                'target_id' => $targetIds[0],
-                'target_ids' => $targetIds,
-                'target_block' => $targetBlocks[0],
-                'target_blocks' => $targetBlocks,
-                'target_html' => $this->targetHtml($htmlSource, $targetBlocks),
-                'block_index' => $this->compactBlockIndex($blockIndex),
-                'surrounding_html' => $this->surroundingHtml($htmlSource, $targetBlocks),
-                'instructions' => [
-                    count($targetIds) === 1
-                        ? 'Return one or more complete tw:block regions as html_source.'
-                        : 'Return one or more complete tw:block regions as html_source to replace the selected contiguous block range.',
-                    'The first returned block replaces the first selected block identity; extra returned blocks become new sections.',
-                    'Do not include script tags, inline event handlers, or javascript: URLs.',
-                ],
+                'target_ids' => implode(',', $targetIds),
             ],
             maxTokens: (int) config("llm.providers.{$provider}.edit_max_tokens", 8000),
             temperature: 0.4,
             apiKey: $apiKey,
         );
 
-        $streamedHtml = '';
-
         try {
-            $response = method_exists($this->provider, 'sendStructuredStream')
-                ? $this->provider->sendStructuredStream($request, $this->streamHtmlSource($page, $stage, $streamedHtml))
-                : $this->provider->sendStructured($request);
+            if (! method_exists($this->provider, 'sendTextStream')) {
+                throw new \RuntimeException('The configured LLM provider does not support plain text streaming.');
+            }
 
-            $this->streamFinalHtmlSourceIfMissing(
-                $page,
-                $stage,
-                (string) ($response->output['html_source'] ?? ''),
-                $streamedHtml,
-            );
+            $response = $this->provider->sendTextStream($request, $this->streamHtml($page, $stage));
         } finally {
             $this->streamBuffer->flushRun($page->id, $stage);
         }
 
         $replacement = $this->normalizeReplacementIds(
-            (string) ($response->output['html_source'] ?? ''),
+            $this->stripCodeFence(trim((string) $response->text)),
             $targetIds[0],
         );
 
@@ -103,7 +81,7 @@ class TargetedEdit
 
         return [
             'html_source' => $replacement,
-            'explanation' => (string) ($response->output['explanation'] ?? 'Edited selected block.'),
+            'explanation' => count($targetIds) > 1 ? 'Edited selected block range.' : 'Edited selected block.',
             'blocks' => $this->compactBlockIndex($this->blocks->index($replacement)),
             '_llm' => [
                 'provider' => $provider,
@@ -113,42 +91,12 @@ class TargetedEdit
         ];
     }
 
-    private function schema(): array
+    private function streamHtml(Page $page, string $stage): callable
     {
-        return [
-            'type' => 'object',
-            'additionalProperties' => false,
-            'required' => ['html_source', 'explanation'],
-            'properties' => [
-                'html_source' => ['type' => 'string', 'minLength' => 1],
-                'explanation' => ['type' => 'string', 'minLength' => 1, 'maxLength' => 300],
-            ],
-        ];
-    }
-
-    private function streamHtmlSource(Page $page, string $stage, string &$streamed): callable
-    {
-        $rawOutput = '';
-
-        return function (string $partialJson, string $delta = '') use ($page, $stage, &$streamed, &$rawOutput): void {
-            $outputChunk = $delta !== '' ? $delta : substr($partialJson, strlen($rawOutput));
-            if ($outputChunk !== '') {
-                $outputPosition = strlen($rawOutput);
-                $rawOutput .= $outputChunk;
-
-                $this->streamBuffer->appendOutput($page->id, $stage, $outputChunk, $outputPosition);
-                $this->broadcastChunk(new GenerationStreamChunk($page->id, $stage, $outputChunk, $outputPosition, 'output'), $page);
-            }
-
-            $html = $this->partialJsonStringValue($partialJson, 'html_source');
-
-            if (! is_string($html) || strlen($html) <= strlen($streamed)) {
+        return function (string $chunk, int $position) use ($page, $stage): void {
+            if ($chunk === '') {
                 return;
             }
-
-            $position = strlen($streamed);
-            $chunk = substr($html, $position);
-            $streamed = $html;
 
             Log::debug('Broadcasting targeted edit stream chunk.', [
                 'page_id' => $page->id,
@@ -161,29 +109,6 @@ class TargetedEdit
 
             $this->broadcastChunk(new GenerationStreamChunk($page->id, $stage, $chunk, $position), $page);
         };
-    }
-
-    private function streamFinalHtmlSourceIfMissing(Page $page, string $stage, string $html, string &$streamed): void
-    {
-        if ($html === '' || $html === $streamed) {
-            return;
-        }
-
-        if ($streamed !== '' && str_starts_with($html, $streamed)) {
-            $position = strlen($streamed);
-            $chunk = substr($html, $position);
-        } else {
-            $position = 0;
-            $chunk = $html;
-        }
-
-        if ($chunk === '') {
-            return;
-        }
-
-        $streamed = $html;
-        $this->streamBuffer->append($page->id, $stage, $chunk, $position);
-        $this->broadcastChunk(new GenerationStreamChunk($page->id, $stage, $chunk, $position), $page);
     }
 
     private function broadcastChunk(GenerationStreamChunk $event, Page $page): void
@@ -201,58 +126,34 @@ class TargetedEdit
         }
     }
 
-    private function partialJsonStringValue(string $json, string $field): ?string
+    /**
+     * @param  array<int, string>  $targetIds
+     * @param  array<int, array<string, mixed>>  $targetBlocks
+     * @param  array<int, array<string, mixed>>  $blockIndex
+     */
+    private function buildUserPrompt(string $instruction, array $targetIds, array $targetBlocks, string $htmlSource, array $blockIndex): string
     {
-        if (! preg_match('/"'.preg_quote($field, '/').'"\s*:\s*"/', $json, $matches, PREG_OFFSET_CAPTURE)) {
-            return null;
+        $targetHtml = $this->targetHtml($htmlSource, $targetBlocks);
+        $surrounding = $this->surroundingHtml($htmlSource, $targetBlocks);
+        $compact = $this->compactBlockIndex($blockIndex);
+        $blockList = '';
+
+        foreach ($compact as $block) {
+            $blockList .= "- {$block['id']} ({$block['type']}, \"{$block['label']}\")\n";
         }
 
-        $offset = $matches[0][1] + strlen($matches[0][0]);
-        $value = '';
-        $length = strlen($json);
+        $rangeNote = count($targetIds) === 1
+            ? 'Return one or more complete tw:block regions as the replacement.'
+            : 'Return one or more complete tw:block regions that replace the selected contiguous block range. The first returned block keeps the first selected block identity; extra returned blocks become new sections.';
 
-        for ($i = $offset; $i < $length; $i++) {
-            $char = $json[$i];
-
-            if ($char === '"') {
-                break;
-            }
-
-            if ($char !== '\\') {
-                $value .= $char;
-
-                continue;
-            }
-
-            if ($i + 1 >= $length) {
-                break;
-            }
-
-            $next = $json[++$i];
-            $value .= match ($next) {
-                '"', '\\', '/' => $next,
-                'b' => "\b",
-                'f' => "\f",
-                'n' => "\n",
-                'r' => "\r",
-                't' => "\t",
-                'u' => $this->decodeUnicodeEscape(substr($json, $i + 1, 4), $i),
-                default => $next,
-            };
-        }
-
-        return $value;
-    }
-
-    private function decodeUnicodeEscape(string $hex, int &$index): string
-    {
-        if (! preg_match('/^[0-9a-fA-F]{4}$/', $hex)) {
-            return '';
-        }
-
-        $index += 4;
-
-        return json_decode('"\\u'.$hex.'"', true, 512, JSON_THROW_ON_ERROR);
+        return implode("\n\n", array_filter([
+            "User instruction:\n{$instruction}",
+            "Selected block ids: ".implode(', ', $targetIds),
+            "All block ids in the page:\n".trim($blockList),
+            "Selected block HTML (including markers):\n{$targetHtml}",
+            "Surrounding HTML for context:\n{$surrounding}",
+            $rangeNote,
+        ]));
     }
 
     private function compactBlockIndex(array $blocks): array
@@ -337,6 +238,18 @@ class TargetedEdit
         $last = $targetBlocks[count($targetBlocks) - 1];
 
         return substr($htmlSource, (int) $first['start_offset'], (int) $last['end_offset'] - (int) $first['start_offset']);
+    }
+
+    private function stripCodeFence(string $text): string
+    {
+        if (preg_match('/^```(?:html)?\s*(.*?)\s*```$/is', $text, $matches)) {
+            return trim($matches[1]);
+        }
+
+        $text = preg_replace('/^\s*```[A-Za-z0-9_-]*[ \t]*(?:\R|$)/', '', $text, 1) ?? $text;
+        $text = preg_replace('/(?:\R|^)```[ \t]*$/', '', $text, 1) ?? $text;
+
+        return trim($text);
     }
 
     private function normalizeReplacementIds(string $replacement, string $targetId): string

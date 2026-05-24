@@ -358,12 +358,9 @@ HTML;
         app(Pipeline::class)->edit($page, 'block_hero', 'Stream this edit into the inspector.');
 
         $snapshot = app(GenerationStreamBuffer::class)->latestSectionSnapshot($page->id);
-        $outputSnapshot = app(GenerationStreamBuffer::class)->latestOutputSnapshot($page->id);
 
         $this->assertSame('targeted_edit', $snapshot['stage']);
         $this->assertStringContainsString('Streamed edit result', $snapshot['html']);
-        $this->assertSame('targeted_edit', $outputSnapshot['stage']);
-        $this->assertStringContainsString('Streamed the selected edit.', $outputSnapshot['output']);
     }
 
     private function makePage(string $prompt): array
@@ -471,12 +468,16 @@ class FakeTargetedEditProvider implements LlmProvider
 {
     public function __construct(private readonly string $replacement) {}
 
+    public function sendTextStream(TextRequest $request, callable $onDelta): TextResponse
+    {
+        $onDelta($this->replacement, 0);
+
+        return new TextResponse($request->stage, $request->model, $this->replacement);
+    }
+
     public function sendStructured(StructuredRequest $request): StructuredResponse
     {
-        return new StructuredResponse($request->stage, $request->model, [
-            'html_source' => $this->replacement,
-            'explanation' => 'Replaced the selected block with two focused sections.',
-        ]);
+        throw new \RuntimeException("Unexpected structured request [{$request->stage}].");
     }
 }
 
@@ -487,20 +488,16 @@ class FakeStreamingTargetedEditProvider extends FakeTargetedEditProvider
         parent::__construct($streamedReplacement);
     }
 
-    public function sendStructuredStream(StructuredRequest $request, callable $onPartialJson): StructuredResponse
+    public function sendTextStream(TextRequest $request, callable $onDelta): TextResponse
     {
-        $json = json_encode([
-            'html_source' => $this->streamedReplacement,
-            'explanation' => 'Streamed the selected edit.',
-        ], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+        $half = (int) floor(strlen($this->streamedReplacement) / 2);
+        $firstChunk = substr($this->streamedReplacement, 0, $half);
+        $secondChunk = substr($this->streamedReplacement, $half);
 
-        $onPartialJson(substr($json, 0, 90));
-        $onPartialJson($json);
+        $onDelta($firstChunk, 0);
+        $onDelta($secondChunk, strlen($firstChunk));
 
-        return new StructuredResponse($request->stage, $request->model, [
-            'html_source' => $this->streamedReplacement,
-            'explanation' => 'Streamed the selected edit.',
-        ]);
+        return new TextResponse($request->stage, $request->model, $this->streamedReplacement);
     }
 }
 
