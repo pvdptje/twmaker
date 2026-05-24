@@ -4,7 +4,8 @@
             <div class="text-sm font-medium text-white">Canvas</div>
             <div class="text-xs text-neutral-500">{{ $sectionCount }} sections</div>
         </div>
-        <div class="flex items-center gap-2">
+        <div class="relative z-30 flex min-w-0 items-center gap-2">
+            <livewire:builder.model-selector.model-selector :key="'model-selector-'.$page->id" />
             <span class="rounded bg-neutral-900 px-2 py-1 text-xs text-neutral-400">Live preview</span>
             @if (filled($page->html_source))
                 <a

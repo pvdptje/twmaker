@@ -86,13 +86,14 @@ in_progress
 - [2026-05-23] M5.targeted-edit-quiet-stream-ux: targeted edits no longer auto-open the stream modal, the stream remains manually available through Open stream, and the Apply edit button shows a running state until completion or rejection.
 - [2026-05-24] M5.insert-section-pipeline: added an AI insert-new-section flow with block insertion, `SectionInserter`, queued `InsertSectionJob`, pipeline orchestration, stream events, section-tree plus buttons, and inline prompt UI.
 - [2026-05-24] M5.shared-builder-model-selector: moved builder model selection into one top-bar select that includes provider names and feeds generation, insert-section, and targeted-edit submissions through shared browser state.
+- [2026-05-24] M5.model-selector-canvas-toolbar: moved the shared model selector into the canvas toolbar beside Live preview and restored the workspace grid so the select is not covered by surrounding panels.
 
 ## In Progress
 - M5 follow-up: browser-test insert-section with a real provider call and decide whether it needs incremental preview insertion later.
 - Started: 2026-05-24
 - Last activity: 2026-05-24
-- Files touched: app/Livewire/Builder/ModelSelector/ModelSelector.php, app/Livewire/Builder/ModelSelector/model-selector.blade.php, app/Livewire/Builder/Workspace/workspace.blade.php, app/Livewire/Builder/SidePanels/GenerationControls/GenerationControls.php, app/Livewire/Builder/SidePanels/GenerationControls/generation-controls.blade.php, app/Livewire/Builder/Inspector/EditForm/EditForm.php, app/Livewire/Builder/Inspector/EditForm/edit-form.blade.php, app/Livewire/Builder/SidePanels/SectionTree/section-tree.blade.php, tests/Feature/BuilderShellTest.php, progress.md
-- Current state: The builder now has a single top-bar model selector. It stores `{provider, model}` in `twmaker.builder.modelSelection`, mirrors legacy primary/editing localStorage keys for compatibility, dispatches model-selection browser events, and all three AI actions read the shared selection plus provider API key immediately before submit. Verified with full PHP tests, JS tests, and Vite build.
+- Files touched: app/Livewire/Builder/Canvas/canvas.blade.php, app/Livewire/Builder/ModelSelector/model-selector.blade.php, app/Livewire/Builder/Workspace/workspace.blade.php, progress.md
+- Current state: The shared model selector now lives in the existing canvas toolbar next to Live preview, with compact sizing and explicit z-index. The separate workspace-wide selector row was removed, returning the builder grid to the original canvas/sidebar/stream layout. Verified with focused BuilderShell tests and Vite build.
 
 ## Blocked
 - None.

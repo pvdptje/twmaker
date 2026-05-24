@@ -1,5 +1,5 @@
 <div
-    class="flex h-full items-center justify-between gap-4 px-4"
+    class="relative z-40 flex min-w-0 items-center gap-2"
     x-data="{
         selectedValue: @js($defaultValue),
         choices: @js($choices),
@@ -70,20 +70,17 @@
     }"
     x-init="loadSelection(); $watch('selectedValue', () => saveSelection())"
 >
-    <div class="min-w-0">
-        <div class="text-sm font-semibold text-white">Model</div>
-        <div class="mt-0.5 truncate text-xs text-neutral-500" x-text="selectedChoice()?.label || 'No models available'"></div>
-    </div>
-    <div class="flex min-w-[18rem] items-center gap-2">
-        <select
-            x-model="selectedValue"
-            class="w-full rounded-md border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
-            aria-label="Model"
-        >
-            <template x-for="choice in choices" :key="choice.value">
-                <option :value="choice.value" x-text="choice.label"></option>
-            </template>
-        </select>
-        <a href="{{ route('setup.llm') }}" wire:navigate class="shrink-0 rounded-md border border-neutral-800 px-3 py-2 text-sm font-medium text-cyan-300 hover:border-cyan-500 hover:text-cyan-200">Setup</a>
-    </div>
+    <label for="builder-model-selector" class="text-xs font-medium text-neutral-500">Model</label>
+    <select
+        id="builder-model-selector"
+        x-model="selectedValue"
+        class="h-8 w-[min(24rem,34vw)] rounded-md border border-neutral-800 bg-neutral-950 px-2 text-xs text-white outline-none focus:border-cyan-400"
+        aria-label="Model"
+        x-bind:title="selectedChoice()?.label || 'No models available'"
+    >
+        <template x-for="choice in choices" :key="choice.value">
+            <option :value="choice.value" x-text="choice.label"></option>
+        </template>
+    </select>
+    <a href="{{ route('setup.llm') }}" wire:navigate class="flex h-8 shrink-0 items-center rounded-md border border-neutral-800 px-2 text-xs font-medium text-cyan-300 hover:border-cyan-500 hover:text-cyan-200">Setup</a>
 </div>
