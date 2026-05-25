@@ -4,10 +4,10 @@
 > Encoding: pure ASCII. Do not introduce non-ASCII characters when editing.
 
 ## Current Milestone
-M4 - LLM Provider and Generation Pipeline
+M5 - Targeted Editing and Reusable Elements
 
 ## Status
-in_progress
+done
 
 ## Completed Tasks
 - [2026-05-20] spec: `plan.md` R1 drafted as canonical V1 specification.
@@ -92,12 +92,14 @@ in_progress
 - [2026-05-25] M5.reference-image-inputs: full page generation and targeted edits now support the same screenshot attachments as section insertion, including browser-side paste/drop/file attach UX, shared PHP image attachment normalization, queued encrypted job payloads, model vision validation, and image-aware LLM prompts.
 - [2026-05-25] M5.anthropic-temperature-compat: Prism wrapper now omits temperature for Anthropic Opus 4.7 models and retries once without temperature when Anthropic rejects a model with a temperature-deprecated 400, covering section insertion, full generation, targeted edits, and structured marker calls.
 - [2026-05-25] M5.reference-image-and-temperature-verification: `vendor\bin\pint --dirty`, `php artisan test tests\Feature\BuilderShellTest.php`, `php artisan test tests\Feature\Generation\PipelineTest.php`, `php artisan test tests\Unit\Llm\PrismProviderTest.php tests\Unit\Llm\StructuredRequestTest.php`, `php artisan test`, and `npm.cmd run build` pass.
+- [2026-05-25] M5.block-granularizer: added a "Make blocks more editable" generation-control action that sends the full current marked HTML document back to the LLM and asks it to split coarse editable regions into smaller non-nested `tw:block` regions.
+- [2026-05-25] M5.block-granularizer-verification: `vendor\bin\pint --dirty`, `php artisan test tests\Feature\BuilderShellTest.php`, `php artisan test tests\Feature\Generation\PipelineTest.php`, `php artisan test`, and `npm.cmd run build` pass.
 
 ## In Progress
-- None active after this deployment handoff.
+- None active after local verification.
 - Last activity: 2026-05-25
-- Files touched: app/Jobs/GeneratePageJob.php, app/Jobs/TargetedEditJob.php, app/Livewire/Builder/Inspector/EditForm/EditForm.php, app/Livewire/Builder/Inspector/EditForm/edit-form.blade.php, app/Livewire/Builder/ModelSelector/model-selector.blade.php, app/Livewire/Builder/SidePanels/GenerationControls/GenerationControls.php, app/Livewire/Builder/SidePanels/GenerationControls/generation-controls.blade.php, app/Livewire/Builder/SidePanels/SectionTree/SectionTree.php, app/Livewire/Builder/SidePanels/SectionTree/section-tree.blade.php, app/Services/Generation/Pipeline.php, app/Services/Generation/Stages/SectionGenerator.php, app/Services/Generation/Stages/TargetedEdit.php, app/Services/Llm/ImageAttachments.php, app/Services/Llm/PrismProvider.php, app/Services/Llm/StructuredRequest.php, app/Services/Llm/TextRequest.php, resources/js/app.js, resources/js/builder-attachments.js, tests/Feature/BuilderShellTest.php, tests/Feature/Generation/PipelineTest.php, tests/Unit/Llm/PrismProviderTest.php, progress.md
-- Current state: Reference screenshots are supported for section insertion, full page generation, and targeted edits. Anthropic Opus 4.7 temperature compatibility is handled in the Prism wrapper. Verified locally and ready for commit, push, and deploy hook trigger.
+- Files touched: app/Jobs/GranularizeBlocksJob.php, app/Livewire/Builder/SidePanels/GenerationControls/GenerationControls.php, app/Livewire/Builder/SidePanels/GenerationControls/generation-controls.blade.php, app/Livewire/Builder/StreamPanel/EventList/event-list.blade.php, app/Livewire/Builder/StreamPanel/StreamPanel.php, app/Livewire/Builder/StreamPanel/stream-panel.blade.php, app/Services/Generation/Pipeline.php, app/Services/Generation/Stages/BlockGranularizer.php, app/Services/Html/HtmlDocumentValidator.php, app/Services/Schema/DocumentSchema.php, resources/js/builder-realtime.js, resources/prompts/block_granularizer.system.md, tests/Feature/BuilderShellTest.php, tests/Feature/Generation/PipelineTest.php, progress.md
+- Current state: Block granularization is implemented and verified locally. The new button queues a full-document refinement pass, persists a page version before applying the returned HTML, refreshes stream/realtime state, preserves existing block IDs when possible, generates server IDs for new blocks, and rejects nested block markers.
 
 ## Blocked
 - None.
@@ -141,6 +143,7 @@ in_progress
 - Workspace owns a lightweight page signature (`status`, `updated_at`, `html_source`, `block_index`) and remounts nested preview components only when that signature changes.
 - DeepSeek text generation should use streaming without tools/tool_choice; structured stages keep forced tool calls with thinking disabled. This avoids DeepSeek thinking-mode tool-choice errors while preserving structured output where needed.
 - For the open-source distribution, browser localStorage is the primary key-storage path. Env API keys should be treated as optional operator fallbacks, not required setup.
+- Block granularization is a full-document refinement pass rather than a targeted edit. It may replace a coarse parent block with multiple sibling child blocks, but validation rejects nested `tw:block` markers so later targeted edits still operate on clean block boundaries.
 
 ## Spec Change Proposals
 - None. Previous marked-HTML pivot proposal was approved by the user and applied to `plan.md` as R3.
@@ -277,9 +280,23 @@ in_progress
 - [2026-05-22] M5.preview-form-focus-fix: preview bridge no longer prevents default clicks on generated form fields, so page textareas/inputs can receive focus while still reporting builder selection.
 - [2026-05-22] M5.preview-selection-outline-fix: iframe-origin clicks no longer echo a block-id selection back into the preview, preserving the outline on the actual clicked element while section-tree selections can still scroll and outline block roots.
 - [2026-05-22] M5.preview-selection-overlay-polish: single-click now selects blocks without opening quick edit, double-click opens the quick HTML editor, generated click handlers still run, preview links cannot navigate the iframe, blocks that start with local setup tags such as `<style>` annotate their first rendered element, and the selected block is shown with a non-interactive overlay that follows scroll/resize and hides when offscreen.
+- `app/Jobs/GranularizeBlocksJob.php`: created: queued full-document block granularization job.
+- `app/Services/Generation/Stages/BlockGranularizer.php`: created: LLM stage that asks for the current full HTML document with more granular non-nested `tw:block` markers.
+- `resources/prompts/block_granularizer.system.md`: created: prompt for preserving design/content while splitting coarse editable regions.
+- `app/Livewire/Builder/SidePanels/GenerationControls/GenerationControls.php`: modified: enqueues granularization with the selected provider/model and records request events.
+- `app/Livewire/Builder/SidePanels/GenerationControls/generation-controls.blade.php`: modified: adds the "Make blocks more editable" button.
+- `app/Services/Generation/Pipeline.php`: modified: adds `granularizeBlocks`, version snapshotting, validation, persistence, and generation events for the refinement pass.
+- `app/Services/Html/HtmlDocumentValidator.php`: modified: rejects nested block markers.
+- `app/Services/Schema/DocumentSchema.php`: modified: allows granularization event kinds in generation history.
+- `resources/js/builder-realtime.js`: modified: treats granularization events as running/terminal refresh events.
+- `app/Livewire/Builder/StreamPanel/EventList/event-list.blade.php`: modified: shows granularization request events as running.
+- `app/Livewire/Builder/StreamPanel/StreamPanel.php`: modified: includes granularization requests in active-stage polling.
+- `app/Livewire/Builder/StreamPanel/stream-panel.blade.php`: modified: displays granularization status labels and terminal states.
+- `tests/Feature/BuilderShellTest.php`: modified: covers granularizer job enqueue and refusal without existing HTML.
+- `tests/Feature/Generation/PipelineTest.php`: modified: covers successful non-nested granularization, ID normalization, version snapshots, and rejection of nested markers.
 
 ## Next Up (Top 3)
-1. M5: manually browser-test insert-section with a real provider call.
+1. M5: manually browser-test block granularization with a real provider call on generated testimonial/feature-grid pages.
 2. M5: add stale-selection and malformed-edit UX handling in the inspector.
 3. M5: consider streaming progress for non-HTML LLM fields such as edit explanations or usage summaries.
 
@@ -331,3 +348,5 @@ in_progress
 - M5 preview selection overlay polish verification passed: `vendor\bin\pint.bat --dirty --test`, `php artisan test` (145 tests, 300 assertions), `npm.cmd run test:js` (16 tests), and `npm.cmd run build`.
 - M5 insert-section pipeline verification passed: `php artisan test --filter=BlockIndexerTest`, `php artisan test --filter=PipelineTest`, `php artisan test --filter=BuilderShellTest`, `vendor\bin\pint.bat --dirty`, `php artisan test` (150 tests, 338 assertions), `npm.cmd run test:js` (19 tests), and `npm.cmd run build`.
 - M5 section row drag-reorder verification passed: `vendor\bin\pint.bat --dirty`, `php artisan test --filter=BlockIndexerTest` (4 tests), `php artisan test --filter=BuilderShellTest` (34 tests), and `php artisan test --filter=PipelineTest` (16 tests).
+- M5 block granularizer verification passed: `vendor\bin\pint --dirty`, `php artisan test tests\Feature\BuilderShellTest.php` (42 tests), `php artisan test tests\Feature\Generation\PipelineTest.php` (20 tests), `php artisan test` (178 tests, 418 assertions), and `npm.cmd run build`.
+- `npm.cmd run build` still reports Vite's existing large chunk warning for `assets/app-*.js`; the build exits successfully.

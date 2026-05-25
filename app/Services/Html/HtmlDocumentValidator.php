@@ -38,6 +38,10 @@ class HtmlDocumentValidator
             $errors[] = 'Block markers are unbalanced.';
         }
 
+        if ($this->hasNestedBlockMarkers($html)) {
+            $errors[] = 'Block markers must not be nested.';
+        }
+
         $blocks = $this->blocks->index($html);
         if ($blocks === []) {
             $errors[] = 'HTML source must contain at least one tw:block marker.';
@@ -57,6 +61,31 @@ class HtmlDocumentValidator
         }
 
         return array_values(array_unique($errors));
+    }
+
+    private function hasNestedBlockMarkers(string $html): bool
+    {
+        $open = false;
+        $offset = 0;
+
+        while (preg_match('/<!--\s*(\/)?tw:block\b[^>]*-->/i', $html, $match, PREG_OFFSET_CAPTURE, $offset)) {
+            $isClose = ($match[1][0] ?? '') === '/';
+            $offset = $match[0][1] + strlen($match[0][0]);
+
+            if (! $isClose) {
+                if ($open) {
+                    return true;
+                }
+
+                $open = true;
+
+                continue;
+            }
+
+            $open = false;
+        }
+
+        return false;
     }
 
     /**

@@ -36,6 +36,10 @@
             this.$wire.generateWithSelection(this.provider, this.model, this.apiKey, payload);
             this.clearAttachments();
         },
+        startRefineEditability() {
+            this.loadSelection();
+            this.$wire.refineEditabilityWithSelection(this.provider, this.model, this.apiKey);
+        },
     }"
     x-init="loadSelection()"
     x-on:builder-model-selection-changed.window="updateSelection($event)"
@@ -112,4 +116,15 @@
             />
         </label>
     </div>
+    <button
+        type="button"
+        x-on:click="startRefineEditability()"
+        wire:loading.attr="disabled"
+        wire:target="refineEditabilityWithSelection,refineEditability"
+        @disabled(blank($page->html_source))
+        class="mt-2 inline-flex min-h-9 w-full items-center justify-center rounded-md border border-neutral-700 px-3 py-2 text-xs font-medium text-neutral-200 hover:border-cyan-500 hover:text-cyan-100 disabled:border-neutral-800 disabled:text-neutral-600"
+    >
+        <span wire:loading.remove wire:target="refineEditabilityWithSelection,refineEditability">Make blocks more editable</span>
+        <span wire:loading wire:target="refineEditabilityWithSelection,refineEditability">Refining editability</span>
+    </button>
 </section>

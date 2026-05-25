@@ -62,15 +62,15 @@
             if (!event) return;
             if (event.stage) this.activeStage = event.stage;
 
-            if (event.kind === 'stage_started' || event.kind === 'edit_requested' || event.kind === 'insert_requested' || event.kind === 'remove_requested') {
+            if (event.kind === 'stage_started' || event.kind === 'edit_requested' || event.kind === 'insert_requested' || event.kind === 'remove_requested' || event.kind === 'granularize_requested') {
                 this.statusLabel = 'running';
             }
 
-            if (event.kind === 'generation_completed' || event.kind === 'edit_applied' || event.kind === 'insert_applied' || event.kind === 'remove_applied') {
+            if (event.kind === 'generation_completed' || event.kind === 'edit_applied' || event.kind === 'insert_applied' || event.kind === 'remove_applied' || event.kind === 'granularize_applied') {
                 this.statusLabel = 'valid';
             }
 
-            if (event.kind === 'generation_failed' || event.kind === 'edit_rejected' || event.kind === 'insert_rejected' || event.kind === 'remove_rejected') {
+            if (event.kind === 'generation_failed' || event.kind === 'edit_rejected' || event.kind === 'insert_rejected' || event.kind === 'remove_rejected' || event.kind === 'granularize_rejected') {
                 this.statusLabel = 'error';
             }
         },
@@ -88,7 +88,7 @@
             return 'border-cyan-400/30 bg-cyan-400/10 text-cyan-200';
         },
         isRunningEvent(event) {
-            return event?.kind === 'edit_requested' || event?.kind === 'insert_requested' || event?.kind === 'remove_requested' || String(event?.kind || '').endsWith('started');
+            return event?.kind === 'edit_requested' || event?.kind === 'insert_requested' || event?.kind === 'remove_requested' || event?.kind === 'granularize_requested' || String(event?.kind || '').endsWith('started');
         },
     }"
     x-on:generation-event-received.window="addEvent($event.detail); updateStatus($event.detail)"

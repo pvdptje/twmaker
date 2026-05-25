@@ -461,6 +461,93 @@ HTML;
         $this->assertStringContainsString('Streamed edit result', $snapshot['html']);
     }
 
+    public function test_pipeline_granularizes_blocks_without_nesting_markers(): void
+    {
+        [$project, $page] = $this->makePage('A developer tool landing page');
+
+        $page->forceFill([
+            'html_source' => <<<'HTML'
+<!-- tw:block id="block_hero" type="hero" label="Hero" -->
+<section class="bg-neutral-950 px-6 py-24 text-white"><h1>Ship pages with marked blocks</h1></section>
+<!-- /tw:block -->
+<!-- tw:block id="block_testimonials" type="testimonials" label="Testimonials" -->
+<section class="bg-white px-6 py-20">
+  <div class="mx-auto grid max-w-6xl gap-6 md:grid-cols-2">
+    <article class="rounded-2xl border border-neutral-200 p-6">"Fast drafts" - Ana</article>
+    <article class="rounded-2xl border border-neutral-200 p-6">"Clean markers" - Bo</article>
+  </div>
+</section>
+<!-- /tw:block -->
+HTML,
+            'status' => 'valid',
+        ])->save();
+
+        $granularized = <<<'HTML'
+<!-- tw:block id="block_hero" type="hero" label="Hero" -->
+<section class="bg-neutral-950 px-6 py-24 text-white"><h1>Ship pages with marked blocks</h1></section>
+<!-- /tw:block -->
+<section class="bg-white px-6 py-20">
+  <div class="mx-auto grid max-w-6xl gap-6 md:grid-cols-2">
+    <!-- tw:block id="draft_testimonial_ana" type="testimonial" label="Testimonial - Ana" -->
+    <article class="rounded-2xl border border-neutral-200 p-6">"Fast drafts" - Ana</article>
+    <!-- /tw:block -->
+    <!-- tw:block id="draft_testimonial_bo" type="testimonial" label="Testimonial - Bo" -->
+    <article class="rounded-2xl border border-neutral-200 p-6">"Clean markers" - Bo</article>
+    <!-- /tw:block -->
+  </div>
+</section>
+HTML;
+        $provider = new FakeTargetedEditProvider($granularized);
+
+        $this->app->instance(LlmProvider::class, $provider);
+
+        app(Pipeline::class)->granularizeBlocks($page);
+
+        $page->refresh();
+
+        $this->assertSame('valid', $page->status);
+        $blockIndex = app(BlockIndexer::class)->index($page->html_source);
+        $this->assertCount(3, $blockIndex);
+        $this->assertSame('block_hero', $blockIndex[0]['id']);
+        $this->assertStringStartsWith('sec_', $blockIndex[1]['id']);
+        $this->assertStringStartsWith('sec_', $blockIndex[2]['id']);
+        $this->assertStringNotContainsString('block_testimonials', $page->html_source);
+        $this->assertStringContainsString('Current complete HTML document', (string) $provider->lastTextRequest?->userPrompt);
+        $this->assertDatabaseHas('generation_events', [
+            'page_id' => $page->id,
+            'kind' => 'granularize_applied',
+            'stage' => 'block_granularizer',
+            'level' => 'success',
+        ]);
+        $this->assertCount(1, $page->versions()->get());
+    }
+
+    public function test_pipeline_rejects_granularized_html_with_nested_blocks(): void
+    {
+        [$project, $page] = $this->makePage('A developer tool landing page');
+
+        $page->forceFill([
+            'html_source' => $this->htmlArtifact()['marked_html'],
+            'status' => 'valid',
+        ])->save();
+
+        $nested = <<<'HTML'
+<!-- tw:block id="block_outer" type="section" label="Outer" -->
+<section>
+  <!-- tw:block id="block_inner" type="card" label="Inner" -->
+  <article>Nested marker</article>
+  <!-- /tw:block -->
+</section>
+<!-- /tw:block -->
+HTML;
+
+        $this->app->instance(LlmProvider::class, new FakeTargetedEditProvider($nested));
+
+        $this->expectExceptionMessage('Block markers must not be nested.');
+
+        app(Pipeline::class)->granularizeBlocks($page);
+    }
+
     public function test_pipeline_forwards_reference_images_to_full_generation(): void
     {
         [$project, $page] = $this->makePage('Recreate this homepage screenshot');

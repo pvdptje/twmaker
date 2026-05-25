@@ -3,7 +3,9 @@
 namespace App\Livewire\Builder\SidePanels\GenerationControls;
 
 use App\Jobs\GeneratePageJob;
+use App\Jobs\GranularizeBlocksJob;
 use App\Models\Page;
+use App\Services\Generation\GenerationEventRecorder;
 use App\Services\Llm\ImageAttachments;
 use App\Services\Llm\LlmRegistry;
 use Illuminate\Contracts\View\View;
@@ -108,6 +110,47 @@ class GenerationControls extends Component
         $this->storeModel();
 
         $this->generate();
+    }
+
+    public function refineEditabilityWithSelection(string $provider, string $model, ?string $apiKey = null): void
+    {
+        $this->provider = $provider;
+        $this->model = $model;
+        $this->apiKey = (string) $apiKey;
+        $this->storeProvider();
+        $this->storeModel();
+
+        $this->refineEditability();
+    }
+
+    public function refineEditability(): void
+    {
+        $this->validate([
+            'provider' => ['required', 'string', 'in:'.implode(',', $this->providerIds())],
+            'model' => ['required', 'string', 'in:'.implode(',', $this->modelIds())],
+            'apiKey' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        if (trim((string) ($this->page->html_source ?? '')) === '') {
+            $this->addError('prompt', 'Generate a page before refining editability.');
+
+            return;
+        }
+
+        app(GenerationEventRecorder::class)->record(
+            $this->page,
+            'granularize_requested',
+            'block_granularizer',
+            'info',
+            'Refining editable block markers.',
+        );
+
+        $this->page->forceFill(['status' => 'generating'])->save();
+        $this->dispatch('generation-started', pageId: $this->page->id, stage: 'block_granularizer');
+
+        GranularizeBlocksJob::dispatch($this->page->id, $this->provider, $this->model, $this->normalizedApiKey());
+
+        $this->dispatch('generation-finished', pageId: $this->page->id, status: $this->page->refresh()->status);
     }
 
     public function render(): View

@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Jobs\GeneratePageJob;
+use App\Jobs\GranularizeBlocksJob;
 use App\Jobs\InsertSectionJob;
 use App\Jobs\TargetedEditJob;
 use App\Livewire\Builder\Inspector\EditForm\EditForm;
@@ -410,6 +411,70 @@ class BuilderShellTest extends TestCase
             ->assertHasErrors('prompt');
 
         Queue::assertNotPushed(GeneratePageJob::class);
+    }
+
+    public function test_generation_controls_enqueue_block_granularizer_job(): void
+    {
+        Queue::fake();
+        $this->cacheProviderModels('anthropic', 'test-granularize-key', [
+            ['id' => 'claude-haiku-4-5-20251001', 'label' => 'Claude Haiku 4.5'],
+        ]);
+
+        $project = Project::query()->create([
+            'id' => app(IdGenerator::class)->project(),
+            'name' => 'Acme',
+        ]);
+        $page = Page::query()->create([
+            'id' => app(IdGenerator::class)->page(),
+            'project_id' => $project->id,
+            'name' => 'Homepage',
+            'prompt' => '',
+            'html_source' => $this->markedHtmlSource(),
+            'status' => 'valid',
+        ]);
+
+        Livewire::test(GenerationControls::class, ['page' => $page])
+            ->call('refineEditabilityWithSelection', 'anthropic', 'claude-haiku-4-5-20251001', 'test-granularize-key')
+            ->assertDispatched('generation-started', pageId: $page->id, stage: 'block_granularizer')
+            ->assertDispatched('generation-finished', pageId: $page->id, status: 'generating');
+
+        $this->assertSame('generating', $page->refresh()->status);
+        $this->assertDatabaseHas('generation_events', [
+            'page_id' => $page->id,
+            'kind' => 'granularize_requested',
+            'stage' => 'block_granularizer',
+        ]);
+
+        Queue::assertPushed(GranularizeBlocksJob::class, fn (GranularizeBlocksJob $job): bool => $job->pageId === $page->id
+            && $job->provider === 'anthropic'
+            && $job->model === 'claude-haiku-4-5-20251001'
+            && $job->apiKey === 'test-granularize-key');
+    }
+
+    public function test_generation_controls_refuses_block_granularizer_without_html(): void
+    {
+        Queue::fake();
+        $this->cacheProviderModels('anthropic', 'test-granularize-key', [
+            ['id' => 'claude-haiku-4-5-20251001', 'label' => 'Claude Haiku 4.5'],
+        ]);
+
+        $project = Project::query()->create([
+            'id' => app(IdGenerator::class)->project(),
+            'name' => 'Acme',
+        ]);
+        $page = Page::query()->create([
+            'id' => app(IdGenerator::class)->page(),
+            'project_id' => $project->id,
+            'name' => 'Homepage',
+            'prompt' => '',
+            'status' => 'draft',
+        ]);
+
+        Livewire::test(GenerationControls::class, ['page' => $page])
+            ->call('refineEditabilityWithSelection', 'anthropic', 'claude-haiku-4-5-20251001', 'test-granularize-key')
+            ->assertHasErrors('prompt');
+
+        Queue::assertNotPushed(GranularizeBlocksJob::class);
     }
 
     public function test_edit_form_enqueues_targeted_edit_job_for_selected_node(): void

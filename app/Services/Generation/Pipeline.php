@@ -4,6 +4,7 @@ namespace App\Services\Generation;
 
 use App\Models\Page;
 use App\Models\PageVersion;
+use App\Services\Generation\Stages\BlockGranularizer;
 use App\Services\Generation\Stages\HtmlMarker;
 use App\Services\Generation\Stages\SectionGenerationResult;
 use App\Services\Generation\Stages\SectionGenerator;
@@ -27,6 +28,7 @@ class Pipeline
         private readonly HtmlMarker $htmlMarker,
         private readonly TargetedEdit $targetedEdit,
         private readonly SectionInserter $sectionInserter,
+        private readonly BlockGranularizer $blockGranularizer,
         private readonly DeterministicBlockMarker $deterministicMarker,
         private readonly HtmlDocumentValidator $htmlValidator,
         private readonly HtmlFragmentRepairer $htmlRepairer,
@@ -291,6 +293,49 @@ class Pipeline
         }
     }
 
+    public function granularizeBlocks(Page $page, ?string $provider = null, ?string $model = null, ?string $apiKey = null): array
+    {
+        $provider ??= (string) config('llm.default_provider', 'anthropic');
+
+        if (! $this->hasFreshGranularizeRequestEvent($page)) {
+            $this->events->record($page, 'granularize_requested', 'block_granularizer', 'info', 'Refining editable block markers.');
+        }
+
+        try {
+            $result = $this->blockGranularizer->granularize($page, $provider, $model, $apiKey);
+            $htmlSource = $this->cleanHtml((string) ($result['html_source'] ?? ''));
+
+            $this->htmlValidator->assertValid($htmlSource);
+            $blockIndex = $this->scrubArray($this->blockIndexer->index($htmlSource));
+            $document = $this->scrubArray($this->htmlArtifact(
+                $this->granularizeArtifact($page),
+                $htmlSource,
+                $blockIndex,
+            ));
+
+            $this->snapshotVersion($page, 'edit', 'Refine editable blocks');
+
+            $page->forceFill([
+                'html_source' => $htmlSource,
+                'rendered_html_cache' => $this->renderer->renderPreviewHtml($htmlSource, $page->name),
+                'status' => 'valid',
+                'last_generation_summary' => $document['page_metadata']['prompt_summary'] ?? null,
+            ])->save();
+
+            $this->events->record($page, 'granularize_applied', 'block_granularizer', 'success', $result['explanation'], payload: [
+                'blocks' => $result['blocks'] ?? [],
+                'html_source' => $htmlSource,
+            ] + $this->payloadWithUsage($result));
+
+            return $document;
+        } catch (Throwable $exception) {
+            $page->forceFill(['status' => 'error'])->save();
+            $this->events->record($page, 'granularize_rejected', 'block_granularizer', 'error', $exception->getMessage());
+
+            throw $exception;
+        }
+    }
+
     /**
      * @param  array<int, string>  $targetIds
      * @param  array<int, array{base64: string, mime_type: string}>  $images
@@ -400,6 +445,19 @@ class Pipeline
         return $event !== null
             && $event->target_id === $targetId
             && ($event->payload['position'] ?? null) === $position
+            && $event->occurred_at !== null
+            && $event->occurred_at->greaterThan(now('UTC')->subMinutes(10));
+    }
+
+    private function hasFreshGranularizeRequestEvent(Page $page): bool
+    {
+        $event = $page->generationEvents()
+            ->where('kind', 'granularize_requested')
+            ->where('stage', 'block_granularizer')
+            ->latest('occurred_at')
+            ->first();
+
+        return $event !== null
             && $event->occurred_at !== null
             && $event->occurred_at->greaterThan(now('UTC')->subMinutes(10));
     }
@@ -627,6 +685,17 @@ class Pipeline
             'goal' => $page->prompt !== '' ? str($page->prompt)->limit(180)->toString() : 'Edited from builder instruction.',
             'audience' => 'Visitors',
             'prompt_summary' => 'Removed section: '.$blockId,
+        ];
+    }
+
+    private function granularizeArtifact(Page $page): array
+    {
+        return [
+            'title' => $page->name,
+            'page_type' => 'generic',
+            'goal' => $page->prompt !== '' ? str($page->prompt)->limit(180)->toString() : 'Refined from builder instruction.',
+            'audience' => 'Visitors',
+            'prompt_summary' => 'Refined editable blocks',
         ];
     }
 
