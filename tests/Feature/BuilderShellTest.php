@@ -1542,7 +1542,61 @@ HTML,
         Livewire::test(RightInspector::class, ['page' => $page])
             ->assertSee('Tokens')
             ->assertSee('claude-sonnet-4-20250514')
-            ->assertSee('200 total');
+            ->assertSee('200 total')
+            ->assertDontSee('USD');
+    }
+
+    public function test_right_inspector_estimates_cost_when_model_pricing_is_configured(): void
+    {
+        config([
+            'llm_pricing.models' => [
+                'anthropic' => [
+                    'claude-sonnet-4-20250514' => [
+                        'input' => 3.00,
+                        'output' => 15.00,
+                        'cache_write' => 3.75,
+                        'cache_read' => 0.30,
+                    ],
+                ],
+            ],
+        ]);
+
+        $project = Project::query()->create([
+            'id' => app(IdGenerator::class)->project(),
+            'name' => 'Acme',
+        ]);
+        $page = Page::query()->create([
+            'id' => app(IdGenerator::class)->page(),
+            'project_id' => $project->id,
+            'name' => 'Homepage',
+            'prompt' => '',
+            'status' => 'valid',
+        ]);
+
+        $page->generationEvents()->create([
+            'id' => app(IdGenerator::class)->generationEvent(),
+            'kind' => 'stage_completed',
+            'stage' => 'section_generator',
+            'level' => 'success',
+            'summary' => 'Raw HTML draft generated.',
+            'payload' => [
+                'llm' => [
+                    'provider' => 'anthropic',
+                    'model' => 'claude-sonnet-4-20250514',
+                    'usage' => [
+                        'input_tokens' => 1_000_000,
+                        'output_tokens' => 1_000_000,
+                        'cache_creation_input_tokens' => 1_000_000,
+                        'cache_read_input_tokens' => 1_000_000,
+                    ],
+                ],
+            ],
+            'occurred_at' => now('UTC'),
+        ]);
+
+        Livewire::test(RightInspector::class, ['page' => $page])
+            ->assertSee('4,000,000 total')
+            ->assertSee('USD 22.0500');
     }
 
     public function test_version_list_restores_a_previous_version(): void

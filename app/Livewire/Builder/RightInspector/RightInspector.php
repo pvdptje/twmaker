@@ -3,6 +3,7 @@
 namespace App\Livewire\Builder\RightInspector;
 
 use App\Models\Page;
+use App\Services\Llm\ModelPricing;
 use Illuminate\Contracts\View\View;
 use Livewire\Attributes\Reactive;
 use Livewire\Component;
@@ -46,18 +47,38 @@ class RightInspector extends Component
                 continue;
             }
 
+            $provider = (string) ($llm['provider'] ?? '');
             $usage = $this->normalizeUsage($llm['usage'] ?? []);
+            $key = "{$provider}:{$model}";
 
-            $totals[$model] ??= ['input' => 0, 'output' => 0, 'cache' => 0, 'total' => 0];
-            $totals[$model]['input'] += $usage['input'];
-            $totals[$model]['output'] += $usage['output'];
-            $totals[$model]['cache'] += $usage['cache'];
-            $totals[$model]['total'] += $usage['total'];
+            $totals[$key] ??= [
+                'provider' => $provider,
+                'model' => $model,
+                'input' => 0,
+                'output' => 0,
+                'cache_write' => 0,
+                'cache_read' => 0,
+                'cache' => 0,
+                'total' => 0,
+                'cost' => null,
+            ];
+            $totals[$key]['input'] += $usage['input'];
+            $totals[$key]['output'] += $usage['output'];
+            $totals[$key]['cache_write'] += $usage['cache_write'];
+            $totals[$key]['cache_read'] += $usage['cache_read'];
+            $totals[$key]['cache'] += $usage['cache'];
+            $totals[$key]['total'] += $usage['total'];
         }
 
         ksort($totals);
 
-        return $totals;
+        $pricing = app(ModelPricing::class);
+
+        return array_map(function (array $usage) use ($pricing): array {
+            $usage['cost'] = $pricing->estimate($usage['provider'], $usage['model'], $usage);
+
+            return $usage;
+        }, $totals);
     }
 
     private function normalizeUsage(mixed $usage): array
@@ -67,17 +88,27 @@ class RightInspector extends Component
         }
 
         if (! is_array($usage)) {
-            return ['input' => 0, 'output' => 0, 'cache' => 0, 'total' => 0];
+            return [
+                'input' => 0,
+                'output' => 0,
+                'cache_write' => 0,
+                'cache_read' => 0,
+                'cache' => 0,
+                'total' => 0,
+            ];
         }
 
         $input = $this->usageInt($usage, ['prompt_tokens', 'input_tokens', 'inputTokens']);
         $output = $this->usageInt($usage, ['completion_tokens', 'output_tokens', 'outputTokens']);
-        $cache = $this->usageInt($usage, ['cache_write_input_tokens', 'cache_creation_input_tokens', 'cacheCreationInputTokens'])
-            + $this->usageInt($usage, ['cache_read_input_tokens', 'cacheReadInputTokens']);
+        $cacheWrite = $this->usageInt($usage, ['cache_write_input_tokens', 'cache_creation_input_tokens', 'cacheCreationInputTokens']);
+        $cacheRead = $this->usageInt($usage, ['cache_read_input_tokens', 'cacheReadInputTokens']);
+        $cache = $cacheWrite + $cacheRead;
 
         return [
             'input' => $input,
             'output' => $output,
+            'cache_write' => $cacheWrite,
+            'cache_read' => $cacheRead,
             'cache' => $cache,
             'total' => $input + $output + $cache,
         ];
