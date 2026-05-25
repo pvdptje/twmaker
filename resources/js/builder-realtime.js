@@ -26,13 +26,6 @@
         });
     }
 
-    function appendText(selector, value) {
-        document.querySelectorAll(selector).forEach((element) => {
-            element.textContent = value;
-            element.scrollTop = element.scrollHeight;
-        });
-    }
-
     function setRealtimeState(value) {
         state.realtimeState = value;
         setText('[data-realtime-state]', value);
@@ -51,7 +44,7 @@
         return text + chunk;
     }
 
-    function updateStreamDom(event) {
+    function updateStreamState(event) {
         const chunk = String(event.chunk || '');
         const stream = String(event.stream || 'html');
         const position = Number(event.position ?? (stream === 'output' ? state.output.length : state.html.length));
@@ -65,11 +58,13 @@
             state.html = applyChunk(state.html, chunk, position);
         }
 
-        setText('[data-generation-status]', 'running');
-        setText('[data-stream-stage]', event.stage || 'section_generator');
-        setText('[data-stream-count]', String(state.chunks));
-        setText('[data-stream-chars]', String(state.chars));
-        appendText('[data-live-stream-output]', state.output || state.html || 'Waiting for broadcast chunks.');
+        return {
+            ...event,
+            chunk,
+            position,
+            stream,
+            stage: event.stage || 'section_generator',
+        };
     }
 
     function updateEventDom(event) {
@@ -95,8 +90,8 @@
     function handleChunk(event) {
         if (!event || String(event.page_id || '') !== String(state.pageId)) return;
 
-        updateStreamDom(event);
-        emit('generation-stream-chunk', event);
+        const normalizedEvent = updateStreamState(event);
+        emit('generation-stream-chunk', normalizedEvent);
 
         if (event.stage === 'targeted_edit' && state.activeTargetedEdit) {
             emit('targeted-edit-stream', {
@@ -236,9 +231,6 @@
         state.chars = 0;
         state.html = '';
         state.output = '';
-        setText('[data-stream-count]', '0');
-        setText('[data-stream-chars]', '0');
-        appendText('[data-live-stream-output]', 'Waiting for broadcast chunks.');
 
         state.channel = window.Echo.channel(channelName)
             .listen('.GenerationStreamChunk', handleChunk)

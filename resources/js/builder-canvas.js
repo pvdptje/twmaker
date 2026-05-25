@@ -276,6 +276,36 @@ import { oneDark } from '@codemirror/theme-one-dark';
         }, '*');
     }
 
+    let targetedStreamState = null;
+    const streamRenderIntervalMs = 120;
+
+    function nowMs() {
+        return (window.performance?.now && window.performance.now()) || Date.now();
+    }
+
+    function scheduleStreamRender(state, render) {
+        if (!state) return;
+
+        const elapsed = nowMs() - state.lastRenderAt;
+        if (state.lastRenderAt === 0 || elapsed >= streamRenderIntervalMs) {
+            render();
+            return;
+        }
+
+        if (state.renderTimer) return;
+
+        state.renderTimer = window.setTimeout(() => {
+            state.renderTimer = null;
+            render();
+        }, streamRenderIntervalMs - elapsed);
+    }
+
+    function clearTargetedStreamTimer() {
+        if (targetedStreamState?.renderTimer) {
+            window.clearTimeout(targetedStreamState.renderTimer);
+        }
+    }
+
     function startStreamingTargetedBlocks(targetIds) {
         const previewFrame = frame();
 
@@ -283,24 +313,51 @@ import { oneDark } from '@codemirror/theme-one-dark';
             return;
         }
 
+        clearTargetedStreamTimer();
+        targetedStreamState = {
+            targetIds,
+            pendingHtml: '',
+            renderTimer: null,
+            lastRenderAt: 0,
+        };
+
         previewFrame.contentWindow.postMessage({
             type: 'stream-block-range-start',
             targetIds,
         }, '*');
     }
 
-    function updateStreamingTargetedBlocks(targetIds, htmlSource) {
+    function renderStreamingTargetedBlocks() {
         const previewFrame = frame();
+        const state = targetedStreamState;
 
-        if (!previewFrame?.contentWindow || !Array.isArray(targetIds) || targetIds.length === 0 || typeof htmlSource !== 'string') {
+        if (!previewFrame?.contentWindow || !state || !Array.isArray(state.targetIds) || state.targetIds.length === 0) {
             return;
         }
 
+        state.lastRenderAt = nowMs();
         previewFrame.contentWindow.postMessage({
             type: 'stream-block-range-update',
-            targetIds,
-            html: htmlSource,
+            targetIds: state.targetIds,
+            html: state.pendingHtml,
         }, '*');
+    }
+
+    function updateStreamingTargetedBlocks(targetIds, htmlSource) {
+        if (!Array.isArray(targetIds) || targetIds.length === 0 || typeof htmlSource !== 'string') {
+            return;
+        }
+
+        targetedStreamState = targetedStreamState || {
+            targetIds,
+            pendingHtml: '',
+            renderTimer: null,
+            lastRenderAt: 0,
+        };
+        targetedStreamState.targetIds = targetIds;
+        targetedStreamState.pendingHtml = htmlSource;
+
+        scheduleStreamRender(targetedStreamState, renderStreamingTargetedBlocks);
     }
 
     function cancelStreamingTargetedBlocks(targetIds) {
@@ -309,6 +366,9 @@ import { oneDark } from '@codemirror/theme-one-dark';
         if (!previewFrame?.contentWindow) {
             return;
         }
+
+        clearTargetedStreamTimer();
+        targetedStreamState = null;
 
         previewFrame.contentWindow.postMessage({
             type: 'stream-block-range-cancel',
@@ -355,7 +415,14 @@ body { margin: 0; background: #fff; color: #171717; font-family: ui-sans-serif, 
         const previewFrame = frame();
         if (!previewFrame) return;
 
-        sectionStreamState = { active: true, lastRender: '' };
+        sectionStreamState = {
+            active: true,
+            pendingHtml: '',
+            lastRender: '',
+            renderTimer: null,
+            lastRenderAt: 0,
+            waitingForLoad: false,
+        };
         previewFrame.dataset.canvasBound = 'false';
         previewFrame.srcdoc = sectionStreamShell;
     }
@@ -371,7 +438,7 @@ body { margin: 0; background: #fff; color: #171717; font-family: ui-sans-serif, 
         return closeMatch ? after.slice(0, closeMatch.index) : after;
     }
 
-    function updateStreamingSection(html) {
+    function renderStreamingSection() {
         if (!sectionStreamState?.active) return;
 
         const previewFrame = frame();
@@ -379,13 +446,26 @@ body { margin: 0; background: #fff; color: #171717; font-family: ui-sans-serif, 
         if (!doc) return;
 
         if (doc.readyState === 'loading') {
-            doc.addEventListener('DOMContentLoaded', () => updateStreamingSection(html), { once: true });
+            sectionStreamState.lastRenderAt = nowMs();
+
+            if (!sectionStreamState.waitingForLoad) {
+                sectionStreamState.waitingForLoad = true;
+                doc.addEventListener('DOMContentLoaded', () => {
+                    if (sectionStreamState) {
+                        sectionStreamState.waitingForLoad = false;
+                    }
+
+                    renderStreamingSection();
+                }, { once: true });
+            }
+
             return;
         }
 
-        const body = extractStreamingBody(html);
+        const body = extractStreamingBody(sectionStreamState.pendingHtml || '');
         if (body === sectionStreamState.lastRender) return;
         sectionStreamState.lastRender = body;
+        sectionStreamState.lastRenderAt = nowMs();
 
         const root = doc.querySelector('[data-builder-section-stream-root]');
         if (!root) return;
@@ -393,7 +473,18 @@ body { margin: 0; background: #fff; color: #171717; font-family: ui-sans-serif, 
         root.innerHTML = body;
     }
 
+    function updateStreamingSection(html) {
+        if (!sectionStreamState?.active) return;
+
+        sectionStreamState.pendingHtml = html;
+        scheduleStreamRender(sectionStreamState, renderStreamingSection);
+    }
+
     function stopStreamingSection() {
+        if (sectionStreamState?.renderTimer) {
+            window.clearTimeout(sectionStreamState.renderTimer);
+        }
+
         sectionStreamState = null;
     }
 
@@ -575,6 +666,8 @@ body { margin: 0; background: #fff; color: #171717; font-family: ui-sans-serif, 
         });
 
         window.addEventListener('targeted-edit-applied', (event) => {
+            clearTargetedStreamTimer();
+            targetedStreamState = null;
             replaceTargetedBlocks(event.detail?.targetIds || [], event.detail?.html || '');
         });
 

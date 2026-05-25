@@ -110,12 +110,14 @@ done
 - [2026-05-25] M5.project-index-page-counts-verification: `vendor\bin\pint.bat --dirty`, `php artisan test tests\Feature\BuilderShellTest.php`, `php artisan test`, `npm.cmd run build`, and `npm.cmd run test:js` pass.
 - [2026-05-25] M5.project-download-zip: added a project-level Download project action that returns a zip containing each generated page as an HTML file.
 - [2026-05-25] M5.project-download-zip-verification: `vendor\bin\pint --dirty` and `php artisan test` pass.
+- [2026-05-25] M5.builder-preview-performance: removed selection-only Canvas reactivity and batched stream-panel plus iframe preview streaming updates.
+- [2026-05-25] M5.builder-preview-performance-verification: `npm.cmd run test:js`, `npm.cmd run build`, `php artisan test --filter=BuilderShellTest`, `php artisan test`, and `git diff --check` pass.
 
 ## In Progress
 - None active after verification.
 - Last activity: 2026-05-25
-- Files touched: app/Http/Controllers/ProjectHtmlDownloadController.php, routes/web.php, app/Livewire/Projects/ProjectDashboard/project-dashboard.blade.php, tests/Feature/BuilderShellTest.php, progress.md
-- Current state: Project zip download is implemented and verified. It is ready to commit, push, and deploy.
+- Files touched: app/Livewire/Builder/Canvas/Canvas.php, app/Livewire/Builder/StreamPanel/stream-panel.blade.php, resources/js/builder-canvas.js, resources/js/builder-realtime.js, progress.md
+- Current state: Builder preview and stream performance pass is implemented and verified. It is ready to commit, push, and deploy.
 
 ## Blocked
 - None.
@@ -166,11 +168,17 @@ done
 - Setup and builder should use one shared model selection for generation, insertion, editing, and document enhancements; separate setup defaults are unnecessary while the shared selector can still feed every action.
 - LLM requests should not set temperature. Provider/model defaults are safer across mixed dynamic model catalogs than guessing support or retrying after rejection.
 - Project zip downloads should include only pages with non-empty generated HTML, reuse the existing download HTML renderer, avoid overwriting duplicate page names by suffixing filenames, and return 404 when nothing generated exists.
+- Selection-only preview state should stay browser-event driven instead of reactive on the Canvas child component. The iframe preview and stream panel should batch high-frequency stream chunks before touching large DOM subtrees.
 
 ## Spec Change Proposals
 - None. Previous marked-HTML pivot proposal was approved by the user and applied to `plan.md` as R3.
 
 ## Files Created Or Modified This Session
+- `app/Livewire/Builder/Canvas/Canvas.php`: modified: removed reactive selected-node updates from the Canvas child to avoid rendering full preview HTML on every selection.
+- `app/Livewire/Builder/StreamPanel/stream-panel.blade.php`: modified: coalesces stream chunks before updating the large live stream text preview.
+- `resources/js/builder-canvas.js`: modified: throttles full-page and targeted-edit preview HTML rendering during streaming.
+- `resources/js/builder-realtime.js`: modified: keeps stream state in JS and lets Alpine own stream-panel DOM updates instead of duplicating text writes.
+- `progress.md`: modified: records the builder preview performance session and verification.
 - `app/Http/Controllers/ProjectHtmlDownloadController.php`: created: builds a temporary project zip of generated page HTML files and deletes it after send.
 - `routes/web.php`: modified: adds the project-level download route.
 - `app/Livewire/Projects/ProjectDashboard/project-dashboard.blade.php`: modified: adds the Download project button above the page list.

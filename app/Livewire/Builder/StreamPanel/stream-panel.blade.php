@@ -8,6 +8,8 @@
         streamStage: @js($activeStage),
         htmlPreview: '',
         outputPreview: '',
+        pendingPreviewChunks: {},
+        previewFlushTimer: null,
         maxRows: 80,
         applyChunk(text, chunk, position) {
             if (position < text.length) {
@@ -28,15 +30,46 @@
             const chunk = String(detail.chunk);
             const stream = String(detail.stream || 'html');
             const position = Number(detail.position ?? (stream === 'output' ? this.outputPreview.length : this.htmlPreview.length));
+            const pending = this.pendingPreviewChunks[stream];
 
             this.streamStage = detail.stage || this.streamStage;
             this.statusLabel = 'running';
 
-            if (stream === 'output') {
-                this.outputPreview = this.applyChunk(this.outputPreview, chunk, position);
+            if (pending && pending.position + pending.chunk.length === position) {
+                pending.chunk += chunk;
             } else {
-                this.htmlPreview = this.applyChunk(this.htmlPreview, chunk, position);
+                this.flushPreviewChunks();
+                this.pendingPreviewChunks[stream] = { chunk, position };
             }
+
+            this.schedulePreviewFlush();
+        },
+        schedulePreviewFlush() {
+            if (this.previewFlushTimer) return;
+
+            this.previewFlushTimer = setTimeout(() => {
+                this.previewFlushTimer = null;
+                this.flushPreviewChunks();
+            }, 75);
+        },
+        flushPreviewChunks() {
+            Object.entries(this.pendingPreviewChunks).forEach(([stream, pending]) => {
+                if (!pending?.chunk) return;
+
+                const position = Number(pending.position ?? (stream === 'output' ? this.outputPreview.length : this.htmlPreview.length));
+
+                if (stream === 'output') {
+                    this.outputPreview = this.applyChunk(this.outputPreview, pending.chunk, position);
+                } else {
+                    this.htmlPreview = this.applyChunk(this.htmlPreview, pending.chunk, position);
+                }
+            });
+
+            this.pendingPreviewChunks = {};
+            this.$nextTick(() => {
+                const output = this.$root.querySelector('[data-live-stream-output]');
+                if (output) output.scrollTop = output.scrollHeight;
+            });
         },
         statusClass() {
             return {

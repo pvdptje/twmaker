@@ -6,14 +6,14 @@ use App\Models\Page;
 use App\Services\Html\BlockIndexer;
 use App\Services\Rendering\Renderer;
 use Illuminate\Contracts\View\View;
-use Livewire\Attributes\Reactive;
 use Livewire\Component;
 
 class Canvas extends Component
 {
     public Page $page;
 
-    #[Reactive]
+    // Selection changes are pushed to the iframe by browser events; making this
+    // reactive forces expensive preview rendering on every node click.
     public ?string $selectedNodeId = null;
 
     public function selectNode(?string $nodeId = null): void
