@@ -8,6 +8,9 @@ return new class extends Migration
 {
     public function up(): void
     {
+        Schema::dropIfExists('site_generation_run_pages');
+        Schema::dropIfExists('site_generation_runs');
+
         Schema::create('site_generation_runs', function (Blueprint $table): void {
             $table->string('id', 32)->primary();
             $table->string('team_id', 32);
@@ -27,11 +30,11 @@ return new class extends Migration
             $table->timestamp('completed_at')->nullable();
             $table->timestamps();
 
-            $table->index(['project_id', 'source_page_id']);
-            $table->index(['status', 'created_at']);
-            $table->foreign('team_id')->references('id')->on('teams')->cascadeOnDelete();
-            $table->foreign('project_id')->references('id')->on('projects')->cascadeOnDelete();
-            $table->foreign('source_page_id')->references('id')->on('pages')->cascadeOnDelete();
+            $table->index(['project_id', 'source_page_id'], 'sgr_project_source_idx');
+            $table->index(['status', 'created_at'], 'sgr_status_created_idx');
+            $table->foreign('team_id', 'sgr_team_fk')->references('id')->on('teams')->cascadeOnDelete();
+            $table->foreign('project_id', 'sgr_project_fk')->references('id')->on('projects')->cascadeOnDelete();
+            $table->foreign('source_page_id', 'sgr_source_page_fk')->references('id')->on('pages')->cascadeOnDelete();
         });
     }
 

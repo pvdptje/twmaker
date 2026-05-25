@@ -8,6 +8,8 @@ return new class extends Migration
 {
     public function up(): void
     {
+        Schema::dropIfExists('site_generation_run_pages');
+
         Schema::create('site_generation_run_pages', function (Blueprint $table): void {
             $table->string('id', 32)->primary();
             $table->string('site_generation_run_id', 32);
@@ -21,10 +23,10 @@ return new class extends Migration
             $table->string('error_message', 1000)->nullable();
             $table->timestamps();
 
-            $table->index(['site_generation_run_id', 'sort_order']);
-            $table->index('target_page_id');
-            $table->foreign('site_generation_run_id')->references('id')->on('site_generation_runs')->cascadeOnDelete();
-            $table->foreign('target_page_id')->references('id')->on('pages')->nullOnDelete();
+            $table->index(['site_generation_run_id', 'sort_order'], 'sgrp_run_order_idx');
+            $table->index('target_page_id', 'sgrp_target_page_idx');
+            $table->foreign('site_generation_run_id', 'sgrp_run_fk')->references('id')->on('site_generation_runs')->cascadeOnDelete();
+            $table->foreign('target_page_id', 'sgrp_target_page_fk')->references('id')->on('pages')->nullOnDelete();
         });
     }
 
