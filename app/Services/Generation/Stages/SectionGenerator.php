@@ -21,10 +21,11 @@ class SectionGenerator
     /**
      * @param  array<int, array{base64: string, mime_type: string}>  $images
      */
-    public function generate(Page $page, ?string $provider = null, ?string $model = null, ?string $apiKey = null, array $images = []): SectionGenerationResult
+    public function generate(Page $page, ?string $provider = null, ?string $model = null, ?string $apiKey = null, array $images = [], ?string $promptOverride = null): SectionGenerationResult
     {
         $provider ??= (string) config('llm.default_provider', 'anthropic');
-        $result = $this->send($page, 'section_generator', $this->prompts->system('section_generator'), $this->buildUserPrompt($page->prompt, $images), 0.7, $provider, $model, $apiKey, $images);
+        $prompt = $promptOverride ?? $page->prompt;
+        $result = $this->send($page, 'section_generator', $this->prompts->system('section_generator'), $this->buildUserPrompt($prompt, $images), 0.7, $provider, $model, $apiKey, $images);
 
         if (trim($result->html) !== '') {
             return $result;
@@ -34,7 +35,7 @@ class SectionGenerator
             $page,
             'section_generator_retry',
             $this->prompts->system('section_generator')."\n\nCritical recovery instruction: the previous response returned empty HTML. Return one complete standalone HTML document with balanced tw:block markers. Do not leave the response blank.",
-            $this->buildUserPrompt("Generate the complete marked Tailwind HTML document now. Original prompt: {$page->prompt}", $images),
+            $this->buildUserPrompt("Generate the complete marked Tailwind HTML document now. Original prompt: {$prompt}", $images),
             0.4,
             $provider,
             $model,

@@ -533,7 +533,7 @@ HTML;
         $this->assertCount(1, $page->versions()->get());
     }
 
-    public function test_pipeline_rejects_enhanced_html_with_nested_blocks(): void
+    public function test_pipeline_repairs_enhanced_html_with_nested_blocks(): void
     {
         [$project, $page] = $this->makePage('A developer tool landing page');
 
@@ -554,9 +554,20 @@ HTML;
 
         $this->app->instance(LlmProvider::class, new FakeTargetedEditProvider($nested));
 
-        $this->expectExceptionMessage('Block markers must not be nested.');
-
         app(Pipeline::class)->enhanceDocument($page, 'Add more granular editable blocks.', 'Refined editable block markers.');
+
+        $page->refresh();
+
+        $this->assertSame('valid', $page->status);
+        $this->assertStringNotContainsString('block_outer', $page->html_source);
+        $this->assertStringContainsString('type="card" label="Inner"', $page->html_source);
+        $this->assertStringContainsString('<section>', $page->html_source);
+        $this->assertDatabaseHas('generation_events', [
+            'page_id' => $page->id,
+            'kind' => 'enhance_applied',
+            'stage' => 'document_enhancer',
+            'level' => 'success',
+        ]);
     }
 
     public function test_pipeline_forwards_reference_images_to_full_generation(): void

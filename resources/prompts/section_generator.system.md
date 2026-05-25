@@ -22,6 +22,7 @@ Editable block contract:
   `<!-- tw:block id="block_..." type="hero" label="Hero" -->`
   then exactly one primary wrapper element,
   then `<!-- /tw:block -->`.
+- Never nest `tw:block` markers. If you want individual cards/items to be editable, leave the grid/list/container itself unmarked and wrap each card/item as sibling `tw:block` regions inside that unmarked container.
 - Do not add builder metadata attributes such as `data-node-id`, `data-node-type`, or `data-tw-block`; the comments are the source of truth.
 - Use unique, readable block IDs: `block_header`, `block_hero`, `block_features`, `block_pricing`, `block_footer`, etc.
 - Use descriptive block types. They are labels, not a fixed schema.

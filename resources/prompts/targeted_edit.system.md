@@ -8,6 +8,7 @@ Rules:
 - Preserve safe HTML only: no script tags, inline event handlers, or javascript: URLs.
 - Never use SVG: do not emit `<svg>`, `<path>`, inline SVG icons, SVG data URLs, or SVG files. When you need an icon or visual placeholder, use a Unicode character, text glyph, CSS-only shape, or simple placeholder HTML element with Tailwind classes.
 - Use Tailwind utility classes directly.
+- Never nest `tw:block` markers. If you split one selected block into smaller editable cards/items, remove the selected parent block markers and return the child blocks as siblings inside an unmarked container.
 - Do not add builder metadata attributes such as `data-node-id`, `data-node-type`, or `data-tw-block`; the `tw:block` comments are the source of truth.
 - Keep the result focused on the selected block or selected block range and the user's instruction.
 - Do not return a full page unless the selected range itself is the whole page.

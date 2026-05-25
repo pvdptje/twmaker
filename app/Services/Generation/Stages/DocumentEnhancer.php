@@ -7,6 +7,7 @@ use App\Models\Page;
 use App\Services\Generation\GenerationStreamBuffer;
 use App\Services\Html\BlockIndexer;
 use App\Services\Html\HtmlDocumentValidator;
+use App\Services\Html\HtmlFragmentRepairer;
 use App\Services\Html\HtmlValidationException;
 use App\Services\Ids\IdGenerator;
 use App\Services\Llm\LlmProvider;
@@ -21,6 +22,7 @@ class DocumentEnhancer
         private readonly PromptBuilder $prompts,
         private readonly BlockIndexer $blocks,
         private readonly HtmlDocumentValidator $validator,
+        private readonly HtmlFragmentRepairer $repairer,
         private readonly IdGenerator $ids,
         private readonly GenerationStreamBuffer $streamBuffer,
     ) {}
@@ -70,7 +72,7 @@ class DocumentEnhancer
         }
 
         $html = $this->normalizeBlockIds(
-            $this->stripCodeFence(trim((string) $response->text)),
+            $this->repairer->repair($this->stripCodeFence(trim((string) $response->text))),
             $existingIds,
         );
 

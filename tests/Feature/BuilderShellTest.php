@@ -4,10 +4,12 @@ namespace Tests\Feature;
 
 use App\Jobs\EnhanceDocumentJob;
 use App\Jobs\GeneratePageJob;
+use App\Jobs\GenerateRelatedPageJob;
 use App\Jobs\InsertSectionJob;
 use App\Jobs\TargetedEditJob;
 use App\Livewire\Builder\Inspector\EditForm\EditForm;
 use App\Livewire\Builder\Inspector\VersionList\VersionList;
+use App\Livewire\Builder\LeftSidebar\LeftSidebar;
 use App\Livewire\Builder\RightInspector\RightInspector;
 use App\Livewire\Builder\SidePanels\GenerationControls\GenerationControls;
 use App\Livewire\Builder\SidePanels\SectionTree\SectionTree;
@@ -147,6 +149,47 @@ class BuilderShellTest extends TestCase
             ->assertSee('tw:block id=&quot;block_hero&quot;', false)
             ->assertSee('alpinejs@3.x.x', false)
             ->assertSee('/preview-bridge.js', false);
+    }
+
+    public function test_left_sidebar_creates_a_related_page_from_current_page(): void
+    {
+        Queue::fake();
+
+        $project = Project::query()->create([
+            'id' => app(IdGenerator::class)->project(),
+            'name' => 'Acme',
+        ]);
+
+        $page = Page::query()->create([
+            'id' => app(IdGenerator::class)->page(),
+            'project_id' => $project->id,
+            'name' => 'Homepage',
+            'prompt' => 'A landing page',
+            'html_source' => $this->markedHtmlSourceWithHeaderAndFooter(),
+            'status' => 'valid',
+        ]);
+
+        Livewire::test(LeftSidebar::class, ['project' => $project, 'page' => $page])
+            ->call('openCreateRelatedPage')
+            ->set('relatedPageName', 'Pricing')
+            ->set('relatedPageBrief', 'Create a pricing page for small teams.')
+            ->call('createRelatedPageWithSelection', 'anthropic', null, null)
+            ->assertRedirect();
+
+        $newPage = Page::query()->where('name', 'Pricing')->firstOrFail();
+
+        $this->assertSame($project->id, $newPage->project_id);
+        $this->assertSame('generating', $newPage->status);
+        $this->assertSame('Create a pricing page for small teams.', $newPage->prompt);
+        $this->assertDatabaseHas('generation_events', [
+            'page_id' => $newPage->id,
+            'kind' => 'related_page_requested',
+            'stage' => 'section_generator',
+        ]);
+
+        Queue::assertPushed(GenerateRelatedPageJob::class, fn (GenerateRelatedPageJob $job): bool => $job->sourcePageId === $page->id
+            && $job->targetPageId === $newPage->id
+            && $job->brief === 'Create a pricing page for small teams.');
     }
 
     public function test_page_html_download_returns_current_html_as_attachment(): void
@@ -1320,6 +1363,13 @@ HTML,
     {
         return '<!-- tw:block id="block_hero" type="hero" label="Hero" --><section class="px-6 py-24"><h1>Hero</h1></section><!-- /tw:block -->'
             .'<!-- tw:block id="block_features" type="features" label="Features" --><section class="px-6 py-16"><h2>Features</h2></section><!-- /tw:block -->';
+    }
+
+    private function markedHtmlSourceWithHeaderAndFooter(): string
+    {
+        return '<!-- tw:block id="block_header" type="header" label="Header" --><header class="px-6 py-4"><nav>Acme</nav></header><!-- /tw:block -->'
+            .'<!-- tw:block id="block_hero" type="hero" label="Hero" --><section class="px-6 py-24"><h1>Hero</h1></section><!-- /tw:block -->'
+            .'<!-- tw:block id="block_footer" type="footer" label="Footer" --><footer class="px-6 py-8">Footer</footer><!-- /tw:block -->';
     }
 
     private function cacheProviderModels(string $provider, string $apiKey, array $models): void

@@ -28,6 +28,41 @@ class HtmlFragmentRepairerTest extends TestCase
         );
     }
 
+    public function test_flattens_nested_block_markers_by_removing_parent_markers(): void
+    {
+        $html = <<<'HTML'
+<!-- tw:block id="block_grid" type="grid" label="Grid" -->
+<section>
+  <div class="grid">
+    <!-- tw:block id="block_card_1" type="card" label="Card 1" -->
+    <article>One</article>
+    <!-- /tw:block -->
+    <!-- tw:block id="block_card_2" type="card" label="Card 2" -->
+    <article>Two</article>
+    <!-- /tw:block -->
+  </div>
+</section>
+<!-- /tw:block -->
+HTML;
+
+        $repaired = (new HtmlFragmentRepairer)->repair($html);
+
+        $this->assertStringNotContainsString('block_grid', $repaired);
+        $this->assertStringContainsString('<section>', $repaired);
+        $this->assertStringContainsString('tw:block id="block_card_1"', $repaired);
+        $this->assertStringContainsString('tw:block id="block_card_2"', $repaired);
+    }
+
+    public function test_strips_bare_html_language_label(): void
+    {
+        $html = "html\n<!doctype html><html><body><p>Hi</p></body></html>";
+
+        $this->assertSame(
+            '<!doctype html><html><body><p>Hi</p></body></html>',
+            (new HtmlFragmentRepairer)->repair($html),
+        );
+    }
+
     public function test_marker_preserves_alpine_attributes(): void
     {
         $html = '<section x-data="{ open: false }"><button @click="open = ! open" :class="{ active: open }">Toggle</button></section>';

@@ -58,7 +58,7 @@ class Pipeline
     /**
      * @param  array<int, array{base64: string, mime_type: string}>  $images
      */
-    public function generate(Page $page, ?string $provider = null, ?string $model = null, ?string $apiKey = null, array $images = []): array
+    public function generate(Page $page, ?string $provider = null, ?string $model = null, ?string $apiKey = null, array $images = [], ?string $promptOverride = null): array
     {
         $provider ??= (string) config('llm.default_provider', 'anthropic');
         $page->forceFill(['status' => 'generating'])->save();
@@ -67,7 +67,7 @@ class Pipeline
             $this->events->record($page, 'stage_started', 'section_generator', 'info', 'Designing raw Tailwind HTML.', payload: [
                 'reference_images' => count($images),
             ]);
-            $section = $this->sections->generate($page, $provider, $model, $apiKey, $images);
+            $section = $this->sections->generate($page, $provider, $model, $apiKey, $images, $promptOverride);
             $rawHtml = $this->cleanHtml($section->html);
             if ($rawHtml === '') {
                 throw new HtmlValidationException(['Section generator returned empty HTML.']);
@@ -346,7 +346,7 @@ class Pipeline
     {
         return $this->enhanceDocument(
             $page,
-            'Add more granular editable tw:block regions around repeated meaningful content such as testimonial cards, feature cards, pricing cards, FAQ rows, stats, logos, gallery items, and CTA groups. Remove any coarse parent block markers when splitting children so no tw:block markers are nested.',
+            'Add more granular editable tw:block regions around repeated meaningful content such as testimonial cards, feature cards, pricing cards, FAQ rows, stats, logos, gallery items, and CTA groups. When splitting a coarse parent into child blocks, remove the parent block markers completely and keep the container as plain unmarked HTML so tw:block markers are never nested.',
             'Refined editable block markers.',
             $provider,
             $model,
