@@ -565,6 +565,9 @@ HTML;
         $this->assertStringStartsWith('sec_', $blockIndex[1]['id']);
         $this->assertStringStartsWith('sec_', $blockIndex[2]['id']);
         $this->assertStringContainsString('tw:group id="block_testimonials"', $page->html_source);
+        $this->assertStringContainsString('external CDN/resource scripts', (string) $provider->lastTextRequest?->systemPrompt);
+        $this->assertStringContainsString('https://', (string) $provider->lastTextRequest?->systemPrompt);
+        $this->assertStringContainsString('no inline body', (string) $provider->lastTextRequest?->systemPrompt);
         $this->assertStringContainsString('Enhancement request', (string) $provider->lastTextRequest?->userPrompt);
         $this->assertStringContainsString('Current complete HTML document', (string) $provider->lastTextRequest?->userPrompt);
         $this->assertDatabaseHas('generation_events', [
@@ -611,6 +614,52 @@ HTML;
         $this->assertStringContainsString('tw:group id="block_outer"', $page->html_source);
         $this->assertStringContainsString('type="card" label="Inner"', $page->html_source);
         $this->assertStringContainsString('<section>', $page->html_source);
+        $this->assertDatabaseHas('generation_events', [
+            'page_id' => $page->id,
+            'kind' => 'enhance_applied',
+            'stage' => 'document_enhancer',
+            'level' => 'success',
+        ]);
+    }
+
+    public function test_pipeline_enhancer_accepts_external_https_cdn_scripts(): void
+    {
+        [$project, $page] = $this->makePage('A landing page with a 3D scene');
+
+        $page->forceFill([
+            'html_source' => $this->htmlArtifact()['marked_html'],
+            'status' => 'valid',
+        ])->save();
+
+        $enhanced = <<<'HTML'
+<!doctype html>
+<html>
+<head>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/three@0.165.0/build/three.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+</head>
+<body>
+<!-- tw:block id="block_hero" type="hero" label="Hero" -->
+<section class="bg-neutral-950 px-6 py-24 text-white"><h1>Interactive 3D product story</h1></section>
+<!-- /tw:block -->
+</body>
+</html>
+HTML;
+
+        $this->app->instance(LlmProvider::class, new FakeTargetedEditProvider($enhanced));
+
+        app(Pipeline::class)->enhanceDocument(
+            $page,
+            'Use CDN-hosted Three.js assets for a 3D visual treatment.',
+            'Added external CDN scripts.',
+        );
+
+        $page->refresh();
+
+        $this->assertSame('valid', $page->status);
+        $this->assertStringContainsString('https://unpkg.com/three', $page->html_source);
+        $this->assertStringContainsString('https://cdn.jsdelivr.net/npm/gsap', $page->html_source);
         $this->assertDatabaseHas('generation_events', [
             'page_id' => $page->id,
             'kind' => 'enhance_applied',
