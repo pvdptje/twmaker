@@ -100,7 +100,9 @@
             });
         }
 
-        if (event.stage === 'section_generator' || event.stage === 'section_generator_retry') {
+        if (event.stage === 'section_generator'
+            || event.stage === 'section_generator_retry'
+            || event.stage === 'document_enhancer') {
             emit('section-generation-stream', { html: state.html });
         }
     }
@@ -144,6 +146,7 @@
         if (event.kind === 'enhance_requested' && event.stage === 'document_enhancer') {
             state.html = '';
             state.output = '';
+            emit('section-generation-stream-start', {});
         }
 
         if (event.kind === 'edit_applied') {
