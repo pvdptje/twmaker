@@ -461,7 +461,7 @@ HTML;
         $this->assertStringContainsString('Streamed edit result', $snapshot['html']);
     }
 
-    public function test_pipeline_granularizes_blocks_without_nesting_markers(): void
+    public function test_pipeline_enhances_document_without_nesting_markers(): void
     {
         [$project, $page] = $this->makePage('A developer tool landing page');
 
@@ -501,7 +501,11 @@ HTML;
 
         $this->app->instance(LlmProvider::class, $provider);
 
-        app(Pipeline::class)->granularizeBlocks($page);
+        app(Pipeline::class)->enhanceDocument(
+            $page,
+            'Add more granular editable tw:block regions around repeated testimonial cards.',
+            'Refined editable block markers.',
+        );
 
         $page->refresh();
 
@@ -512,17 +516,18 @@ HTML;
         $this->assertStringStartsWith('sec_', $blockIndex[1]['id']);
         $this->assertStringStartsWith('sec_', $blockIndex[2]['id']);
         $this->assertStringNotContainsString('block_testimonials', $page->html_source);
+        $this->assertStringContainsString('Enhancement request', (string) $provider->lastTextRequest?->userPrompt);
         $this->assertStringContainsString('Current complete HTML document', (string) $provider->lastTextRequest?->userPrompt);
         $this->assertDatabaseHas('generation_events', [
             'page_id' => $page->id,
-            'kind' => 'granularize_applied',
-            'stage' => 'block_granularizer',
+            'kind' => 'enhance_applied',
+            'stage' => 'document_enhancer',
             'level' => 'success',
         ]);
         $this->assertCount(1, $page->versions()->get());
     }
 
-    public function test_pipeline_rejects_granularized_html_with_nested_blocks(): void
+    public function test_pipeline_rejects_enhanced_html_with_nested_blocks(): void
     {
         [$project, $page] = $this->makePage('A developer tool landing page');
 
@@ -545,7 +550,7 @@ HTML;
 
         $this->expectExceptionMessage('Block markers must not be nested.');
 
-        app(Pipeline::class)->granularizeBlocks($page);
+        app(Pipeline::class)->enhanceDocument($page, 'Add more granular editable blocks.', 'Refined editable block markers.');
     }
 
     public function test_pipeline_forwards_reference_images_to_full_generation(): void

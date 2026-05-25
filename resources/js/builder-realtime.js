@@ -79,15 +79,15 @@
             setText('[data-stream-stage]', event.stage);
         }
 
-        if (event.kind === 'stage_started' || event.kind === 'edit_requested' || event.kind === 'insert_requested' || event.kind === 'granularize_requested') {
+        if (event.kind === 'stage_started' || event.kind === 'edit_requested' || event.kind === 'insert_requested' || event.kind === 'enhance_requested') {
             setText('[data-generation-status]', 'running');
         }
 
-        if (event.kind === 'generation_completed' || event.kind === 'edit_applied' || event.kind === 'insert_applied' || event.kind === 'granularize_applied') {
+        if (event.kind === 'generation_completed' || event.kind === 'edit_applied' || event.kind === 'insert_applied' || event.kind === 'enhance_applied') {
             setText('[data-generation-status]', 'valid');
         }
 
-        if (event.kind === 'generation_failed' || event.kind === 'edit_rejected' || event.kind === 'insert_rejected' || event.kind === 'granularize_rejected') {
+        if (event.kind === 'generation_failed' || event.kind === 'edit_rejected' || event.kind === 'insert_rejected' || event.kind === 'enhance_rejected') {
             setText('[data-generation-status]', 'error');
         }
     }
@@ -119,7 +119,7 @@
         if ((event.kind === 'stage_started' && event.stage === 'section_generator')
             || (event.kind === 'edit_requested' && event.stage === 'targeted_edit')
             || (event.kind === 'insert_requested' && event.stage === 'section_inserter')
-            || (event.kind === 'granularize_requested' && event.stage === 'block_granularizer')) {
+            || (event.kind === 'enhance_requested' && event.stage === 'document_enhancer')) {
             const detail = { pageId: state.pageId, stage: event.stage };
             emit('generation-started', detail);
             window.Livewire?.dispatch?.('generation-started', detail);
@@ -146,7 +146,7 @@
             state.output = '';
         }
 
-        if (event.kind === 'granularize_requested' && event.stage === 'block_granularizer') {
+        if (event.kind === 'enhance_requested' && event.stage === 'document_enhancer') {
             state.html = '';
             state.output = '';
         }
@@ -174,8 +174,8 @@
             edit_rejected: ['error', true],
             insert_applied: ['valid', false],
             insert_rejected: ['error', false],
-            granularize_applied: ['valid', false],
-            granularize_rejected: ['error', false],
+            enhance_applied: ['valid', false],
+            enhance_rejected: ['error', false],
         }[event.kind];
 
         if (!terminal) return;

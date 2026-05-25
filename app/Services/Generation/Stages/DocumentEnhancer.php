@@ -14,7 +14,7 @@ use App\Services\Llm\TextRequest;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
-class BlockGranularizer
+class DocumentEnhancer
 {
     public function __construct(
         private readonly LlmProvider $provider,
@@ -25,15 +25,19 @@ class BlockGranularizer
         private readonly GenerationStreamBuffer $streamBuffer,
     ) {}
 
-    public function granularize(Page $page, ?string $provider = null, ?string $model = null, ?string $apiKey = null): array
+    public function enhance(Page $page, string $instruction, string $summary, ?string $provider = null, ?string $model = null, ?string $apiKey = null): array
     {
         $provider ??= (string) config('llm.default_provider', 'anthropic');
         $htmlSource = (string) ($page->html_source ?? '');
         $existingIds = array_column($this->blocks->index($htmlSource), 'id');
-        $stage = 'block_granularizer';
+        $stage = 'document_enhancer';
 
         if (trim($htmlSource) === '') {
-            throw new HtmlValidationException(['Generate a page before refining editability.']);
+            throw new HtmlValidationException(['Generate a page before running enhancements.']);
+        }
+
+        if (trim($instruction) === '') {
+            throw new HtmlValidationException(['Enter an enhancement prompt.']);
         }
 
         $this->streamBuffer->resetRun($page->id, $stage);
@@ -43,10 +47,11 @@ class BlockGranularizer
             provider: $provider,
             model: $model ?: (string) config("llm.providers.{$provider}.models.targeted_edit"),
             systemPrompt: $this->prompts->system($stage),
-            userPrompt: $this->buildUserPrompt($htmlSource),
+            userPrompt: $this->buildUserPrompt($htmlSource, $instruction),
             context: [
                 'page_id' => $page->id,
                 'page_name' => $page->name,
+                'enhancement_summary' => $summary,
                 'existing_block_count' => count($existingIds),
             ],
             maxTokens: (int) config("llm.providers.{$provider}.section_max_tokens", 32000),
@@ -73,7 +78,7 @@ class BlockGranularizer
 
         return [
             'html_source' => $html,
-            'explanation' => 'Refined editable block markers.',
+            'explanation' => $summary,
             'blocks' => $this->compactBlockIndex($this->blocks->index($html)),
             '_llm' => [
                 'provider' => $provider,
@@ -90,7 +95,7 @@ class BlockGranularizer
                 return;
             }
 
-            Log::debug('Broadcasting block granularizer stream chunk.', [
+            Log::debug('Broadcasting document enhancer stream chunk.', [
                 'page_id' => $page->id,
                 'stage' => $stage,
                 'position' => $position,
@@ -118,9 +123,9 @@ class BlockGranularizer
         }
     }
 
-    private function buildUserPrompt(string $htmlSource): string
+    private function buildUserPrompt(string $htmlSource, string $instruction): string
     {
-        return "Current complete HTML document:\n{$htmlSource}\n\nRefine this document so repeated meaningful content can be targeted individually. Return the complete updated HTML document.";
+        return "Enhancement request:\n{$instruction}\n\nCurrent complete HTML document:\n{$htmlSource}\n\nReturn the complete updated HTML document.";
     }
 
     /**

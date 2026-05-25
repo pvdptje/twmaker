@@ -2,8 +2,8 @@
 
 namespace Tests\Feature;
 
+use App\Jobs\EnhanceDocumentJob;
 use App\Jobs\GeneratePageJob;
-use App\Jobs\GranularizeBlocksJob;
 use App\Jobs\InsertSectionJob;
 use App\Jobs\TargetedEditJob;
 use App\Livewire\Builder\Inspector\EditForm\EditForm;
@@ -413,7 +413,7 @@ class BuilderShellTest extends TestCase
         Queue::assertNotPushed(GeneratePageJob::class);
     }
 
-    public function test_generation_controls_enqueue_block_granularizer_job(): void
+    public function test_generation_controls_enqueue_document_enhancement_job(): void
     {
         Queue::fake();
         $this->cacheProviderModels('anthropic', 'test-granularize-key', [
@@ -434,24 +434,26 @@ class BuilderShellTest extends TestCase
         ]);
 
         Livewire::test(GenerationControls::class, ['page' => $page])
-            ->call('refineEditabilityWithSelection', 'anthropic', 'claude-haiku-4-5-20251001', 'test-granularize-key')
-            ->assertDispatched('generation-started', pageId: $page->id, stage: 'block_granularizer')
+            ->call('runEnhancementWithSelection', 'editability', 'anthropic', 'claude-haiku-4-5-20251001', 'test-granularize-key')
+            ->assertDispatched('generation-started', pageId: $page->id, stage: 'document_enhancer')
             ->assertDispatched('generation-finished', pageId: $page->id, status: 'generating');
 
         $this->assertSame('generating', $page->refresh()->status);
         $this->assertDatabaseHas('generation_events', [
             'page_id' => $page->id,
-            'kind' => 'granularize_requested',
-            'stage' => 'block_granularizer',
+            'kind' => 'enhance_requested',
+            'stage' => 'document_enhancer',
         ]);
 
-        Queue::assertPushed(GranularizeBlocksJob::class, fn (GranularizeBlocksJob $job): bool => $job->pageId === $page->id
+        Queue::assertPushed(EnhanceDocumentJob::class, fn (EnhanceDocumentJob $job): bool => $job->pageId === $page->id
             && $job->provider === 'anthropic'
             && $job->model === 'claude-haiku-4-5-20251001'
-            && $job->apiKey === 'test-granularize-key');
+            && $job->apiKey === 'test-granularize-key'
+            && $job->summary === 'Refined editable block markers.'
+            && str_contains($job->instruction, 'more granular editable'));
     }
 
-    public function test_generation_controls_refuses_block_granularizer_without_html(): void
+    public function test_generation_controls_refuses_document_enhancement_without_html(): void
     {
         Queue::fake();
         $this->cacheProviderModels('anthropic', 'test-granularize-key', [
@@ -471,10 +473,38 @@ class BuilderShellTest extends TestCase
         ]);
 
         Livewire::test(GenerationControls::class, ['page' => $page])
-            ->call('refineEditabilityWithSelection', 'anthropic', 'claude-haiku-4-5-20251001', 'test-granularize-key')
+            ->call('runEnhancementWithSelection', 'editability', 'anthropic', 'claude-haiku-4-5-20251001', 'test-granularize-key')
             ->assertHasErrors('prompt');
 
-        Queue::assertNotPushed(GranularizeBlocksJob::class);
+        Queue::assertNotPushed(EnhanceDocumentJob::class);
+    }
+
+    public function test_generation_controls_enqueue_custom_document_enhancement_job(): void
+    {
+        Queue::fake();
+        $this->cacheProviderModels('anthropic', 'test-enhance-key', [
+            ['id' => 'claude-haiku-4-5-20251001', 'label' => 'Claude Haiku 4.5'],
+        ]);
+
+        $project = Project::query()->create([
+            'id' => app(IdGenerator::class)->project(),
+            'name' => 'Acme',
+        ]);
+        $page = Page::query()->create([
+            'id' => app(IdGenerator::class)->page(),
+            'project_id' => $project->id,
+            'name' => 'Homepage',
+            'prompt' => '',
+            'html_source' => $this->markedHtmlSource(),
+            'status' => 'valid',
+        ]);
+
+        Livewire::test(GenerationControls::class, ['page' => $page])
+            ->call('runEnhancementWithSelection', 'custom', 'anthropic', 'claude-haiku-4-5-20251001', 'test-enhance-key', 'Make the page feel more editorial.')
+            ->assertDispatched('generation-started', pageId: $page->id, stage: 'document_enhancer');
+
+        Queue::assertPushed(EnhanceDocumentJob::class, fn (EnhanceDocumentJob $job): bool => $job->summary === 'Custom enhancement.'
+            && $job->instruction === 'Make the page feel more editorial.');
     }
 
     public function test_edit_form_enqueues_targeted_edit_job_for_selected_node(): void

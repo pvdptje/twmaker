@@ -2,8 +2,8 @@
 
 namespace App\Livewire\Builder\SidePanels\GenerationControls;
 
+use App\Jobs\EnhanceDocumentJob;
 use App\Jobs\GeneratePageJob;
-use App\Jobs\GranularizeBlocksJob;
 use App\Models\Page;
 use App\Services\Generation\GenerationEventRecorder;
 use App\Services\Llm\ImageAttachments;
@@ -24,6 +24,8 @@ class GenerationControls extends Component
     public string $apiKey = '';
 
     public string $modelCatalogStatus = '';
+
+    public string $customEnhancementPrompt = '';
 
     /**
      * @var array<int, array{base64: string, mime_type: string}>
@@ -112,18 +114,19 @@ class GenerationControls extends Component
         $this->generate();
     }
 
-    public function refineEditabilityWithSelection(string $provider, string $model, ?string $apiKey = null): void
+    public function runEnhancementWithSelection(string $enhancement, string $provider, string $model, ?string $apiKey = null, ?string $customPrompt = null): void
     {
         $this->provider = $provider;
         $this->model = $model;
         $this->apiKey = (string) $apiKey;
+        $this->customEnhancementPrompt = (string) $customPrompt;
         $this->storeProvider();
         $this->storeModel();
 
-        $this->refineEditability();
+        $this->runEnhancement($enhancement);
     }
 
-    public function refineEditability(): void
+    public function runEnhancement(string $enhancement): void
     {
         $this->validate([
             'provider' => ['required', 'string', 'in:'.implode(',', $this->providerIds())],
@@ -137,18 +140,30 @@ class GenerationControls extends Component
             return;
         }
 
+        [$instruction, $summary] = $this->enhancementPrompt($enhancement);
+
+        if ($instruction === '') {
+            $this->addError('customEnhancementPrompt', 'Enter an enhancement prompt.');
+
+            return;
+        }
+
         app(GenerationEventRecorder::class)->record(
             $this->page,
-            'granularize_requested',
-            'block_granularizer',
+            'enhance_requested',
+            'document_enhancer',
             'info',
-            'Refining editable block markers.',
+            $summary,
+            payload: [
+                'instruction' => $instruction,
+                'summary' => $summary,
+            ],
         );
 
         $this->page->forceFill(['status' => 'generating'])->save();
-        $this->dispatch('generation-started', pageId: $this->page->id, stage: 'block_granularizer');
+        $this->dispatch('generation-started', pageId: $this->page->id, stage: 'document_enhancer');
 
-        GranularizeBlocksJob::dispatch($this->page->id, $this->provider, $this->model, $this->normalizedApiKey());
+        EnhanceDocumentJob::dispatch($this->page->id, $instruction, $summary, $this->provider, $this->model, $this->normalizedApiKey());
 
         $this->dispatch('generation-finished', pageId: $this->page->id, status: $this->page->refresh()->status);
     }
@@ -181,6 +196,28 @@ class GenerationControls extends Component
     private function defaultModel(): string
     {
         return $this->registry()->defaultModel($this->provider, 'section_generator', $this->normalizedApiKey());
+    }
+
+    /**
+     * @return array{0: string, 1: string}
+     */
+    private function enhancementPrompt(string $enhancement): array
+    {
+        return match ($enhancement) {
+            'editability' => [
+                'Add more granular editable tw:block regions around repeated meaningful content such as testimonial cards, feature cards, pricing cards, FAQ rows, stats, logos, gallery items, and CTA groups. Remove any coarse parent block markers when splitting children so no tw:block markers are nested.',
+                'Refined editable block markers.',
+            ],
+            'color_scheme' => [
+                'Refresh the global visual color scheme by changing Tailwind background, text, border, ring, and gradient color utilities consistently across the whole document. Preserve layout, copy, block boundaries, contrast, and readability.',
+                'Refreshed global color scheme.',
+            ],
+            'custom' => [
+                trim($this->customEnhancementPrompt),
+                'Custom enhancement.',
+            ],
+            default => ['', 'Enhancement.'],
+        };
     }
 
     private function normalizedApiKey(): ?string

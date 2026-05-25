@@ -4,6 +4,9 @@
         provider: @js($provider),
         model: @js($model),
         apiKey: '',
+        enhancementMenuOpen: false,
+        customEnhancementOpen: false,
+        customEnhancementPrompt: '',
         ...window.builderImageAttachments(),
         sharedKey: 'twmaker.builder.modelSelection',
         storageKey(provider) { return `twmaker.apiKey.${provider}`; },
@@ -36,9 +39,14 @@
             this.$wire.generateWithSelection(this.provider, this.model, this.apiKey, payload);
             this.clearAttachments();
         },
-        startRefineEditability() {
+        startEnhancement(enhancement) {
             this.loadSelection();
-            this.$wire.refineEditabilityWithSelection(this.provider, this.model, this.apiKey);
+            this.$wire.runEnhancementWithSelection(enhancement, this.provider, this.model, this.apiKey, this.customEnhancementPrompt);
+            this.enhancementMenuOpen = false;
+            if (enhancement === 'custom') {
+                this.customEnhancementPrompt = '';
+                this.customEnhancementOpen = false;
+            }
         },
     }"
     x-init="loadSelection()"
@@ -116,15 +124,68 @@
             />
         </label>
     </div>
-    <button
-        type="button"
-        x-on:click="startRefineEditability()"
-        wire:loading.attr="disabled"
-        wire:target="refineEditabilityWithSelection,refineEditability"
-        @disabled(blank($page->html_source))
-        class="mt-2 inline-flex min-h-9 w-full items-center justify-center rounded-md border border-neutral-700 px-3 py-2 text-xs font-medium text-neutral-200 hover:border-cyan-500 hover:text-cyan-100 disabled:border-neutral-800 disabled:text-neutral-600"
-    >
-        <span wire:loading.remove wire:target="refineEditabilityWithSelection,refineEditability">Make blocks more editable</span>
-        <span wire:loading wire:target="refineEditabilityWithSelection,refineEditability">Refining editability</span>
-    </button>
+    <div class="relative mt-2" x-on:click.outside="enhancementMenuOpen = false">
+        <button
+            type="button"
+            x-on:click="enhancementMenuOpen = !enhancementMenuOpen"
+            wire:loading.attr="disabled"
+            wire:target="runEnhancementWithSelection,runEnhancement"
+            @disabled(blank($page->html_source))
+            class="inline-flex min-h-9 w-full items-center justify-between rounded-md border border-neutral-700 px-3 py-2 text-xs font-medium text-neutral-200 hover:border-cyan-500 hover:text-cyan-100 disabled:border-neutral-800 disabled:text-neutral-600"
+        >
+            <span wire:loading.remove wire:target="runEnhancementWithSelection,runEnhancement">Enhancements</span>
+            <span wire:loading wire:target="runEnhancementWithSelection,runEnhancement">Enhancing</span>
+            <svg viewBox="0 0 20 20" fill="currentColor" class="h-4 w-4" aria-hidden="true">
+                <path fill-rule="evenodd" d="M5.23 12.79a.75.75 0 0 0 1.06-.02L10 8.83l3.71 3.94a.75.75 0 1 0 1.08-1.04l-4.25-4.5a.75.75 0 0 0-1.08 0l-4.25 4.5a.75.75 0 0 0 .02 1.06Z" clip-rule="evenodd" />
+            </svg>
+        </button>
+
+        <div
+            x-cloak
+            x-show="enhancementMenuOpen"
+            x-transition.origin.bottom
+            class="absolute bottom-full left-0 z-20 mb-2 w-full overflow-hidden rounded-md border border-neutral-700 bg-neutral-950 shadow-xl shadow-black/40"
+        >
+            <button
+                type="button"
+                x-on:click="startEnhancement('editability')"
+                class="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-xs text-neutral-200 hover:bg-neutral-900 hover:text-cyan-100"
+            >
+                <span>More editable blocks</span>
+            </button>
+            <button
+                type="button"
+                x-on:click="startEnhancement('color_scheme')"
+                class="flex w-full items-center justify-between gap-3 border-t border-neutral-800 px-3 py-2 text-left text-xs text-neutral-200 hover:bg-neutral-900 hover:text-cyan-100"
+            >
+                <span>Refresh color scheme</span>
+            </button>
+            <button
+                type="button"
+                x-on:click="customEnhancementOpen = !customEnhancementOpen"
+                class="flex w-full items-center justify-between gap-3 border-t border-neutral-800 px-3 py-2 text-left text-xs text-neutral-200 hover:bg-neutral-900 hover:text-cyan-100"
+            >
+                <span>Custom refinement</span>
+            </button>
+            <div x-show="customEnhancementOpen" class="border-t border-neutral-800 p-2">
+                <textarea
+                    x-model="customEnhancementPrompt"
+                    rows="3"
+                    class="w-full rounded-md border border-neutral-800 bg-neutral-950 px-2 py-1.5 text-xs text-white outline-none focus:border-cyan-400"
+                    placeholder="Describe the refinement"
+                ></textarea>
+                @error('customEnhancementPrompt')
+                    <div class="mt-1 text-xs text-red-300">{{ $message }}</div>
+                @enderror
+                <button
+                    type="button"
+                    x-on:click="startEnhancement('custom')"
+                    class="mt-2 inline-flex h-8 w-full items-center justify-center rounded-md bg-cyan-500 px-3 text-xs font-semibold text-neutral-950 hover:bg-cyan-400 disabled:bg-neutral-800 disabled:text-neutral-400"
+                    x-bind:disabled="customEnhancementPrompt.trim() === ''"
+                >
+                    Apply refinement
+                </button>
+            </div>
+        </div>
+    </div>
 </section>

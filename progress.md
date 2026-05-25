@@ -94,12 +94,15 @@ done
 - [2026-05-25] M5.reference-image-and-temperature-verification: `vendor\bin\pint --dirty`, `php artisan test tests\Feature\BuilderShellTest.php`, `php artisan test tests\Feature\Generation\PipelineTest.php`, `php artisan test tests\Unit\Llm\PrismProviderTest.php tests\Unit\Llm\StructuredRequestTest.php`, `php artisan test`, and `npm.cmd run build` pass.
 - [2026-05-25] M5.block-granularizer: added a "Make blocks more editable" generation-control action that sends the full current marked HTML document back to the LLM and asks it to split coarse editable regions into smaller non-nested `tw:block` regions.
 - [2026-05-25] M5.block-granularizer-verification: `vendor\bin\pint --dirty`, `php artisan test tests\Feature\BuilderShellTest.php`, `php artisan test tests\Feature\Generation\PipelineTest.php`, `php artisan test`, and `npm.cmd run build` pass.
+- [2026-05-25] M5.enhancements-menu: replaced the single editability-refinement button with an Enhancements up-menu containing editability, global color scheme, and custom full-document refinement actions.
+- [2026-05-25] M5.document-enhancer: generalized the block granularizer into a reusable document enhancer stage/job with `enhance_requested`/`enhance_applied`/`enhance_rejected` events.
+- [2026-05-25] M5.enhancements-menu-verification: `vendor\bin\pint --dirty`, `php artisan test tests\Feature\BuilderShellTest.php`, `php artisan test tests\Feature\Generation\PipelineTest.php`, `php artisan test`, and `npm.cmd run build` pass.
 
 ## In Progress
 - None active after local verification.
 - Last activity: 2026-05-25
-- Files touched: app/Jobs/GranularizeBlocksJob.php, app/Livewire/Builder/SidePanels/GenerationControls/GenerationControls.php, app/Livewire/Builder/SidePanels/GenerationControls/generation-controls.blade.php, app/Livewire/Builder/StreamPanel/EventList/event-list.blade.php, app/Livewire/Builder/StreamPanel/StreamPanel.php, app/Livewire/Builder/StreamPanel/stream-panel.blade.php, app/Services/Generation/Pipeline.php, app/Services/Generation/Stages/BlockGranularizer.php, app/Services/Html/HtmlDocumentValidator.php, app/Services/Schema/DocumentSchema.php, resources/js/builder-realtime.js, resources/prompts/block_granularizer.system.md, tests/Feature/BuilderShellTest.php, tests/Feature/Generation/PipelineTest.php, progress.md
-- Current state: Block granularization is implemented and verified locally. The new button queues a full-document refinement pass, persists a page version before applying the returned HTML, refreshes stream/realtime state, preserves existing block IDs when possible, generates server IDs for new blocks, and rejects nested block markers.
+- Files touched: app/Jobs/EnhanceDocumentJob.php, app/Jobs/GranularizeBlocksJob.php, app/Livewire/Builder/SidePanels/GenerationControls/GenerationControls.php, app/Livewire/Builder/SidePanels/GenerationControls/generation-controls.blade.php, app/Livewire/Builder/StreamPanel/EventList/event-list.blade.php, app/Livewire/Builder/StreamPanel/StreamPanel.php, app/Livewire/Builder/StreamPanel/stream-panel.blade.php, app/Services/Generation/Pipeline.php, app/Services/Generation/Stages/BlockGranularizer.php, app/Services/Generation/Stages/DocumentEnhancer.php, app/Services/Html/HtmlDocumentValidator.php, app/Services/Schema/DocumentSchema.php, resources/js/builder-realtime.js, resources/prompts/block_granularizer.system.md, resources/prompts/document_enhancer.system.md, tests/Feature/BuilderShellTest.php, tests/Feature/Generation/PipelineTest.php, progress.md
+- Current state: The one-off editability button is now an Enhancements up-menu. More editable blocks, refreshed color scheme, and custom refinement all route through the document enhancer, which snapshots the page, streams full-document HTML, normalizes new block IDs, preserves existing IDs when possible, and rejects invalid or nested block markers.
 
 ## Blocked
 - None.
@@ -144,6 +147,7 @@ done
 - DeepSeek text generation should use streaming without tools/tool_choice; structured stages keep forced tool calls with thinking disabled. This avoids DeepSeek thinking-mode tool-choice errors while preserving structured output where needed.
 - For the open-source distribution, browser localStorage is the primary key-storage path. Env API keys should be treated as optional operator fallbacks, not required setup.
 - Block granularization is a full-document refinement pass rather than a targeted edit. It may replace a coarse parent block with multiple sibling child blocks, but validation rejects nested `tw:block` markers so later targeted edits still operate on clean block boundaries.
+- Document-wide enhancement presets should share one backend stage (`document_enhancer`) so new actions can be added by defining a prompt instruction instead of creating new one-off queued jobs.
 
 ## Spec Change Proposals
 - None. Previous marked-HTML pivot proposal was approved by the user and applied to `plan.md` as R3.
@@ -294,9 +298,25 @@ done
 - `app/Livewire/Builder/StreamPanel/stream-panel.blade.php`: modified: displays granularization status labels and terminal states.
 - `tests/Feature/BuilderShellTest.php`: modified: covers granularizer job enqueue and refusal without existing HTML.
 - `tests/Feature/Generation/PipelineTest.php`: modified: covers successful non-nested granularization, ID normalization, version snapshots, and rejection of nested markers.
+- `app/Jobs/EnhanceDocumentJob.php`: created: queued full-document enhancement job with encrypted provider/model/key payloads.
+- `app/Jobs/GranularizeBlocksJob.php`: modified: retained as a compatibility wrapper around the generic enhancement pipeline.
+- `app/Services/Generation/Stages/DocumentEnhancer.php`: created: reusable full-document LLM enhancement stage.
+- `app/Services/Generation/Stages/BlockGranularizer.php`: deleted: replaced by `DocumentEnhancer`.
+- `resources/prompts/document_enhancer.system.md`: created: prompt for safe full-document refinements, editability splits, color scheme refreshes, and custom requests.
+- `resources/prompts/block_granularizer.system.md`: deleted: folded into the generic document enhancer prompt.
+- `app/Livewire/Builder/SidePanels/GenerationControls/GenerationControls.php`: modified: maps enhancement presets and custom prompts to `EnhanceDocumentJob`.
+- `app/Livewire/Builder/SidePanels/GenerationControls/generation-controls.blade.php`: modified: replaces the single editability button with the Enhancements up-menu and custom prompt field.
+- `app/Services/Generation/Pipeline.php`: modified: adds `enhanceDocument` and keeps `granularizeBlocks` as a compatibility wrapper.
+- `app/Services/Schema/DocumentSchema.php`: modified: allows document enhancer event kinds and stage.
+- `resources/js/builder-realtime.js`: modified: treats document enhancement events as running/terminal full-refresh events.
+- `app/Livewire/Builder/StreamPanel/EventList/event-list.blade.php`: modified: shows enhancement request events as running.
+- `app/Livewire/Builder/StreamPanel/StreamPanel.php`: modified: includes enhancement requests in active-stage polling.
+- `app/Livewire/Builder/StreamPanel/stream-panel.blade.php`: modified: displays enhancement status labels and terminal states.
+- `tests/Feature/BuilderShellTest.php`: modified: covers preset and custom enhancement job enqueueing plus no-HTML refusal.
+- `tests/Feature/Generation/PipelineTest.php`: modified: covers document enhancer success, ID normalization, version snapshots, and nested-marker rejection.
 
 ## Next Up (Top 3)
-1. M5: manually browser-test block granularization with a real provider call on generated testimonial/feature-grid pages.
+1. M5: manually browser-test the Enhancements menu with real provider calls for editability, color scheme, and custom refinement.
 2. M5: add stale-selection and malformed-edit UX handling in the inspector.
 3. M5: consider streaming progress for non-HTML LLM fields such as edit explanations or usage summaries.
 
@@ -350,3 +370,4 @@ done
 - M5 section row drag-reorder verification passed: `vendor\bin\pint.bat --dirty`, `php artisan test --filter=BlockIndexerTest` (4 tests), `php artisan test --filter=BuilderShellTest` (34 tests), and `php artisan test --filter=PipelineTest` (16 tests).
 - M5 block granularizer verification passed: `vendor\bin\pint --dirty`, `php artisan test tests\Feature\BuilderShellTest.php` (42 tests), `php artisan test tests\Feature\Generation\PipelineTest.php` (20 tests), `php artisan test` (178 tests, 418 assertions), and `npm.cmd run build`.
 - `npm.cmd run build` still reports Vite's existing large chunk warning for `assets/app-*.js`; the build exits successfully.
+- M5 enhancements menu verification passed: `vendor\bin\pint --dirty`, `php artisan test tests\Feature\BuilderShellTest.php` (43 tests), `php artisan test tests\Feature\Generation\PipelineTest.php` (20 tests), `php artisan test` (179 tests, 421 assertions), and `npm.cmd run build`.

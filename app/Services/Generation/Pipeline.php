@@ -4,7 +4,7 @@ namespace App\Services\Generation;
 
 use App\Models\Page;
 use App\Models\PageVersion;
-use App\Services\Generation\Stages\BlockGranularizer;
+use App\Services\Generation\Stages\DocumentEnhancer;
 use App\Services\Generation\Stages\HtmlMarker;
 use App\Services\Generation\Stages\SectionGenerationResult;
 use App\Services\Generation\Stages\SectionGenerator;
@@ -28,7 +28,7 @@ class Pipeline
         private readonly HtmlMarker $htmlMarker,
         private readonly TargetedEdit $targetedEdit,
         private readonly SectionInserter $sectionInserter,
-        private readonly BlockGranularizer $blockGranularizer,
+        private readonly DocumentEnhancer $documentEnhancer,
         private readonly DeterministicBlockMarker $deterministicMarker,
         private readonly HtmlDocumentValidator $htmlValidator,
         private readonly HtmlFragmentRepairer $htmlRepairer,
@@ -293,27 +293,31 @@ class Pipeline
         }
     }
 
-    public function granularizeBlocks(Page $page, ?string $provider = null, ?string $model = null, ?string $apiKey = null): array
+    public function enhanceDocument(Page $page, string $instruction, string $summary = 'Enhanced document', ?string $provider = null, ?string $model = null, ?string $apiKey = null): array
     {
         $provider ??= (string) config('llm.default_provider', 'anthropic');
+        $summary = trim($summary) !== '' ? trim($summary) : 'Enhanced document';
 
-        if (! $this->hasFreshGranularizeRequestEvent($page)) {
-            $this->events->record($page, 'granularize_requested', 'block_granularizer', 'info', 'Refining editable block markers.');
+        if (! $this->hasFreshEnhancementRequestEvent($page, $summary)) {
+            $this->events->record($page, 'enhance_requested', 'document_enhancer', 'info', $summary, payload: [
+                'instruction' => $instruction,
+                'summary' => $summary,
+            ]);
         }
 
         try {
-            $result = $this->blockGranularizer->granularize($page, $provider, $model, $apiKey);
+            $result = $this->documentEnhancer->enhance($page, $instruction, $summary, $provider, $model, $apiKey);
             $htmlSource = $this->cleanHtml((string) ($result['html_source'] ?? ''));
 
             $this->htmlValidator->assertValid($htmlSource);
             $blockIndex = $this->scrubArray($this->blockIndexer->index($htmlSource));
             $document = $this->scrubArray($this->htmlArtifact(
-                $this->granularizeArtifact($page),
+                $this->enhancementArtifact($page, $summary),
                 $htmlSource,
                 $blockIndex,
             ));
 
-            $this->snapshotVersion($page, 'edit', 'Refine editable blocks');
+            $this->snapshotVersion($page, 'edit', $summary);
 
             $page->forceFill([
                 'html_source' => $htmlSource,
@@ -322,18 +326,33 @@ class Pipeline
                 'last_generation_summary' => $document['page_metadata']['prompt_summary'] ?? null,
             ])->save();
 
-            $this->events->record($page, 'granularize_applied', 'block_granularizer', 'success', $result['explanation'], payload: [
+            $this->events->record($page, 'enhance_applied', 'document_enhancer', 'success', $result['explanation'], payload: [
                 'blocks' => $result['blocks'] ?? [],
                 'html_source' => $htmlSource,
+                'summary' => $summary,
             ] + $this->payloadWithUsage($result));
 
             return $document;
         } catch (Throwable $exception) {
             $page->forceFill(['status' => 'error'])->save();
-            $this->events->record($page, 'granularize_rejected', 'block_granularizer', 'error', $exception->getMessage());
+            $this->events->record($page, 'enhance_rejected', 'document_enhancer', 'error', $exception->getMessage(), payload: [
+                'summary' => $summary,
+            ]);
 
             throw $exception;
         }
+    }
+
+    public function granularizeBlocks(Page $page, ?string $provider = null, ?string $model = null, ?string $apiKey = null): array
+    {
+        return $this->enhanceDocument(
+            $page,
+            'Add more granular editable tw:block regions around repeated meaningful content such as testimonial cards, feature cards, pricing cards, FAQ rows, stats, logos, gallery items, and CTA groups. Remove any coarse parent block markers when splitting children so no tw:block markers are nested.',
+            'Refined editable block markers.',
+            $provider,
+            $model,
+            $apiKey,
+        );
     }
 
     /**
@@ -449,15 +468,16 @@ class Pipeline
             && $event->occurred_at->greaterThan(now('UTC')->subMinutes(10));
     }
 
-    private function hasFreshGranularizeRequestEvent(Page $page): bool
+    private function hasFreshEnhancementRequestEvent(Page $page, string $summary): bool
     {
         $event = $page->generationEvents()
-            ->where('kind', 'granularize_requested')
-            ->where('stage', 'block_granularizer')
+            ->where('kind', 'enhance_requested')
+            ->where('stage', 'document_enhancer')
             ->latest('occurred_at')
             ->first();
 
         return $event !== null
+            && ($event->payload['summary'] ?? null) === $summary
             && $event->occurred_at !== null
             && $event->occurred_at->greaterThan(now('UTC')->subMinutes(10));
     }
@@ -688,14 +708,14 @@ class Pipeline
         ];
     }
 
-    private function granularizeArtifact(Page $page): array
+    private function enhancementArtifact(Page $page, string $summary): array
     {
         return [
             'title' => $page->name,
             'page_type' => 'generic',
             'goal' => $page->prompt !== '' ? str($page->prompt)->limit(180)->toString() : 'Refined from builder instruction.',
             'audience' => 'Visitors',
-            'prompt_summary' => 'Refined editable blocks',
+            'prompt_summary' => $summary,
         ];
     }
 

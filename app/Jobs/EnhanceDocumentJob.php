@@ -9,7 +9,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Throwable;
 
-class GranularizeBlocksJob implements ShouldBeEncrypted, ShouldQueue
+class EnhanceDocumentJob implements ShouldBeEncrypted, ShouldQueue
 {
     use Queueable;
 
@@ -19,6 +19,8 @@ class GranularizeBlocksJob implements ShouldBeEncrypted, ShouldQueue
 
     public function __construct(
         public readonly string $pageId,
+        public readonly string $instruction,
+        public readonly string $summary,
         public readonly ?string $provider = null,
         public readonly ?string $model = null,
         public readonly ?string $apiKey = null,
@@ -27,14 +29,16 @@ class GranularizeBlocksJob implements ShouldBeEncrypted, ShouldQueue
     public function handle(Pipeline $pipeline): void
     {
         try {
-            $pipeline->granularizeBlocks(
+            $pipeline->enhanceDocument(
                 Page::query()->findOrFail($this->pageId),
+                $this->instruction,
+                $this->summary,
                 $this->provider,
                 $this->model,
                 $this->apiKey,
             );
         } catch (Throwable $exception) {
-            // Pipeline records enhance_rejected through the compatibility wrapper.
+            // Pipeline records enhance_rejected. Keep sync queue mode from surfacing a Livewire 500 overlay.
             report($exception);
         }
     }
