@@ -995,6 +995,7 @@ HTML,
             'html_source' => '<!-- tw:block id="block_hero" type="hero" label="Hero" --><section class="px-6 py-24"><h1>Ship pages</h1><p class="mt-4">Fast</p></section><!-- /tw:block -->',
             'status' => 'valid',
         ]);
+        $originalHtml = (string) $page->html_source;
 
         $component = Livewire::test(Workspace::class, ['project' => $project, 'page' => $page]);
         $previewMountKey = $component->get('preview_mount_key');
@@ -1012,6 +1013,12 @@ HTML,
         $this->assertStringContainsString('<!-- /tw:block -->', $page->html_source);
         $blockIndex = app(BlockIndexer::class)->index($page->html_source);
         $this->assertStringContainsString('Better website copy here.', $blockIndex[0]['summary']);
+
+        $version = PageVersion::query()->where('page_id', $page->id)->first();
+        $this->assertNotNull($version);
+        $this->assertSame($originalHtml, $version->html_source);
+        $this->assertSame('edit', $version->created_by_kind);
+        $this->assertSame('Quick edit: block_hero:1', $version->summary);
     }
 
     public function test_stream_panel_derives_status_from_page_row(): void

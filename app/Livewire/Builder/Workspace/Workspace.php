@@ -3,10 +3,12 @@
 namespace App\Livewire\Builder\Workspace;
 
 use App\Models\Page;
+use App\Models\PageVersion;
 use App\Models\Project;
 use App\Services\Html\BlockIndexer;
 use App\Services\Html\HtmlValidationException;
 use App\Services\Html\QuickElementEditor;
+use App\Services\Ids\IdGenerator;
 use App\Services\Rendering\Renderer;
 use Illuminate\Contracts\View\View;
 use Livewire\Attributes\On;
@@ -64,6 +66,8 @@ class Workspace extends Component
 
             return;
         }
+
+        $this->snapshotQuickEditVersion($editId, $updatedHtml);
 
         $this->page->forceFill([
             'html_source' => $updatedHtml,
@@ -166,6 +170,24 @@ class Workspace extends Component
         $html = (string) ($page->html_source ?? '');
 
         return trim($html) === '' ? [] : app(BlockIndexer::class)->index($html);
+    }
+
+    private function snapshotQuickEditVersion(string $editId, string $updatedHtml): void
+    {
+        $currentHtml = (string) ($this->page->html_source ?? '');
+
+        if (trim($currentHtml) === '' || $currentHtml === $updatedHtml) {
+            return;
+        }
+
+        PageVersion::query()->create([
+            'id' => app(IdGenerator::class)->pageVersion(),
+            'page_id' => $this->page->id,
+            'html_source' => $currentHtml,
+            'created_by_kind' => 'edit',
+            'summary' => str('Quick edit: '.$editId)->limit(280)->toString(),
+            'created_at' => now('UTC'),
+        ]);
     }
 
     private function validSelectedBlockIds(array $selectedBlockIds): array
