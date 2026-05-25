@@ -1,23 +1,12 @@
 <main class="min-h-screen bg-neutral-950 text-neutral-100">
     <div class="mx-auto flex w-full max-w-7xl flex-col gap-4 px-4 py-4 sm:px-6 lg:px-8">
-        <header class="flex h-24 flex-col justify-center gap-3 overflow-hidden border-b border-neutral-800 lg:h-20 lg:flex-row lg:items-center lg:justify-between">
-            <div class="flex min-w-0 items-center gap-4">
-                <a href="{{ route('projects.index') }}" wire:navigate class="shrink-0 text-xl font-semibold tracking-normal text-white">
-                    TwMaker
-                </a>
-                <div class="hidden h-8 w-px bg-neutral-800 sm:block"></div>
-                <div class="min-w-0 overflow-hidden">
-                    <p class="text-xs font-semibold uppercase tracking-normal text-cyan-300">Workspace</p>
-                    <h1 class="mt-1 text-2xl font-semibold tracking-normal text-white sm:text-3xl">Projects</h1>
-                </div>
-            </div>
-
-            <div class="flex shrink-0 flex-wrap items-center gap-2">
-                <a href="{{ route('setup.llm') }}" wire:navigate class="inline-flex h-10 items-center rounded-md border border-neutral-700 bg-neutral-900 px-3 text-sm font-semibold text-neutral-200 hover:border-cyan-500 hover:text-cyan-200">
+        <x-page-header title="Projects" eyebrow="Workspace" subtitle="Project index">
+            <x-slot:actions>
+                <a href="{{ route('setup.llm') }}" wire:navigate class="inline-flex h-10 items-center rounded border border-neutral-700 bg-neutral-900 px-4 text-sm font-medium text-white transition-colors hover:bg-neutral-800">
                     LLM setup
                 </a>
-            </div>
-        </header>
+            </x-slot:actions>
+        </x-page-header>
 
         <section class="grid gap-4 lg:grid-cols-[20rem_minmax(0,1fr)]">
             <aside>

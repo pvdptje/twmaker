@@ -64,19 +64,12 @@
     x-init="load()"
 >
     <div class="mx-auto flex w-full max-w-7xl flex-col gap-4 px-4 py-4 sm:px-6 lg:px-8">
-        <header class="flex h-28 flex-col justify-center gap-3 overflow-hidden border-b border-neutral-800 lg:h-20 lg:flex-row lg:items-center lg:justify-between">
-            <div class="flex min-w-0 items-center gap-4">
-                <a href="{{ route('projects.index') }}" wire:navigate class="shrink-0 text-xl font-semibold tracking-normal text-white">
-                    TwMaker
-                </a>
-                <div class="hidden h-8 w-px bg-neutral-800 sm:block"></div>
-                <div class="min-w-0 overflow-hidden">
-                    <a href="{{ route('projects.index') }}" wire:navigate class="text-xs font-semibold uppercase tracking-normal text-cyan-300 hover:text-cyan-200">Projects</a>
-                    <h1 class="mt-1 text-2xl font-semibold tracking-normal text-white sm:text-3xl">LLM setup</h1>
-                    <p class="mt-1 max-w-2xl truncate text-sm text-neutral-400">Keys are stored only in this browser. Server env keys are optional fallbacks.</p>
-                </div>
-            </div>
-        </header>
+        <x-page-header
+            title="LLM setup"
+            eyebrow="Projects"
+            :eyebrow-href="route('projects.index')"
+            subtitle="Keys are stored only in this browser. Server env keys are optional fallbacks."
+        />
 
         <form wire:submit="save" x-on:submit="persist()" class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
             <section class="min-w-0 rounded-lg border border-neutral-800 bg-neutral-900 shadow-2xl shadow-black/20">

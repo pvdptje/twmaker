@@ -4,32 +4,25 @@
 
 <main class="min-h-screen bg-neutral-950 text-neutral-100">
     <div class="mx-auto flex w-full max-w-7xl flex-col gap-4 px-4 py-4 sm:px-6 lg:px-8">
-        <header class="flex h-32 flex-col justify-center gap-3 overflow-hidden border-b border-neutral-800 lg:h-20 lg:flex-row lg:items-center lg:justify-between">
-            <div class="flex min-w-0 items-center gap-4">
-                <a href="{{ route('projects.index') }}" wire:navigate class="shrink-0 text-xl font-semibold tracking-normal text-white">
-                    TwMaker
-                </a>
-                <div class="hidden h-8 w-px bg-neutral-800 sm:block"></div>
-                <div class="min-w-0 overflow-hidden">
-                    <a href="{{ route('projects.index') }}" wire:navigate class="text-xs font-semibold uppercase tracking-normal text-cyan-300 hover:text-cyan-200">Projects</a>
-                    <h1 class="mt-1 truncate text-2xl font-semibold tracking-normal text-white sm:text-3xl">{{ $project->name }}</h1>
-                    <p class="mt-1 truncate text-sm text-neutral-400">{{ $project->description ?: 'Project dashboard' }}</p>
-                </div>
-            </div>
-
-            <div class="flex shrink-0 flex-wrap items-center gap-2">
+        <x-page-header
+            :title="$project->name"
+            eyebrow="Projects"
+            :eyebrow-href="route('projects.index')"
+            :subtitle="$project->description ?: 'Project dashboard'"
+        >
+            <x-slot:actions>
                 <a
                     href="{{ route('builder.projects.download-html', $project) }}"
                     aria-disabled="{{ $downloadablePages->isEmpty() ? 'true' : 'false' }}"
-                    class="inline-flex h-10 items-center rounded-md border bg-neutral-900 px-3 text-sm font-semibold {{ $downloadablePages->isNotEmpty() ? 'border-neutral-700 text-neutral-200 hover:border-emerald-500 hover:text-emerald-200' : 'border-neutral-800 text-neutral-600' }}"
+                    class="inline-flex h-10 items-center rounded border bg-neutral-900 px-4 text-sm font-medium transition-colors {{ $downloadablePages->isNotEmpty() ? 'border-neutral-700 text-white hover:bg-neutral-800' : 'border-neutral-800 text-neutral-600' }}"
                 >
                     Download project
                 </a>
-                <a href="{{ route('setup.llm') }}" wire:navigate class="inline-flex h-10 items-center rounded-md border border-neutral-700 bg-neutral-900 px-3 text-sm font-semibold text-neutral-200 hover:border-cyan-500 hover:text-cyan-200">
+                <a href="{{ route('setup.llm') }}" wire:navigate class="inline-flex h-10 items-center rounded border border-neutral-700 bg-neutral-900 px-4 text-sm font-medium text-white transition-colors hover:bg-neutral-800">
                     LLM setup
                 </a>
-            </div>
-        </header>
+            </x-slot:actions>
+        </x-page-header>
 
         <section class="grid gap-4 lg:grid-cols-[20rem_minmax(0,1fr)]">
             <aside>
