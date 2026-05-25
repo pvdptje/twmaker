@@ -121,6 +121,7 @@ class BuilderShellTest extends TestCase
             ->assertSee('Canvas')
             ->assertSee('Inspector')
             ->assertSee('Activity')
+            ->assertSee('id="builder-quick-editor-copy"', false)
             ->assertSee('No generation events yet.')
             ->assertSee('maxRows: 80', false)
             ->assertSee('/preview.css', false);

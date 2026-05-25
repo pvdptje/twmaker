@@ -182,21 +182,30 @@
             ></textarea>
             <div id="builder-quick-editor-code" class="min-h-56 border-0 bg-neutral-950"></div>
             <div id="builder-quick-editor-error" class="hidden border-t border-red-500/20 px-3 py-2 text-xs text-red-300"></div>
-            <div class="flex items-center justify-end gap-2 border-t border-neutral-800 px-3 py-2">
+            <div class="flex items-center justify-between gap-2 border-t border-neutral-800 px-3 py-2">
                 <button
                     type="button"
-                    id="builder-quick-editor-cancel"
-                    class="rounded-md border border-neutral-800 px-3 py-1.5 text-xs font-medium text-neutral-300 hover:border-neutral-700 hover:bg-neutral-900 hover:text-white"
+                    id="builder-quick-editor-copy"
+                    class="rounded-md border border-neutral-800 px-3 py-1.5 text-xs font-medium text-neutral-300 hover:border-neutral-700 hover:bg-neutral-900 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                    Cancel
+                    Copy
                 </button>
-                <button
-                    type="button"
-                    id="builder-quick-editor-save"
-                    class="rounded-md border border-cyan-500/50 bg-cyan-500/10 px-3 py-1.5 text-xs font-medium text-cyan-100 hover:border-cyan-400 hover:bg-cyan-500/20 hover:text-white"
-                >
-                    Save
-                </button>
+                <div class="flex items-center gap-2">
+                    <button
+                        type="button"
+                        id="builder-quick-editor-cancel"
+                        class="rounded-md border border-neutral-800 px-3 py-1.5 text-xs font-medium text-neutral-300 hover:border-neutral-700 hover:bg-neutral-900 hover:text-white"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        type="button"
+                        id="builder-quick-editor-save"
+                        class="rounded-md border border-cyan-500/50 bg-cyan-500/10 px-3 py-1.5 text-xs font-medium text-cyan-100 hover:border-cyan-400 hover:bg-cyan-500/20 hover:text-white"
+                    >
+                        Save
+                    </button>
+                </div>
             </div>
         </div>
     </div>

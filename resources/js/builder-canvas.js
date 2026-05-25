@@ -74,6 +74,7 @@ import { oneDark } from '@codemirror/theme-one-dark';
             error: document.getElementById('builder-quick-editor-error'),
             close: document.getElementById('builder-quick-editor-close'),
             cancel: document.getElementById('builder-quick-editor-cancel'),
+            copy: document.getElementById('builder-quick-editor-copy'),
             save: document.getElementById('builder-quick-editor-save'),
         };
     }
@@ -173,6 +174,7 @@ import { oneDark } from '@codemirror/theme-one-dark';
         window.builderQuickEdit.visible = false;
         panel?.classList.add('hidden');
         error?.classList.add('hidden');
+        resetQuickEditorCopyButton();
     }
 
     function positionQuickEditor(quickEdit) {
@@ -212,6 +214,7 @@ import { oneDark } from '@codemirror/theme-one-dark';
         target.textContent = quickEdit.blockId || '';
         error.textContent = '';
         error.classList.add('hidden');
+        resetQuickEditorCopyButton();
         panel.classList.remove('hidden');
         setQuickEditorValue(rawHtml);
         positionQuickEditor(quickEdit);
@@ -232,6 +235,17 @@ import { oneDark } from '@codemirror/theme-one-dark';
 
         save.disabled = false;
         save.textContent = 'Save';
+    }
+
+    function resetQuickEditorCopyButton() {
+        const { copy } = quickEditorElements();
+
+        if (!copy) {
+            return;
+        }
+
+        copy.disabled = false;
+        copy.textContent = 'Copy';
     }
 
     function replaceQuickEditedElement(editId, htmlSource) {
@@ -398,32 +412,89 @@ body { margin: 0; background: #fff; color: #171717; font-family: ui-sans-serif, 
         });
     }
 
-    function bindQuickEditorControls() {
-        const { close, cancel, save, editorHost } = quickEditorElements();
+    function fallbackCopyText(value) {
+        const ta = document.createElement('textarea');
+        ta.value = value;
+        ta.setAttribute('readonly', 'readonly');
+        ta.style.position = 'fixed';
+        ta.style.top = '-9999px';
+        ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        ta.select();
 
-        if (save?.dataset.quickEditorBound === 'true') {
-            ensureCodeEditor();
+        try {
+            return document.execCommand('copy');
+        } finally {
+            ta.remove();
+        }
+    }
+
+    async function copyQuickEditorHtml() {
+        const { copy } = quickEditorElements();
+
+        if (!copy || copy.disabled) {
             return;
         }
 
-        close?.addEventListener('click', hideQuickEditor);
-        cancel?.addEventListener('click', hideQuickEditor);
-        save?.addEventListener('click', saveQuickEditor);
-        editorHost?.addEventListener('keydown', (event) => {
-            if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
-                event.preventDefault();
-                saveQuickEditor();
+        copy.disabled = true;
+        copy.textContent = 'Copying...';
+
+        try {
+            const value = currentEditorValue();
+
+            if (navigator.clipboard?.writeText) {
+                await navigator.clipboard.writeText(value);
+            } else if (!fallbackCopyText(value)) {
+                throw new Error('Clipboard copy failed.');
             }
 
-            if (event.key === 'Escape') {
-                event.preventDefault();
-                hideQuickEditor();
-            }
-        });
+            copy.textContent = 'Copied';
+        } catch {
+            copy.textContent = 'Copy failed';
+        } finally {
+            setTimeout(resetQuickEditorCopyButton, 1500);
+        }
+    }
 
-        if (save) {
+    function bindQuickEditorControls() {
+        const { close, cancel, copy, save, editorHost } = quickEditorElements();
+
+        if (close && close.dataset.quickEditorBound !== 'true') {
+            close.addEventListener('click', hideQuickEditor);
+            close.dataset.quickEditorBound = 'true';
+        }
+
+        if (cancel && cancel.dataset.quickEditorBound !== 'true') {
+            cancel.addEventListener('click', hideQuickEditor);
+            cancel.dataset.quickEditorBound = 'true';
+        }
+
+        if (copy && copy.dataset.quickEditorBound !== 'true') {
+            copy.addEventListener('click', copyQuickEditorHtml);
+            copy.dataset.quickEditorBound = 'true';
+        }
+
+        if (save && save.dataset.quickEditorBound !== 'true') {
+            save.addEventListener('click', saveQuickEditor);
             save.dataset.quickEditorBound = 'true';
         }
+
+        if (editorHost && editorHost.dataset.quickEditorBound !== 'true') {
+            editorHost.addEventListener('keydown', (event) => {
+                if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+                    event.preventDefault();
+                    saveQuickEditor();
+                }
+
+                if (event.key === 'Escape') {
+                    event.preventDefault();
+                    hideQuickEditor();
+                }
+            });
+            editorHost.dataset.quickEditorBound = 'true';
+        }
+
+        ensureCodeEditor();
     }
 
     function bindPreviewFrame() {
