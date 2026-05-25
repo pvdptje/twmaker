@@ -89,7 +89,7 @@
                 </form>
             @endif
             <div
-                x-data="{ menuOpen: false, confirmRemove: false, removing: false, dropPosition: null, moving: false }"
+                x-data="{ menuOpen: false, confirmRemove: false, removing: false, dropPosition: null, moving: false, copying: false, copied: false, copyError: false }"
                 x-on:click.outside="menuOpen = false; confirmRemove = false"
                 x-on:keydown.escape.window="menuOpen = false; confirmRemove = false"
                 x-on:section-moved.window="if ($event.detail.sourceBlockId === @js($id)) moving = false"
@@ -182,6 +182,61 @@
                                 class="flex items-center gap-2 rounded px-2 py-1.5 text-left text-xs text-neutral-200 hover:bg-neutral-800"
                             >
                                 <span aria-hidden="true">&darr;</span> Insert below
+                            </button>
+                            <button
+                                type="button"
+                                x-bind:disabled="copying"
+                                x-on:click.stop="
+                                    if (copying) return;
+                                    copying = true;
+                                    copied = false;
+                                    copyError = false;
+                                    $wire.copyBlockHtml(@js($id)).then((code) => {
+                                        if (!code) {
+                                            copying = false;
+                                            copyError = true;
+                                            setTimeout(() => copyError = false, 1500);
+                                            return;
+                                        }
+                                        const finish = (ok) => {
+                                            copying = false;
+                                            if (ok) {
+                                                copied = true;
+                                                setTimeout(() => { copied = false; menuOpen = false; }, 1200);
+                                            } else {
+                                                copyError = true;
+                                                setTimeout(() => copyError = false, 1500);
+                                            }
+                                        };
+                                        if (navigator.clipboard?.writeText) {
+                                            navigator.clipboard.writeText(code).then(() => finish(true)).catch(() => finish(false));
+                                        } else {
+                                            try {
+                                                const ta = document.createElement('textarea');
+                                                ta.value = code;
+                                                ta.setAttribute('readonly', '');
+                                                ta.style.position = 'fixed';
+                                                ta.style.opacity = '0';
+                                                document.body.appendChild(ta);
+                                                ta.select();
+                                                const ok = document.execCommand('copy');
+                                                document.body.removeChild(ta);
+                                                finish(ok);
+                                            } catch (e) { finish(false); }
+                                        }
+                                    }).catch(() => {
+                                        copying = false;
+                                        copyError = true;
+                                        setTimeout(() => copyError = false, 1500);
+                                    });
+                                "
+                                class="flex items-center gap-2 rounded px-2 py-1.5 text-left text-xs text-neutral-200 hover:bg-neutral-800 disabled:opacity-60"
+                            >
+                                <span aria-hidden="true">&#x29C9;</span>
+                                <span x-show="!copying && !copied && !copyError">Copy code</span>
+                                <span x-show="copying" x-cloak>Copying</span>
+                                <span x-show="copied" x-cloak class="text-cyan-300">Copied!</span>
+                                <span x-show="copyError" x-cloak class="text-red-300">Copy failed</span>
                             </button>
                             <div class="my-1 border-t border-neutral-800"></div>
                             <button

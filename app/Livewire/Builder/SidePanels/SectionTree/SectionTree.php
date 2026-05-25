@@ -6,6 +6,7 @@ use App\Jobs\InsertSectionJob;
 use App\Models\Page;
 use App\Services\Generation\GenerationEventRecorder;
 use App\Services\Generation\Pipeline;
+use App\Services\Html\BlockIndexer;
 use App\Services\Html\HtmlValidationException;
 use App\Services\Llm\LlmRegistry;
 use Illuminate\Contracts\View\View;
@@ -144,6 +145,27 @@ class SectionTree extends Component
         $this->page->refresh();
         $this->dispatch('section-moved', sourceBlockId: $sourceBlockId, targetBlockId: $targetBlockId, position: $position);
         $this->dispatch('generation-finished', pageId: $this->page->id, status: $this->page->status);
+    }
+
+    public function copyBlockHtml(string $blockId): ?string
+    {
+        $blockId = trim($blockId);
+        if ($blockId === '') {
+            return null;
+        }
+
+        $source = (string) ($this->page->html_source ?? '');
+        if ($source === '') {
+            return null;
+        }
+
+        foreach (app(BlockIndexer::class)->index($source) as $block) {
+            if (($block['id'] ?? '') === $blockId) {
+                return (string) ($block['html'] ?? '');
+            }
+        }
+
+        return null;
     }
 
     public function removeBlock(string $blockId): void
