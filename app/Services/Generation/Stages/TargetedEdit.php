@@ -25,15 +25,19 @@ class TargetedEdit
         private readonly GenerationStreamBuffer $streamBuffer,
     ) {}
 
-    public function edit(Page $page, string $targetId, string $instruction, ?string $provider = null, ?string $model = null, ?string $apiKey = null): array
+    /**
+     * @param  array<int, array{base64: string, mime_type: string}>  $images
+     */
+    public function edit(Page $page, string $targetId, string $instruction, ?string $provider = null, ?string $model = null, ?string $apiKey = null, array $images = []): array
     {
-        return $this->editMany($page, [$targetId], $instruction, $provider, $model, $apiKey);
+        return $this->editMany($page, [$targetId], $instruction, $provider, $model, $apiKey, $images);
     }
 
     /**
      * @param  array<int, string>  $targetIds
+     * @param  array<int, array{base64: string, mime_type: string}>  $images
      */
-    public function editMany(Page $page, array $targetIds, string $instruction, ?string $provider = null, ?string $model = null, ?string $apiKey = null): array
+    public function editMany(Page $page, array $targetIds, string $instruction, ?string $provider = null, ?string $model = null, ?string $apiKey = null, array $images = []): array
     {
         $provider ??= (string) config('llm.default_provider', 'anthropic');
         $targetIds = $this->normalizeTargetIds($targetIds);
@@ -51,15 +55,17 @@ class TargetedEdit
             provider: $provider,
             model: $model ?: (string) config("llm.providers.{$provider}.models.targeted_edit"),
             systemPrompt: $this->prompts->system('targeted_edit'),
-            userPrompt: $this->buildUserPrompt($instruction, $targetIds, $targetBlocks, $htmlSource, $blockIndex),
+            userPrompt: $this->buildUserPrompt($instruction, $targetIds, $targetBlocks, $htmlSource, $blockIndex, $images),
             context: [
                 'page_id' => $page->id,
                 'page_name' => $page->name,
                 'target_ids' => implode(',', $targetIds),
+                'reference_images' => count($images),
             ],
             maxTokens: (int) config("llm.providers.{$provider}.edit_max_tokens", 8000),
             temperature: 0.4,
             apiKey: $apiKey,
+            images: $images,
         );
 
         try {
@@ -130,8 +136,9 @@ class TargetedEdit
      * @param  array<int, string>  $targetIds
      * @param  array<int, array<string, mixed>>  $targetBlocks
      * @param  array<int, array<string, mixed>>  $blockIndex
+     * @param  array<int, array{base64: string, mime_type: string}>  $images
      */
-    private function buildUserPrompt(string $instruction, array $targetIds, array $targetBlocks, string $htmlSource, array $blockIndex): string
+    private function buildUserPrompt(string $instruction, array $targetIds, array $targetBlocks, string $htmlSource, array $blockIndex, array $images = []): string
     {
         $targetHtml = $this->targetHtml($htmlSource, $targetBlocks);
         $surrounding = $this->surroundingHtml($htmlSource, $targetBlocks);
@@ -146,9 +153,15 @@ class TargetedEdit
             ? 'Return one or more complete tw:block regions as the replacement.'
             : 'Return one or more complete tw:block regions that replace the selected contiguous block range. The first returned block keeps the first selected block identity; extra returned blocks become new sections.';
 
+        $imageNote = $images !== []
+            ? 'A visual reference '.(count($images) === 1 ? 'screenshot is' : count($images).' screenshots are')
+                .' attached. Use the screenshot to guide the requested edit, especially layout, hierarchy, spacing, color, and visual style, while keeping the result compatible with the surrounding page.'
+            : null;
+
         return implode("\n\n", array_filter([
             "User instruction:\n{$instruction}",
-            "Selected block ids: ".implode(', ', $targetIds),
+            $imageNote,
+            'Selected block ids: '.implode(', ', $targetIds),
             "All block ids in the page:\n".trim($blockList),
             "Selected block HTML (including markers):\n{$targetHtml}",
             "Surrounding HTML for context:\n{$surrounding}",

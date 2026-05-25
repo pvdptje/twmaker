@@ -15,7 +15,7 @@ class TextRequest
         public readonly string $userPrompt,
         public readonly array $context = [],
         public readonly int $maxTokens = 4096,
-        public readonly float $temperature = 0.2,
+        public readonly int|float|null $temperature = 0.2,
         public readonly ?string $apiKey = null,
         public readonly array $images = [],
     ) {}

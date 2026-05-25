@@ -8,6 +8,7 @@ use App\Services\Generation\GenerationEventRecorder;
 use App\Services\Generation\Pipeline;
 use App\Services\Html\BlockIndexer;
 use App\Services\Html\HtmlValidationException;
+use App\Services\Llm\ImageAttachments;
 use App\Services\Llm\LlmRegistry;
 use Illuminate\Contracts\View\View;
 use Livewire\Attributes\Reactive;
@@ -41,12 +42,6 @@ class SectionTree extends Component
      * @var array<int, array{base64: string, mime_type: string}>
      */
     public array $insertImages = [];
-
-    private const MAX_INSERT_IMAGES = 3;
-
-    private const MAX_INSERT_IMAGE_BYTES = 5_500_000; // ~5MB decoded; matches Anthropic's per-image limit.
-
-    private const ALLOWED_INSERT_IMAGE_MIMES = ['image/png', 'image/jpeg', 'image/webp'];
 
     public function openInsert(?string $anchorBlockId = null, string $position = 'after'): void
     {
@@ -111,6 +106,7 @@ class SectionTree extends Component
                 'instruction' => $this->insertInstruction,
                 'anchor_id' => $anchorId,
                 'position' => $position,
+                'reference_images' => count($this->insertImages),
             ],
         );
 
@@ -243,40 +239,7 @@ class SectionTree extends Component
      */
     private function normalizedAttachments(?array $attachments): array
     {
-        if (! is_array($attachments) || $attachments === []) {
-            return [];
-        }
-
-        $normalized = [];
-
-        foreach (array_slice($attachments, 0, self::MAX_INSERT_IMAGES) as $entry) {
-            if (! is_array($entry)) {
-                continue;
-            }
-
-            $base64 = trim((string) ($entry['base64'] ?? ''));
-            $mime = strtolower(trim((string) ($entry['mime_type'] ?? '')));
-
-            if ($base64 === '' || ! in_array($mime, self::ALLOWED_INSERT_IMAGE_MIMES, true)) {
-                continue;
-            }
-
-            if (! preg_match('/^[A-Za-z0-9+\/=\s]+$/', $base64)) {
-                continue;
-            }
-
-            $decodedLength = (int) (strlen($base64) * 3 / 4);
-            if ($decodedLength > self::MAX_INSERT_IMAGE_BYTES) {
-                continue;
-            }
-
-            $normalized[] = [
-                'base64' => preg_replace('/\s+/', '', $base64) ?? '',
-                'mime_type' => $mime,
-            ];
-        }
-
-        return $normalized;
+        return app(ImageAttachments::class)->normalize($attachments);
     }
 
     private function normalizedApiKey(): ?string

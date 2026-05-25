@@ -461,6 +461,48 @@ HTML;
         $this->assertStringContainsString('Streamed edit result', $snapshot['html']);
     }
 
+    public function test_pipeline_forwards_reference_images_to_full_generation(): void
+    {
+        [$project, $page] = $this->makePage('Recreate this homepage screenshot');
+        $provider = new FakeHtmlGenerationProvider($this->htmlArtifact());
+
+        $this->app->instance(LlmProvider::class, $provider);
+
+        $images = [['base64' => base64_encode('screenshot'), 'mime_type' => 'image/png']];
+
+        app(Pipeline::class)->generate($page, images: $images);
+
+        $this->assertSame($images, $provider->lastTextRequest?->images);
+        $this->assertStringContainsString('visual reference screenshot', (string) $provider->lastTextRequest?->userPrompt);
+    }
+
+    public function test_pipeline_forwards_reference_images_to_targeted_edits(): void
+    {
+        [$project, $page] = $this->makePage('A developer tool landing page');
+        $artifact = $this->htmlArtifact();
+
+        $page->forceFill([
+            'html_source' => $artifact['marked_html'],
+            'status' => 'valid',
+        ])->save();
+
+        $replacement = <<<'HTML'
+<!-- tw:block id="draft_story" type="story" label="Story" -->
+<section class="bg-white px-6 py-24"><h2>Image guided edit</h2></section>
+<!-- /tw:block -->
+HTML;
+        $provider = new FakeTargetedEditProvider($replacement);
+
+        $this->app->instance(LlmProvider::class, $provider);
+
+        $images = [['base64' => base64_encode('screenshot'), 'mime_type' => 'image/webp']];
+
+        app(Pipeline::class)->edit($page, 'block_hero', 'Match the reference screenshot.', images: $images);
+
+        $this->assertSame($images, $provider->lastTextRequest?->images);
+        $this->assertStringContainsString('visual reference screenshot', (string) $provider->lastTextRequest?->userPrompt);
+    }
+
     private function makePage(string $prompt): array
     {
         $ids = app(IdGenerator::class);
@@ -541,10 +583,13 @@ HTML;
 
 class FakeHtmlGenerationProvider implements LlmProvider
 {
+    public ?TextRequest $lastTextRequest = null;
+
     public function __construct(private readonly array $artifact) {}
 
     public function sendTextStream(TextRequest $request, callable $onDelta): TextResponse
     {
+        $this->lastTextRequest = $request;
         $html = (string) ($this->artifact['raw_html'] ?? '');
         $onDelta($html, 0);
 
@@ -564,10 +609,13 @@ class FakeHtmlGenerationProvider implements LlmProvider
 
 class FakeTargetedEditProvider implements LlmProvider
 {
+    public ?TextRequest $lastTextRequest = null;
+
     public function __construct(private readonly string $replacement) {}
 
     public function sendTextStream(TextRequest $request, callable $onDelta): TextResponse
     {
+        $this->lastTextRequest = $request;
         $onDelta($this->replacement, 0);
 
         return new TextResponse($request->stage, $request->model, $this->replacement);

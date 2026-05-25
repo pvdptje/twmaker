@@ -4,6 +4,7 @@ namespace App\Livewire\Builder\SidePanels\GenerationControls;
 
 use App\Jobs\GeneratePageJob;
 use App\Models\Page;
+use App\Services\Llm\ImageAttachments;
 use App\Services\Llm\LlmRegistry;
 use Illuminate\Contracts\View\View;
 use Livewire\Component;
@@ -21,6 +22,11 @@ class GenerationControls extends Component
     public string $apiKey = '';
 
     public string $modelCatalogStatus = '';
+
+    /**
+     * @var array<int, array{base64: string, mime_type: string}>
+     */
+    public array $images = [];
 
     public function mount(Page $page): void
     {
@@ -70,6 +76,12 @@ class GenerationControls extends Component
             'apiKey' => ['nullable', 'string', 'max:500'],
         ]);
 
+        if ($this->images !== [] && ! $this->registry()->supportsModality($this->provider, $this->model, 'image', $this->normalizedApiKey())) {
+            $this->addError('prompt', 'The selected model does not accept image input. Pick a vision-capable model or remove the attachments.');
+
+            return;
+        }
+
         $this->page->forceFill([
             'prompt' => $this->prompt,
             'status' => 'generating',
@@ -77,16 +89,21 @@ class GenerationControls extends Component
 
         $this->dispatch('generation-started', pageId: $this->page->id, stage: 'section_generator');
 
-        GeneratePageJob::dispatch($this->page->id, $this->provider, $this->model, $this->normalizedApiKey());
+        GeneratePageJob::dispatch($this->page->id, $this->provider, $this->model, $this->normalizedApiKey(), $this->images);
+        $this->images = [];
 
         $this->dispatch('generation-finished', pageId: $this->page->id, status: $this->page->refresh()->status);
     }
 
-    public function generateWithSelection(string $provider, string $model, ?string $apiKey = null): void
+    /**
+     * @param  array<int, array{base64?: string, mime_type?: string}>|null  $attachments
+     */
+    public function generateWithSelection(string $provider, string $model, ?string $apiKey = null, ?array $attachments = null): void
     {
         $this->provider = $provider;
         $this->model = $model;
         $this->apiKey = (string) $apiKey;
+        $this->images = app(ImageAttachments::class)->normalize($attachments);
         $this->storeProvider();
         $this->storeModel();
 

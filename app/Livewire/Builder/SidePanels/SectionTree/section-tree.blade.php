@@ -22,6 +22,8 @@
                 if (stored?.provider && stored?.model) {
                     this.provider = stored.provider;
                     this.model = stored.model;
+                    this.modalities = Array.isArray(stored.modalities) ? stored.modalities : this.modalities;
+                    this.visionAvailable = this.modalities.includes('image');
                 } else {
                     this.provider = localStorage.getItem(this.selectionKey('provider')) || localStorage.getItem(this.defaultKey('provider')) || '';
                     this.model = this.provider ? (localStorage.getItem(this.selectionKey(`model.${this.provider}`)) || localStorage.getItem(this.defaultKey('model')) || '') : '';

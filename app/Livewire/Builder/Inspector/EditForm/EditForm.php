@@ -5,6 +5,7 @@ namespace App\Livewire\Builder\Inspector\EditForm;
 use App\Jobs\TargetedEditJob;
 use App\Models\Page;
 use App\Services\Generation\GenerationEventRecorder;
+use App\Services\Llm\ImageAttachments;
 use App\Services\Llm\LlmRegistry;
 use Illuminate\Contracts\View\View;
 use Livewire\Attributes\Reactive;
@@ -29,6 +30,11 @@ class EditForm extends Component
     public string $apiKey = '';
 
     public string $modelCatalogStatus = '';
+
+    /**
+     * @var array<int, array{base64: string, mime_type: string}>
+     */
+    public array $images = [];
 
     public function mount(): void
     {
@@ -87,6 +93,12 @@ class EditForm extends Component
             return;
         }
 
+        if ($this->images !== [] && ! $this->registry()->supportsModality($this->provider, $this->model, 'image', $this->normalizedApiKey())) {
+            $this->addError('instruction', 'The selected model does not accept image input. Pick a vision-capable model or remove the attachments.');
+
+            return;
+        }
+
         app(GenerationEventRecorder::class)->record(
             $this->page,
             'edit_requested',
@@ -97,21 +109,27 @@ class EditForm extends Component
             [
                 'instruction' => $this->instruction,
                 'target_ids' => $targetIds,
+                'reference_images' => count($this->images),
             ],
         );
 
         $this->page->forceFill(['status' => 'generating'])->save();
         $this->dispatch('generation-started', pageId: $this->page->id, stage: 'targeted_edit');
 
-        TargetedEditJob::dispatch($this->page->id, count($targetIds) === 1 ? $targetIds[0] : $targetIds, $this->instruction, $this->provider, $this->model, $this->normalizedApiKey());
+        TargetedEditJob::dispatch($this->page->id, count($targetIds) === 1 ? $targetIds[0] : $targetIds, $this->instruction, $this->provider, $this->model, $this->normalizedApiKey(), $this->images);
         $this->instruction = '';
+        $this->images = [];
     }
 
-    public function applyEditWithSelection(string $provider, string $model, ?string $apiKey = null): void
+    /**
+     * @param  array<int, array{base64?: string, mime_type?: string}>|null  $attachments
+     */
+    public function applyEditWithSelection(string $provider, string $model, ?string $apiKey = null, ?array $attachments = null): void
     {
         $this->provider = $provider;
         $this->model = $model;
         $this->apiKey = (string) $apiKey;
+        $this->images = app(ImageAttachments::class)->normalize($attachments);
         $this->storeProvider();
         $this->storeModel();
 

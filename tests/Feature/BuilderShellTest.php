@@ -349,6 +349,69 @@ class BuilderShellTest extends TestCase
             && $job->apiKey === 'test-deepseek-key');
     }
 
+    public function test_generation_controls_forward_image_attachments_when_model_supports_vision(): void
+    {
+        Queue::fake();
+        $this->cacheProviderModels('anthropic', 'test-generation-key', [
+            ['id' => 'claude-haiku-4-5-20251001', 'label' => 'Claude Haiku 4.5'],
+        ]);
+
+        $project = Project::query()->create([
+            'id' => app(IdGenerator::class)->project(),
+            'name' => 'Acme',
+        ]);
+        $page = Page::query()->create([
+            'id' => app(IdGenerator::class)->page(),
+            'project_id' => $project->id,
+            'name' => 'Homepage',
+            'prompt' => '',
+            'status' => 'draft',
+        ]);
+
+        $imageBase64 = base64_encode('full-generation-screenshot');
+
+        Livewire::test(GenerationControls::class, ['page' => $page])
+            ->set('prompt', 'Recreate this product landing page')
+            ->call('generateWithSelection', 'anthropic', 'claude-haiku-4-5-20251001', 'test-generation-key', [
+                ['base64' => $imageBase64, 'mime_type' => 'image/png'],
+                ['base64' => $imageBase64, 'mime_type' => 'image/bogus'],
+            ])
+            ->assertDispatched('generation-started', pageId: $page->id);
+
+        Queue::assertPushed(GeneratePageJob::class, fn (GeneratePageJob $job): bool => count($job->images) === 1
+            && $job->images[0]['mime_type'] === 'image/png'
+            && $job->images[0]['base64'] === $imageBase64);
+    }
+
+    public function test_generation_controls_reject_attachments_when_model_does_not_support_vision(): void
+    {
+        Queue::fake();
+        $this->cacheProviderModels('deepseek', 'test-generation-key', [
+            ['id' => 'deepseek-chat', 'label' => 'DeepSeek Chat'],
+        ]);
+
+        $project = Project::query()->create([
+            'id' => app(IdGenerator::class)->project(),
+            'name' => 'Acme',
+        ]);
+        $page = Page::query()->create([
+            'id' => app(IdGenerator::class)->page(),
+            'project_id' => $project->id,
+            'name' => 'Homepage',
+            'prompt' => '',
+            'status' => 'draft',
+        ]);
+
+        Livewire::test(GenerationControls::class, ['page' => $page])
+            ->set('prompt', 'Recreate this landing page')
+            ->call('generateWithSelection', 'deepseek', 'deepseek-chat', 'test-generation-key', [
+                ['base64' => base64_encode('bytes'), 'mime_type' => 'image/png'],
+            ])
+            ->assertHasErrors('prompt');
+
+        Queue::assertNotPushed(GeneratePageJob::class);
+    }
+
     public function test_edit_form_enqueues_targeted_edit_job_for_selected_node(): void
     {
         Queue::fake();
@@ -423,6 +486,70 @@ class BuilderShellTest extends TestCase
 
         Queue::assertPushed(TargetedEditJob::class, fn (TargetedEditJob $job): bool => $job->targetId === ['block_hero', 'block_features']
             && $job->instruction === 'Replace these with one product story section');
+    }
+
+    public function test_edit_form_forwards_image_attachments_when_model_supports_vision(): void
+    {
+        Queue::fake();
+        $this->cacheProviderModels('anthropic', 'test-edit-key', [
+            ['id' => 'claude-haiku-4-5-20251001', 'label' => 'Claude Haiku 4.5'],
+        ]);
+
+        $project = Project::query()->create([
+            'id' => app(IdGenerator::class)->project(),
+            'name' => 'Acme',
+        ]);
+        $page = Page::query()->create([
+            'id' => app(IdGenerator::class)->page(),
+            'project_id' => $project->id,
+            'name' => 'Homepage',
+            'prompt' => '',
+            'status' => 'valid',
+        ]);
+
+        $imageBase64 = base64_encode('targeted-edit-screenshot');
+
+        Livewire::test(EditForm::class, ['page' => $page, 'selectedNodeId' => 'block_hero'])
+            ->set('instruction', 'Match this screenshot more closely')
+            ->call('applyEditWithSelection', 'anthropic', 'claude-haiku-4-5-20251001', 'test-edit-key', [
+                ['base64' => $imageBase64, 'mime_type' => 'image/webp'],
+                ['base64' => '', 'mime_type' => 'image/webp'],
+            ])
+            ->assertSet('instruction', '')
+            ->assertDispatched('generation-started', pageId: $page->id, stage: 'targeted_edit');
+
+        Queue::assertPushed(TargetedEditJob::class, fn (TargetedEditJob $job): bool => count($job->images) === 1
+            && $job->images[0]['mime_type'] === 'image/webp'
+            && $job->images[0]['base64'] === $imageBase64);
+    }
+
+    public function test_edit_form_rejects_attachments_when_model_does_not_support_vision(): void
+    {
+        Queue::fake();
+        $this->cacheProviderModels('deepseek', 'test-edit-key', [
+            ['id' => 'deepseek-chat', 'label' => 'DeepSeek Chat'],
+        ]);
+
+        $project = Project::query()->create([
+            'id' => app(IdGenerator::class)->project(),
+            'name' => 'Acme',
+        ]);
+        $page = Page::query()->create([
+            'id' => app(IdGenerator::class)->page(),
+            'project_id' => $project->id,
+            'name' => 'Homepage',
+            'prompt' => '',
+            'status' => 'valid',
+        ]);
+
+        Livewire::test(EditForm::class, ['page' => $page, 'selectedNodeId' => 'block_hero'])
+            ->set('instruction', 'Match this screenshot more closely')
+            ->call('applyEditWithSelection', 'deepseek', 'deepseek-chat', 'test-edit-key', [
+                ['base64' => base64_encode('bytes'), 'mime_type' => 'image/png'],
+            ])
+            ->assertHasErrors('instruction');
+
+        Queue::assertNotPushed(TargetedEditJob::class);
     }
 
     public function test_section_tree_enqueues_insert_section_job(): void

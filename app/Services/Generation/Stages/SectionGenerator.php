@@ -18,10 +18,13 @@ class SectionGenerator
         private readonly GenerationStreamBuffer $streamBuffer,
     ) {}
 
-    public function generate(Page $page, ?string $provider = null, ?string $model = null, ?string $apiKey = null): SectionGenerationResult
+    /**
+     * @param  array<int, array{base64: string, mime_type: string}>  $images
+     */
+    public function generate(Page $page, ?string $provider = null, ?string $model = null, ?string $apiKey = null, array $images = []): SectionGenerationResult
     {
         $provider ??= (string) config('llm.default_provider', 'anthropic');
-        $result = $this->send($page, 'section_generator', $this->prompts->system('section_generator'), $page->prompt, 0.7, $provider, $model, $apiKey);
+        $result = $this->send($page, 'section_generator', $this->prompts->system('section_generator'), $this->buildUserPrompt($page->prompt, $images), 0.7, $provider, $model, $apiKey, $images);
 
         if (trim($result->html) !== '') {
             return $result;
@@ -31,11 +34,12 @@ class SectionGenerator
             $page,
             'section_generator_retry',
             $this->prompts->system('section_generator')."\n\nCritical recovery instruction: the previous response returned empty HTML. Return one complete standalone HTML document with balanced tw:block markers. Do not leave the response blank.",
-            "Generate the complete marked Tailwind HTML document now. Original prompt: {$page->prompt}",
+            $this->buildUserPrompt("Generate the complete marked Tailwind HTML document now. Original prompt: {$page->prompt}", $images),
             0.4,
             $provider,
             $model,
             $apiKey,
+            $images,
         );
 
         if (trim($result->html) !== '') {
@@ -45,7 +49,10 @@ class SectionGenerator
         return new SectionGenerationResult($this->fallbackHtml($page), 'deterministic_fallback');
     }
 
-    private function send(Page $page, string $stage, string $systemPrompt, string $userPrompt, float $temperature, string $provider, ?string $model, ?string $apiKey): SectionGenerationResult
+    /**
+     * @param  array<int, array{base64: string, mime_type: string}>  $images
+     */
+    private function send(Page $page, string $stage, string $systemPrompt, string $userPrompt, float $temperature, string $provider, ?string $model, ?string $apiKey, array $images = []): SectionGenerationResult
     {
         $this->streamBuffer->resetRun($page->id, $stage);
 
@@ -58,10 +65,12 @@ class SectionGenerator
             context: [
                 'page_id' => $page->id,
                 'page_name' => $page->name,
+                'reference_images' => count($images),
             ],
             maxTokens: (int) config("llm.providers.{$provider}.section_max_tokens", 8000),
             temperature: $temperature,
             apiKey: $apiKey,
+            images: $images,
         );
 
         try {
@@ -92,6 +101,21 @@ class SectionGenerator
 
             $this->broadcastChunk(new GenerationStreamChunk($page->id, $stage, $chunk, $position), $page);
         };
+    }
+
+    /**
+     * @param  array<int, array{base64: string, mime_type: string}>  $images
+     */
+    private function buildUserPrompt(string $prompt, array $images): string
+    {
+        if ($images === []) {
+            return $prompt;
+        }
+
+        $imageNote = 'A visual reference '.(count($images) === 1 ? 'screenshot is' : count($images).' screenshots are')
+            .' attached. Use the screenshot to inform the layout, hierarchy, spacing, color, and visual style while honoring the written prompt. Adapt the design into a complete responsive Tailwind HTML page.';
+
+        return trim($prompt."\n\n".$imageNote);
     }
 
     private function broadcastChunk(GenerationStreamChunk $event, Page $page): void

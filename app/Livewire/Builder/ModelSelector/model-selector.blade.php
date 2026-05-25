@@ -52,7 +52,11 @@
             const choice = this.selectedChoice();
             if (!choice) return;
 
-            const selection = { provider: choice.provider, model: choice.model };
+            const selection = {
+                provider: choice.provider,
+                model: choice.model,
+                modalities: Array.isArray(choice.modalities) ? choice.modalities : ['text'],
+            };
             localStorage.setItem(this.sharedKey, JSON.stringify(selection));
             localStorage.setItem(this.legacyKey('primary', 'provider'), choice.provider);
             localStorage.setItem(this.legacyKey('editing', 'provider'), choice.provider);

@@ -39,10 +39,14 @@ class PrismProvider implements LlmProvider
                 ->withPrompt($userContent)
                 ->withSchema(new RawSchema($request->toolName, $request->schema))
                 ->withMaxTokens($request->maxTokens)
-                ->usingTemperature($request->temperature)
+                ->usingTemperature($this->temperatureFor($request))
                 ->withProviderOptions($this->structuredProviderOptions($request))
                 ->asStructured();
         } catch (Throwable $exception) {
+            if ($retryRequest = $this->temperatureRetryRequest($request, $exception)) {
+                return $this->sendStructured($retryRequest);
+            }
+
             if ($fallbackRequest = $this->fallbackRequestForRejectedModel($request, $exception)) {
                 return $this->sendStructured($fallbackRequest);
             }
@@ -120,7 +124,7 @@ class PrismProvider implements LlmProvider
                 ->withSystemPrompt($this->systemMessage($request))
                 ->withPrompt($userContent, $this->imageContent($request))
                 ->withMaxTokens($request->maxTokens)
-                ->usingTemperature($request->temperature)
+                ->usingTemperature($this->temperatureFor($request))
                 ->asStream();
 
             foreach ($stream as $event) {
@@ -164,6 +168,10 @@ class PrismProvider implements LlmProvider
 
             $flush();
         } catch (Throwable $exception) {
+            if ($retryRequest = $this->temperatureRetryRequest($request, $exception)) {
+                return $this->sendTextStream($retryRequest, $onDelta);
+            }
+
             if ($fallbackRequest = $this->fallbackRequestForRejectedModel($request, $exception)) {
                 return $this->sendTextStream($fallbackRequest, $onDelta);
             }
@@ -229,7 +237,7 @@ class PrismProvider implements LlmProvider
                 ->withSystemPrompt($this->systemMessage($request))
                 ->withPrompt($userContent)
                 ->withMaxTokens($request->maxTokens)
-                ->usingTemperature($request->temperature)
+                ->usingTemperature($this->temperatureFor($request))
                 ->withTools([$tool])
                 ->withToolChoice($request->toolName)
                 ->asStream();
@@ -273,6 +281,10 @@ class PrismProvider implements LlmProvider
                 }
             }
         } catch (Throwable $exception) {
+            if ($retryRequest = $this->temperatureRetryRequest($request, $exception)) {
+                return $this->sendStructuredStream($retryRequest, $onPartialJson);
+            }
+
             if ($fallbackRequest = $this->fallbackRequestForRejectedModel($request, $exception)) {
                 return $this->sendStructuredStream($fallbackRequest, $onPartialJson);
             }
@@ -453,6 +465,76 @@ class PrismProvider implements LlmProvider
         }
 
         return $lines !== [] ? implode("\n", $lines) : 'none';
+    }
+
+    private function temperatureFor(StructuredRequest|TextRequest $request): int|float|null
+    {
+        if ($this->shouldOmitTemperature($request)) {
+            return null;
+        }
+
+        return $request->temperature;
+    }
+
+    private function shouldOmitTemperature(StructuredRequest|TextRequest $request): bool
+    {
+        return $this->prismProvider($request->provider) === 'anthropic'
+            && preg_match('/(\bopus[-_]?4[-_.]?7\b|\b4[-_.]?7[-_]?opus\b)/i', $request->model) === 1;
+    }
+
+    private function temperatureRetryRequest(StructuredRequest|TextRequest $request, Throwable $exception): StructuredRequest|TextRequest|null
+    {
+        if ($request->temperature === null || ! $this->isTemperatureDeprecated($exception)) {
+            return null;
+        }
+
+        Log::warning('Provider rejected temperature. Retrying request without temperature.', [
+            'stage' => $request->stage,
+            'provider' => $request->provider,
+            'model' => $request->model,
+        ]);
+
+        return $this->withoutTemperature($request);
+    }
+
+    private function withoutTemperature(StructuredRequest|TextRequest $request): StructuredRequest|TextRequest
+    {
+        if ($request instanceof TextRequest) {
+            return new TextRequest(
+                stage: $request->stage,
+                provider: $request->provider,
+                model: $request->model,
+                systemPrompt: $request->systemPrompt,
+                userPrompt: $request->userPrompt,
+                context: $request->context,
+                maxTokens: $request->maxTokens,
+                temperature: null,
+                apiKey: $request->apiKey,
+                images: $request->images,
+            );
+        }
+
+        return new StructuredRequest(
+            stage: $request->stage,
+            provider: $request->provider,
+            model: $request->model,
+            systemPrompt: $request->systemPrompt,
+            userPrompt: $request->userPrompt,
+            toolName: $request->toolName,
+            schema: $request->schema,
+            context: $request->context,
+            maxTokens: $request->maxTokens,
+            temperature: null,
+            apiKey: $request->apiKey,
+        );
+    }
+
+    private function isTemperatureDeprecated(Throwable $exception): bool
+    {
+        $message = strtolower($exception->getMessage());
+
+        return str_contains($message, 'temperature')
+            && str_contains($message, 'deprecated');
     }
 
     private function fallbackRequestForRejectedModel(StructuredRequest|TextRequest $request, Throwable $exception): StructuredRequest|TextRequest|null

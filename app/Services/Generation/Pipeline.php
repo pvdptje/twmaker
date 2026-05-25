@@ -53,14 +53,19 @@ class Pipeline
         ]);
     }
 
-    public function generate(Page $page, ?string $provider = null, ?string $model = null, ?string $apiKey = null): array
+    /**
+     * @param  array<int, array{base64: string, mime_type: string}>  $images
+     */
+    public function generate(Page $page, ?string $provider = null, ?string $model = null, ?string $apiKey = null, array $images = []): array
     {
         $provider ??= (string) config('llm.default_provider', 'anthropic');
         $page->forceFill(['status' => 'generating'])->save();
 
         try {
-            $this->events->record($page, 'stage_started', 'section_generator', 'info', 'Designing raw Tailwind HTML.');
-            $section = $this->sections->generate($page, $provider, $model, $apiKey);
+            $this->events->record($page, 'stage_started', 'section_generator', 'info', 'Designing raw Tailwind HTML.', payload: [
+                'reference_images' => count($images),
+            ]);
+            $section = $this->sections->generate($page, $provider, $model, $apiKey, $images);
             $rawHtml = $this->cleanHtml($section->html);
             if ($rawHtml === '') {
                 throw new HtmlValidationException(['Section generator returned empty HTML.']);
@@ -105,9 +110,12 @@ class Pipeline
         }
     }
 
-    public function edit(Page $page, string $targetId, string $instruction, ?string $provider = null, ?string $model = null, ?string $apiKey = null): array
+    /**
+     * @param  array<int, array{base64: string, mime_type: string}>  $images
+     */
+    public function edit(Page $page, string $targetId, string $instruction, ?string $provider = null, ?string $model = null, ?string $apiKey = null, array $images = []): array
     {
-        return $this->editMany($page, [$targetId], $instruction, $provider, $model, $apiKey);
+        return $this->editMany($page, [$targetId], $instruction, $provider, $model, $apiKey, $images);
     }
 
     /**
@@ -285,8 +293,9 @@ class Pipeline
 
     /**
      * @param  array<int, string>  $targetIds
+     * @param  array<int, array{base64: string, mime_type: string}>  $images
      */
-    public function editMany(Page $page, array $targetIds, string $instruction, ?string $provider = null, ?string $model = null, ?string $apiKey = null): array
+    public function editMany(Page $page, array $targetIds, string $instruction, ?string $provider = null, ?string $model = null, ?string $apiKey = null, array $images = []): array
     {
         $provider ??= (string) config('llm.default_provider', 'anthropic');
         $targetIds = array_values(array_unique(array_filter(
@@ -299,11 +308,12 @@ class Pipeline
             $this->events->record($page, 'edit_requested', 'targeted_edit', 'info', count($targetIds) > 1 ? 'Editing selected block range.' : 'Editing selected block.', $eventTargetId, [
                 'instruction' => $instruction,
                 'target_ids' => $targetIds,
+                'reference_images' => count($images),
             ]);
         }
 
         try {
-            $result = $this->targetedEdit->editMany($page, $targetIds, $instruction, $provider, $model, $apiKey);
+            $result = $this->targetedEdit->editMany($page, $targetIds, $instruction, $provider, $model, $apiKey, $images);
             $htmlSource = $this->blockIndexer->replaceBlocks(
                 (string) ($page->html_source ?? ''),
                 $targetIds,
