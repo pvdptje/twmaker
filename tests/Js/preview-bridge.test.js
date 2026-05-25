@@ -355,7 +355,7 @@ describe('preview bridge', () => {
         expect(document.querySelector('p').textContent).toBe('Better website copy here.');
     });
 
-    it('streams partial html into a placeholder while hiding the original blocks', () => {
+    it('pulses original blocks until streamed html arrives, then swaps to a placeholder', () => {
         const { document, window } = bootPreview(`<body>
             <main>
                 <!-- tw:block id="block_hero" type="hero" label="Hero" -->
@@ -374,11 +374,27 @@ describe('preview bridge', () => {
             data: { type: 'stream-block-range-start', targetIds: ['block_hero', 'block_features'] },
         }));
 
-        const placeholder = document.querySelector('[data-builder-stream-placeholder="true"]');
-        expect(placeholder).not.toBeNull();
-        expect(document.querySelector('[data-builder-block-id="block_hero"]').style.display).toBe('none');
-        expect(document.querySelector('[data-builder-block-id="block_features"]').style.display).toBe('none');
+        const hero = document.querySelector('[data-builder-block-id="block_hero"]');
+        const features = document.querySelector('[data-builder-block-id="block_features"]');
+        expect(document.querySelector('#builder-streaming-styles')).not.toBeNull();
+        expect(document.querySelector('[data-builder-stream-placeholder="true"]')).toBeNull();
+        expect(hero.classList.contains('builder-stream-pending')).toBe(true);
+        expect(features.classList.contains('builder-stream-pending')).toBe(true);
+        expect(hero.style.display).toBe('');
+        expect(features.style.display).toBe('');
         expect(document.querySelector('[data-builder-block-id="block_footer"]').style.display).toBe('');
+
+        window.dispatchEvent(new window.MessageEvent('message', {
+            data: {
+                type: 'stream-block-range-update',
+                targetIds: ['block_hero', 'block_features'],
+                html: "\n",
+            },
+        }));
+
+        expect(document.querySelector('[data-builder-stream-placeholder="true"]')).toBeNull();
+        expect(hero.classList.contains('builder-stream-pending')).toBe(true);
+        expect(features.classList.contains('builder-stream-pending')).toBe(true);
 
         window.dispatchEvent(new window.MessageEvent('message', {
             data: {
@@ -388,6 +404,12 @@ describe('preview bridge', () => {
             },
         }));
 
+        const placeholder = document.querySelector('[data-builder-stream-placeholder="true"]');
+        expect(placeholder).not.toBeNull();
+        expect(hero.classList.contains('builder-stream-pending')).toBe(false);
+        expect(features.classList.contains('builder-stream-pending')).toBe(false);
+        expect(hero.style.display).toBe('none');
+        expect(features.style.display).toBe('none');
         expect(placeholder.innerHTML).toContain('Streaming...');
         expect(placeholder.querySelector('article').dataset.builderBlockId).toBe('block_hero');
 
@@ -424,13 +446,16 @@ describe('preview bridge', () => {
             data: { type: 'stream-block-range-start', targetIds: ['block_hero'] },
         }));
 
-        expect(document.querySelector('[data-builder-block-id="block_hero"]').style.display).toBe('none');
+        expect(document.querySelector('[data-builder-stream-placeholder="true"]')).toBeNull();
+        expect(document.querySelector('[data-builder-block-id="block_hero"]').classList.contains('builder-stream-pending')).toBe(true);
+        expect(document.querySelector('[data-builder-block-id="block_hero"]').style.display).toBe('flex');
 
         window.dispatchEvent(new window.MessageEvent('message', {
             data: { type: 'stream-block-range-cancel', targetIds: ['block_hero'] },
         }));
 
         expect(document.querySelector('[data-builder-stream-placeholder="true"]')).toBeNull();
+        expect(document.querySelector('[data-builder-block-id="block_hero"]').classList.contains('builder-stream-pending')).toBe(false);
         expect(document.querySelector('[data-builder-block-id="block_hero"]').style.display).toBe('flex');
         expect(document.querySelector('h1').textContent).toBe('Original');
     });

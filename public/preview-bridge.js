@@ -281,6 +281,62 @@
             });
     }
 
+    function ensureStreamingStyles() {
+        if (document.getElementById('builder-streaming-styles')) {
+            return;
+        }
+
+        const style = document.createElement('style');
+        style.id = 'builder-streaming-styles';
+        style.textContent = `
+@keyframes builder-targeted-edit-pending {
+  0%, 100% { opacity: 1; filter: saturate(1); }
+  50% { opacity: 0.42; filter: saturate(0.72); }
+}
+.builder-stream-pending {
+  animation: builder-targeted-edit-pending 1600ms ease-in-out infinite;
+  pointer-events: none;
+}
+`;
+        (document.head || document.documentElement).appendChild(style);
+    }
+
+    function markStreamingRoots(roots) {
+        ensureStreamingStyles();
+
+        return roots.map((root) => {
+            root.classList.add('builder-stream-pending');
+
+            return {
+                root,
+                previousDisplay: root.style.display,
+            };
+        });
+    }
+
+    function insertStreamingPlaceholder(state) {
+        if (state.placeholder?.isConnected) {
+            return true;
+        }
+
+        const firstRoot = state.hiddenRoots?.[0]?.root || null;
+        const parent = firstRoot?.parentNode || null;
+        if (!parent) {
+            return false;
+        }
+
+        state.placeholder = document.createElement('div');
+        state.placeholder.dataset.builderStreamPlaceholder = 'true';
+        parent.insertBefore(state.placeholder, firstRoot);
+
+        state.hiddenRoots.forEach(({ root }) => {
+            root.classList.remove('builder-stream-pending');
+            root.style.display = 'none';
+        });
+
+        return true;
+    }
+
     function startStreamingRange(targetIds) {
         if (streamingRange) {
             cancelStreamingRange();
@@ -295,22 +351,11 @@
             return false;
         }
 
-        const parent = roots[0].parentNode;
-        if (!parent) {
-            return false;
-        }
-
-        const placeholder = document.createElement('div');
-        placeholder.dataset.builderStreamPlaceholder = 'true';
-        parent.insertBefore(placeholder, roots[0]);
-
-        const hiddenRoots = roots.map((root) => ({
-            root,
-            previousDisplay: root.style.display,
-        }));
-        hiddenRoots.forEach(({ root }) => { root.style.display = 'none'; });
-
-        streamingRange = { targetIds: targetIds.slice(), placeholder, hiddenRoots };
+        streamingRange = {
+            targetIds: targetIds.slice(),
+            placeholder: null,
+            hiddenRoots: markStreamingRoots(roots),
+        };
         clearSelection();
 
         return true;
@@ -321,6 +366,14 @@
             if (!startStreamingRange(targetIds)) {
                 return false;
             }
+        }
+
+        if (String(html || '').trim() === '') {
+            return true;
+        }
+
+        if (!insertStreamingPlaceholder(streamingRange)) {
+            return false;
         }
 
         streamingRange.placeholder.innerHTML = String(html || '');
@@ -335,6 +388,8 @@
                 return;
             }
 
+            root.classList.remove('builder-stream-pending');
+
             if (previousDisplay) {
                 root.style.display = previousDisplay;
             } else {
@@ -348,7 +403,7 @@
             return;
         }
 
-        streamingRange.placeholder.remove();
+        streamingRange.placeholder?.remove();
         restoreHiddenRoots(streamingRange);
         streamingRange = null;
     }
