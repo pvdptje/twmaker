@@ -13,6 +13,8 @@ class ProjectHtmlDownloadController extends Controller
 {
     public function __invoke(Project $project, Renderer $renderer): BinaryFileResponse
     {
+        abort_unless($this->canAccessProject($project), 404);
+
         $pages = $project->pages()
             ->whereNotNull('html_source')
             ->oldest()
@@ -69,5 +71,14 @@ class ProjectHtmlDownloadController extends Controller
         $usedFilenames[$filename] = true;
 
         return $filename;
+    }
+
+    private function canAccessProject(Project $project): bool
+    {
+        $teamId = $project->team_id;
+
+        return is_string($teamId)
+            && $teamId !== ''
+            && auth()->user()->teams()->whereKey($teamId)->exists();
     }
 }

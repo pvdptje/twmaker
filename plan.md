@@ -2,6 +2,7 @@
 
 > Status: living product and architecture plan.
 > Last rewritten: 2026-05-25.
+> Current track: V1 is complete. V1.1 adds basic authentication and invisible team ownership.
 > Companion file: `progress.md` is the historical session log. It is useful context, but this file is the current north star.
 > Encoding: ASCII only.
 
@@ -36,10 +37,24 @@ The key breakthrough is that the page is plain marked HTML, not a rigid JSON com
 - Not Webflow.
 - Not Figma.
 - Not a CMS.
-- Not a multi-user product.
+- Not a full multi-user collaboration product.
 - Not a hosted publishing platform.
-- Not an auth/RBAC system.
+- Not an RBAC system.
 - Not a drag-and-drop absolute layout editor.
+
+### What V1.1 Is
+
+- Basic email/password authentication.
+- Strong password requirements.
+- A default invisible team for every user.
+- Team-owned projects and pages.
+- Shared access for users who are members of the same team.
+
+### What V1.1 Is Not
+
+- No email verification yet.
+- No public team setup UI yet.
+- No roles, permissions, invites, or billing.
 
 ---
 
@@ -107,6 +122,16 @@ The workspace is a four-area builder:
 - Canvas: iframe preview with streaming and quick edit.
 - Right inspector: selected block summary and targeted edit form.
 - Stream panel: persisted events, live chunks, status, usage, and estimated cost where pricing is known.
+
+### Current Auth Direction
+
+V1.1 adds the minimum account boundary needed for real use:
+
+- Routes require login except login/register actions.
+- Every user receives a default team at registration.
+- Projects and pages are saved with `team_id`.
+- A user may access/edit projects and pages only through a team they belong to.
+- There is no permission layer inside a team yet.
 
 ---
 
@@ -499,11 +524,22 @@ A change is done when:
 
 ## 14. Near-Term Plan
 
-### P0: Keep The Fast Builder Feeling
+### P0: V1.1 Basic Auth And Team Ownership
+
+Add the account foundation without changing the builder workflow:
+
+- Users can register, log in, and log out.
+- Passwords must be strong.
+- Email verification is intentionally deferred.
+- Teams exist invisibly, with a default team per user.
+- Projects and pages are team-owned and scoped through team membership.
+- Existing builder operations keep their current speed and streaming behavior.
+
+### P1: Keep The Fast Builder Feeling
 
 The current system feels fast because preview updates are incremental, Livewire state is slim, and streams are throttled. Preserve that. Any feature that pushes full HTML through Livewire state, bloats broadcast payloads, or remounts the iframe unnecessarily should be treated as a regression.
 
-### P1: Stale Selection And Malformed Edit UX
+### P2: Stale Selection And Malformed Edit UX
 
 Improve inspector handling when:
 
@@ -514,7 +550,7 @@ Improve inspector handling when:
 
 The user should see a calm, actionable message and the UI should clear or repair stale selection state.
 
-### P2: Enhancement Completion Browser Pass
+### P3: Enhancement Completion Browser Pass
 
 Manually verify enhancement completion in the browser without a hard refresh:
 
@@ -524,7 +560,7 @@ Manually verify enhancement completion in the browser without a hard refresh:
 - Terminal events with small payloads.
 - Preview refresh and section tree refresh.
 
-### P3: Version History UX
+### P4: Version History UX
 
 Version snapshots exist. The next useful layer is a restore UI:
 
@@ -533,7 +569,7 @@ Version snapshots exist. The next useful layer is a restore UI:
 - Restore a version into `pages.html_source`.
 - Snapshot the current version before restore.
 
-### P4: Export Polish
+### P5: Export Polish
 
 Decide whether public export should strip marker comments by default, or offer both:
 
@@ -542,11 +578,11 @@ Decide whether public export should strip marker comments by default, or offer b
 
 Also consider optional CSS inlining or a no-CDN export later.
 
-### P5: Model Cost Coverage
+### P6: Model Cost Coverage
 
 Expand `config/llm_pricing.php` only for models we actually use. Keep unknown models graceful. Do not guess prices casually.
 
-### P6: Related Page Workflow
+### P7: Related Page Workflow
 
 Make related page generation more visible in the UI:
 
@@ -554,7 +590,7 @@ Make related page generation more visible in the UI:
 - Preserve header/footer where useful.
 - Keep style continuity.
 
-### P7: Prompt And Provider Hardening
+### P8: Prompt And Provider Hardening
 
 Continue hardening around provider quirks:
 
@@ -607,3 +643,15 @@ V1 is successful when a user can:
 - Download usable HTML for one page or a whole project.
 
 That is the product now. Keep leaning into the marked-HTML system. It is the part that made the builder versatile, fast, and genuinely pleasant to use.
+
+## 18. End State For V1.1
+
+V1.1 is successful when:
+
+- Guests cannot access builder routes.
+- Users can register and log in with strong passwords.
+- New users automatically receive an invisible default team.
+- New projects and pages are saved to that team.
+- Team members can access and edit team projects/pages.
+- Users outside the team receive 404s for those projects/pages.
+- The existing generation, enhancement, edit, stream, export, and version flows keep passing.

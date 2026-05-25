@@ -89,6 +89,7 @@ class LeftSidebar extends Component
         $newPage = Page::query()->create([
             'id' => app(IdGenerator::class)->page(),
             'project_id' => $this->project->id,
+            'team_id' => $this->project->team_id,
             'name' => trim((string) $validated['relatedPageName']),
             'prompt' => $prompt,
             'html_source' => null,

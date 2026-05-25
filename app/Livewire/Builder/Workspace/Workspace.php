@@ -37,6 +37,8 @@ class Workspace extends Component
     public function mount(Project $project, Page $page): void
     {
         abort_unless($page->project_id === $project->id, 404);
+        abort_unless($this->canAccessProject($project), 404);
+        abort_unless($page->team_id === $project->team_id, 404);
 
         $this->project = $project;
         $this->page = $page;
@@ -150,6 +152,15 @@ class Workspace extends Component
             (string) $page->updated_at,
             md5((string) ($page->html_source ?? '')),
         ]));
+    }
+
+    private function canAccessProject(Project $project): bool
+    {
+        $teamId = $project->team_id;
+
+        return is_string($teamId)
+            && $teamId !== ''
+            && auth()->user()->teams()->whereKey($teamId)->exists();
     }
 
     private function slimBlockIndex(array $blocks): array

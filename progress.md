@@ -4,12 +4,15 @@
 > Encoding: pure ASCII. Do not introduce non-ASCII characters when editing.
 
 ## Current Milestone
-M5 - Targeted Editing and Reusable Elements
+V1.1 - Basic Authentication And Invisible Teams
 
 ## Status
 done
 
 ## Completed Tasks
+- [2026-05-25] V1.acceptance: V1 is complete; the builder supports marked-HTML generation, targeted edits, section insert/remove/reorder, quick element edits, full-document enhancements, live preview streaming, versions, and HTML export.
+- [2026-05-25] V1.1.scope: started basic auth and team ownership. Users get invisible default teams; projects/pages are scoped to team membership; no email verification, role layer, invites, or team setup UI yet.
+- [2026-05-25] V1.1.auth-teams: added users, strong-password registration, login/logout, invisible teams, team membership, team-scoped projects/pages, team access checks, and auth coverage.
 - [2026-05-20] spec: `plan.md` R1 drafted as canonical V1 specification.
 - [2026-05-20] spec: `progress.md` initialized with Sec. 22 protocol shape.
 - [2026-05-20] spec: `plan.md` R2 applied. Four corrections locked.
@@ -436,3 +439,4 @@ done
 - M5 enhancement refresh verification passed: `vendor\bin\pint --dirty`, `php artisan test tests\Feature\Generation\PipelineTest.php --filter=enhances_document` (1 test), `php artisan test tests\Feature\BuilderShellTest.php --filter=workspace_refreshes_generated_html_state_when_broadcast_finishes` (1 test), and `php artisan test` (179 tests, 427 assertions).
 - M5 project/page list actions verification passed: `vendor\bin\pint.bat --dirty`, `php artisan test tests\Feature\BuilderShellTest.php` (49 tests, 190 assertions), `php artisan test` (191 tests, 469 assertions), `npm.cmd run build`, and `npm.cmd run test:js` (20 tests).
 - M5 project index page counts verification passed: `vendor\bin\pint.bat --dirty`, `php artisan test tests\Feature\BuilderShellTest.php` (50 tests, 193 assertions), `php artisan test` (192 tests, 472 assertions), `npm.cmd run build`, and `npm.cmd run test:js` (20 tests).
+- V1.1 auth/team verification passed: `php artisan migrate:fresh --no-interaction`, `vendor\bin\pint.bat --dirty`, `php artisan test tests\Feature\AuthTest.php tests\Feature\ExampleTest.php`, `php artisan test tests\Feature\BuilderShellTest.php`, `php artisan test tests\Feature\Generation\PipelineTest.php tests\Feature\Generation\GeneratePageJobTest.php`, `php artisan test` (205 tests, 532 assertions), `npm.cmd run test:js` (41 tests), `npm.cmd run build`, and `php artisan migrate:fresh --no-interaction --seed`.

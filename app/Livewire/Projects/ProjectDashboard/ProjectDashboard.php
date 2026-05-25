@@ -24,6 +24,8 @@ class ProjectDashboard extends Component
 
     public function mount(Project $project): void
     {
+        abort_unless($this->canAccessProject($project), 404);
+
         $this->project = $project;
     }
 
@@ -37,6 +39,7 @@ class ProjectDashboard extends Component
         $page = Page::query()->create([
             'id' => $ids->page(),
             'project_id' => $this->project->id,
+            'team_id' => $this->project->team_id,
             'name' => $validated['name'],
             'prompt' => $validated['prompt'] ?: '',
             'html_source' => null,
@@ -97,5 +100,14 @@ class ProjectDashboard extends Component
         return view()->file(__DIR__.'/project-dashboard.blade.php', [
             'pages' => $this->project->pages()->latest()->get(),
         ])->layout('components.layouts.app', ['title' => $this->project->name]);
+    }
+
+    private function canAccessProject(Project $project): bool
+    {
+        $teamId = $project->team_id;
+
+        return is_string($teamId)
+            && $teamId !== ''
+            && auth()->user()->teams()->whereKey($teamId)->exists();
     }
 }

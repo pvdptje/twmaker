@@ -23,6 +23,7 @@ use App\Livewire\Setup\LlmSetup;
 use App\Models\Page;
 use App\Models\PageVersion;
 use App\Models\Project;
+use App\Models\User;
 use App\Services\Html\BlockIndexer;
 use App\Services\Ids\IdGenerator;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -35,6 +36,17 @@ use Tests\TestCase;
 class BuilderShellTest extends TestCase
 {
     use RefreshDatabase;
+
+    private User $user;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->user = User::factory()->create();
+        $this->user->createDefaultTeam();
+        $this->actingAs($this->user);
+    }
 
     public function test_project_list_creates_a_project(): void
     {

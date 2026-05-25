@@ -2,7 +2,7 @@
 
 namespace App\Livewire\Projects\ProjectList;
 
-use App\Models\Project;
+use App\Models\Team;
 use App\Services\Ids\IdGenerator;
 use Illuminate\Contracts\View\View;
 use Livewire\Component;
@@ -26,7 +26,7 @@ class ProjectList extends Component
             'description' => ['nullable', 'string'],
         ]);
 
-        $project = Project::query()->create([
+        $project = $this->currentTeam()->projects()->create([
             'id' => $ids->project(),
             'name' => $validated['name'],
             'description' => $validated['description'] ?: null,
@@ -38,7 +38,7 @@ class ProjectList extends Component
 
     public function startRenamingProject(string $projectId): void
     {
-        $project = Project::query()->findOrFail($projectId);
+        $project = $this->currentTeam()->projects()->findOrFail($projectId);
 
         $this->editingProjectId = $project->id;
         $this->editingProjectName = $project->name;
@@ -61,7 +61,7 @@ class ProjectList extends Component
             'editingProjectDescription' => ['nullable', 'string'],
         ]);
 
-        $project = Project::query()->findOrFail($this->editingProjectId);
+        $project = $this->currentTeam()->projects()->findOrFail($this->editingProjectId);
 
         $project->update([
             'name' => $validated['editingProjectName'],
@@ -73,7 +73,7 @@ class ProjectList extends Component
 
     public function deleteProject(string $projectId): void
     {
-        Project::query()->findOrFail($projectId)->delete();
+        $this->currentTeam()->projects()->findOrFail($projectId)->delete();
 
         if ($this->editingProjectId === $projectId) {
             $this->cancelRenamingProject();
@@ -83,7 +83,15 @@ class ProjectList extends Component
     public function render(): View
     {
         return view()->file(__DIR__.'/project-list.blade.php', [
-            'projects' => Project::query()->withCount('pages')->latest()->get(),
+            'projects' => $this->currentTeam()->projects()->withCount('pages')->latest()->get(),
         ])->layout('components.layouts.app', ['title' => 'Projects']);
+    }
+
+    private function currentTeam(): Team
+    {
+        $user = auth()->user();
+        abort_unless($user !== null, 403);
+
+        return $user->createDefaultTeam();
     }
 }

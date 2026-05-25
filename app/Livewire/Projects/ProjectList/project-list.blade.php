@@ -5,6 +5,12 @@
                 <a href="{{ route('setup.llm') }}" wire:navigate class="inline-flex h-10 items-center rounded border border-neutral-700 bg-neutral-900 px-4 text-sm font-medium text-white transition-colors hover:bg-neutral-800">
                     LLM setup
                 </a>
+                <form method="POST" action="{{ route('logout') }}">
+                    @csrf
+                    <button type="submit" class="inline-flex h-10 items-center rounded border border-neutral-700 bg-neutral-900 px-4 text-sm font-medium text-neutral-200 transition-colors hover:bg-neutral-800 hover:text-white">
+                        Log out
+                    </button>
+                </form>
             </x-slot:actions>
         </x-page-header>
 

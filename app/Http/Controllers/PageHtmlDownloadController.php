@@ -13,6 +13,8 @@ class PageHtmlDownloadController extends Controller
     public function __invoke(Project $project, Page $page, Renderer $renderer): Response
     {
         abort_unless($page->project_id === $project->id, 404);
+        abort_unless($this->canAccessProject($project), 404);
+        abort_unless($page->team_id === $project->team_id, 404);
 
         $htmlSource = trim((string) ($page->html_source ?? ''));
         abort_if($htmlSource === '', 404);
@@ -22,5 +24,14 @@ class PageHtmlDownloadController extends Controller
         return response($renderer->renderDownloadHtml($htmlSource, $page->name))
             ->header('Content-Type', 'text/html; charset=UTF-8')
             ->header('Content-Disposition', 'attachment; filename="'.$filename.'.html"');
+    }
+
+    private function canAccessProject(Project $project): bool
+    {
+        $teamId = $project->team_id;
+
+        return is_string($teamId)
+            && $teamId !== ''
+            && auth()->user()->teams()->whereKey($teamId)->exists();
     }
 }

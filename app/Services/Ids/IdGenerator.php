@@ -9,6 +9,7 @@ class IdGenerator
 {
     private const PREFIXES = [
         'project' => 'proj_',
+        'team' => 'team_',
         'page' => 'page_',
         'page_version' => 'ver_',
         'section' => 'sec_',
@@ -30,6 +31,11 @@ class IdGenerator
     public function project(): string
     {
         return $this->make('project');
+    }
+
+    public function team(): string
+    {
+        return $this->make('team');
     }
 
     public function page(): string
