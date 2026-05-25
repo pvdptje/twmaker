@@ -432,6 +432,53 @@ HTML;
         $this->assertStringContainsString('Trusted by careful teams', $snapshot['html']);
     }
 
+    public function test_pipeline_edits_group_wrapper_without_nested_blocks(): void
+    {
+        [$project, $page] = $this->makePage('A developer tool landing page');
+
+        $page->forceFill([
+            'html_source' => <<<'HTML'
+<!-- tw:group id="block_features" type="features" label="Features" -->
+<section class="bg-white px-6 py-20">
+  <h2>Old features</h2>
+  <!-- tw:block id="block_card_1" type="card" label="Card 1" -->
+  <article>One</article>
+  <!-- /tw:block -->
+  <!-- tw:block id="block_card_2" type="card" label="Card 2" -->
+  <article>Two</article>
+  <!-- /tw:block -->
+</section>
+<!-- /tw:group -->
+HTML,
+            'status' => 'valid',
+        ])->save();
+
+        $replacement = <<<'HTML'
+<!-- tw:group id="draft_features" type="features" label="Features" -->
+<section class="bg-slate-950 px-6 py-24 text-white">
+  <h2>Sharper features</h2>
+  <!-- tw:block id="block_card_1" type="card" label="Card 1" -->
+  <article>One improved</article>
+  <!-- /tw:block -->
+  <!-- tw:block id="block_card_2" type="card" label="Card 2" -->
+  <article>Two improved</article>
+  <!-- /tw:block -->
+</section>
+<!-- /tw:group -->
+HTML;
+
+        $this->app->instance(LlmProvider::class, new FakeTargetedEditProvider($replacement));
+
+        app(Pipeline::class)->edit($page, 'block_features', 'Make the whole features section darker.');
+
+        $page->refresh();
+
+        $this->assertSame('valid', $page->status);
+        $this->assertStringContainsString('tw:group id="block_features"', $page->html_source);
+        $this->assertStringContainsString('Sharper features', $page->html_source);
+        $this->assertSame(['block_card_1', 'block_card_2'], array_column(app(BlockIndexer::class)->index($page->html_source), 'id'));
+    }
+
     public function test_pipeline_streams_targeted_edit_html_source(): void
     {
         [$project, $page] = $this->makePage('A developer tool landing page');
@@ -486,6 +533,7 @@ HTML,
 <!-- tw:block id="block_hero" type="hero" label="Hero" -->
 <section class="bg-neutral-950 px-6 py-24 text-white"><h1>Ship pages with marked blocks</h1></section>
 <!-- /tw:block -->
+<!-- tw:group id="block_testimonials" type="testimonials" label="Testimonials" -->
 <section class="bg-white px-6 py-20">
   <div class="mx-auto grid max-w-6xl gap-6 md:grid-cols-2">
     <!-- tw:block id="draft_testimonial_ana" type="testimonial" label="Testimonial - Ana" -->
@@ -496,6 +544,7 @@ HTML,
     <!-- /tw:block -->
   </div>
 </section>
+<!-- /tw:group -->
 HTML;
         $provider = new FakeTargetedEditProvider($granularized);
 
@@ -515,7 +564,7 @@ HTML;
         $this->assertSame('block_hero', $blockIndex[0]['id']);
         $this->assertStringStartsWith('sec_', $blockIndex[1]['id']);
         $this->assertStringStartsWith('sec_', $blockIndex[2]['id']);
-        $this->assertStringNotContainsString('block_testimonials', $page->html_source);
+        $this->assertStringContainsString('tw:group id="block_testimonials"', $page->html_source);
         $this->assertStringContainsString('Enhancement request', (string) $provider->lastTextRequest?->userPrompt);
         $this->assertStringContainsString('Current complete HTML document', (string) $provider->lastTextRequest?->userPrompt);
         $this->assertDatabaseHas('generation_events', [
@@ -559,7 +608,7 @@ HTML;
         $page->refresh();
 
         $this->assertSame('valid', $page->status);
-        $this->assertStringNotContainsString('block_outer', $page->html_source);
+        $this->assertStringContainsString('tw:group id="block_outer"', $page->html_source);
         $this->assertStringContainsString('type="card" label="Inner"', $page->html_source);
         $this->assertStringContainsString('<section>', $page->html_source);
         $this->assertDatabaseHas('generation_events', [

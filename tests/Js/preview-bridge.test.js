@@ -138,6 +138,49 @@ describe('preview bridge', () => {
         expect(document.querySelector('p').classList.contains('builder-selected')).toBe(false);
     });
 
+    it('treats tw:group wrappers as selectable parents while child blocks stay selectable', () => {
+        const { document, messages, window } = bootPreview(`<body>
+            <!-- tw:group id="block_features" type="features" label="Features" -->
+            <section>
+                <h2>Features</h2>
+                <!-- tw:block id="block_card" type="card" label="Card" -->
+                <article><p>Fast</p></article>
+                <!-- /tw:block -->
+            </section>
+            <!-- /tw:group -->
+        </body>`);
+
+        document.querySelector('h2').dispatchEvent(new window.MouseEvent('click', {
+            bubbles: true,
+            cancelable: true,
+        }));
+
+        expect(document.querySelector('section').dataset.builderBlockId).toBe('block_features');
+        expect(document.querySelector('section').dataset.builderMarkerKind).toBe('group');
+        expect(messages[0].payload).toMatchObject({
+            type: 'builder:node-selected',
+            nodeId: 'block_features',
+            quickEdit: {
+                editId: 'block_features:0',
+                blockId: 'block_features',
+                tagName: 'h2',
+            },
+        });
+
+        document.querySelector('p').dispatchEvent(new window.MouseEvent('click', {
+            bubbles: true,
+            cancelable: true,
+        }));
+
+        expect(messages[1].payload).toMatchObject({
+            nodeId: 'block_card',
+            quickEdit: {
+                editId: 'block_card:0',
+                blockId: 'block_card',
+            },
+        });
+    });
+
     it('draws the overlay around the marked block root when a child is clicked', () => {
         const { document, window } = bootPreview(`<body>
             <!-- tw:block id="block_hero" type="hero" label="Hero" -->

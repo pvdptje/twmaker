@@ -160,6 +160,10 @@ class Workspace extends Component
                 'type' => (string) ($block['type'] ?? 'block'),
                 'label' => (string) ($block['label'] ?? $block['type'] ?? 'Block'),
                 'summary' => (string) ($block['summary'] ?? ''),
+                'kind' => (string) ($block['kind'] ?? 'block'),
+                'parent_id' => $block['parent_id'] ?? null,
+                'depth' => (int) ($block['depth'] ?? 0),
+                'child_count' => (int) ($block['child_count'] ?? 0),
             ],
             $blocks,
         );
@@ -169,7 +173,7 @@ class Workspace extends Component
     {
         $html = (string) ($page->html_source ?? '');
 
-        return trim($html) === '' ? [] : app(BlockIndexer::class)->index($html);
+        return trim($html) === '' ? [] : app(BlockIndexer::class)->indexOutline($html);
     }
 
     private function snapshotQuickEditVersion(string $editId, string $updatedHtml): void

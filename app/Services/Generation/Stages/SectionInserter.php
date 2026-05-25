@@ -35,7 +35,7 @@ class SectionInserter
         $provider ??= (string) config('llm.default_provider', 'anthropic');
         $position = $position === 'before' ? 'before' : 'after';
         $htmlSource = (string) ($page->html_source ?? '');
-        $blockIndex = $this->blocks->index($htmlSource);
+        $blockIndex = $this->blocks->indexSelectable($htmlSource);
         $anchorBlock = $this->resolveAnchor($blockIndex, $anchorBlockId);
         $existingIds = array_column($blockIndex, 'id');
 

@@ -140,7 +140,7 @@ class Pipeline
 
         try {
             $result = $this->sectionInserter->insert($page, $eventTargetId, $position, $instruction, $provider, $model, $apiKey, $images);
-            $htmlSource = $this->blockIndexer->insertBlocks(
+            $htmlSource = $this->blockIndexer->insertSelectable(
                 (string) ($page->html_source ?? ''),
                 (string) ($eventTargetId ?? ''),
                 $position,
@@ -346,7 +346,7 @@ class Pipeline
     {
         return $this->enhanceDocument(
             $page,
-            'Add more granular editable tw:block regions around repeated meaningful content such as testimonial cards, feature cards, pricing cards, FAQ rows, stats, logos, gallery items, and CTA groups. When splitting a coarse parent into child blocks, remove the parent block markers completely and keep the container as plain unmarked HTML so tw:block markers are never nested.',
+            'Add more granular editable tw:block regions around repeated meaningful content such as testimonial cards, feature cards, pricing cards, FAQ rows, stats, logos, gallery items, and CTA groups. When splitting a coarse parent into child blocks, convert the parent tw:block markers into tw:group wrapper markers so the parent container remains selectable while tw:block markers are never nested.',
             'Refined editable block markers.',
             $provider,
             $model,

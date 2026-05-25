@@ -94,7 +94,7 @@ class HtmlFragmentRepairer
         }
 
         $stack = [];
-        $removeRanges = [];
+        $replacements = [];
 
         foreach ($matches as $match) {
             $marker = $match[0][0];
@@ -110,6 +110,7 @@ class HtmlFragmentRepairer
                 $stack[] = [
                     'open_start' => $start,
                     'open_end' => $end,
+                    'open_marker' => $marker,
                     'has_child' => false,
                 ];
 
@@ -126,18 +127,22 @@ class HtmlFragmentRepairer
                 continue;
             }
 
-            $removeRanges[] = [$frame['open_start'], $frame['open_end']];
-            $removeRanges[] = [$start, $end];
+            $replacements[] = [
+                $frame['open_start'],
+                $frame['open_end'],
+                preg_replace('/tw:block\b/i', 'tw:group', $frame['open_marker'], 1) ?? $frame['open_marker'],
+            ];
+            $replacements[] = [$start, $end, '<!-- /tw:group -->'];
         }
 
-        if ($removeRanges === []) {
+        if ($replacements === []) {
             return $html;
         }
 
-        usort($removeRanges, fn (array $left, array $right): int => $right[0] <=> $left[0]);
+        usort($replacements, fn (array $left, array $right): int => $right[0] <=> $left[0]);
 
-        foreach ($removeRanges as [$start, $end]) {
-            $html = substr($html, 0, $start).substr($html, $end);
+        foreach ($replacements as [$start, $end, $replacement]) {
+            $html = substr($html, 0, $start).$replacement.substr($html, $end);
         }
 
         return $html;

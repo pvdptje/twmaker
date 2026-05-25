@@ -923,6 +923,10 @@ class BuilderShellTest extends TestCase
                     'type' => 'hero',
                     'label' => 'Hero',
                     'summary' => 'Hello',
+                    'kind' => 'block',
+                    'parent_id' => null,
+                    'depth' => 0,
+                    'child_count' => 0,
                 ],
             ]);
     }
@@ -956,12 +960,20 @@ HTML,
                     'type' => 'hero',
                     'label' => 'Hero',
                     'summary' => 'Hero',
+                    'kind' => 'block',
+                    'parent_id' => null,
+                    'depth' => 0,
+                    'child_count' => 0,
                 ],
                 [
                     'id' => 'block_features',
                     'type' => 'features',
                     'label' => 'Features',
                     'summary' => 'Features',
+                    'kind' => 'block',
+                    'parent_id' => null,
+                    'depth' => 0,
+                    'child_count' => 0,
                 ],
             ]);
     }

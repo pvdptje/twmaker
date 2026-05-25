@@ -23,6 +23,9 @@ class LeftSidebar extends Component
     public array $blockIndex = [];
 
     #[Reactive]
+    public ?string $selectedNodeId = null;
+
+    #[Reactive]
     public array $selectedBlockIds = [];
 
     public bool $createRelatedOpen = false;

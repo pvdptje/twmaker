@@ -148,7 +148,7 @@
     x-init="
         loadSelection();
         if (! Alpine.store('sectionDrag')) {
-            Alpine.store('sectionDrag', { sourceId: null });
+            Alpine.store('sectionDrag', { sourceId: null, parentId: null });
         }
     "
     x-on:builder-model-selection-changed.window="updateSelection($event)"
@@ -175,7 +175,16 @@
         @forelse ($sections as $section)
             @php($id = $section['id'] ?? '')
             @php($label = $section['label'] ?? $section['type'] ?? 'block')
-            @php($isSelected = in_array($id, $selectedBlockIds, true))
+            @php($kind = $section['kind'] ?? 'block')
+            @php($isGroup = $kind === 'group')
+            @php($parentId = $section['parent_id'] ?? null)
+            @php($depth = (int) ($section['depth'] ?? 0))
+            @php($childCount = (int) ($section['child_count'] ?? 0))
+            @php($isMultiSelected = in_array($id, $selectedBlockIds, true))
+            @php($isSelected = $selectedNodeId === $id || $isMultiSelected)
+            @php($rowClasses = $isSelected
+                ? ($isGroup ? 'border-cyan-500/35 bg-neutral-950 ring-1 ring-cyan-500/30' : 'bg-neutral-950 ring-1 ring-cyan-500/30')
+                : ($isGroup ? 'border-neutral-800 bg-neutral-950/60 hover:border-neutral-700 hover:bg-neutral-950' : 'hover:bg-neutral-800/80'))
             @if ($insertOpen && $insertAnchorBlockId === $id && $insertPosition === 'before')
                 @include('builder._section-insert-form', [
                     'wrapperClasses' => 'mb-1 rounded-md border border-cyan-500/30 bg-neutral-950 p-2',
@@ -190,10 +199,10 @@
                 x-on:section-moved.window="if ($event.detail.sourceBlockId === @js($id)) moving = false"
                 x-on:section-move-failed.window="if ($event.detail.sourceBlockId === @js($id)) moving = false"
                 draggable="true"
-                x-on:dragstart="$store.sectionDrag.sourceId = @js($id); $event.dataTransfer.effectAllowed = 'move'; $event.dataTransfer.setData('text/plain', @js($id))"
-                x-on:dragend="$store.sectionDrag.sourceId = null; dropPosition = null"
+                x-on:dragstart="$store.sectionDrag.sourceId = @js($id); $store.sectionDrag.parentId = @js($parentId); $event.dataTransfer.effectAllowed = 'move'; $event.dataTransfer.setData('text/plain', @js($id))"
+                x-on:dragend="$store.sectionDrag.sourceId = null; $store.sectionDrag.parentId = null; dropPosition = null"
                 x-on:dragover.prevent="
-                    if (! $store.sectionDrag.sourceId || $store.sectionDrag.sourceId === @js($id)) { dropPosition = null; return; }
+                    if (! $store.sectionDrag.sourceId || $store.sectionDrag.sourceId === @js($id) || $store.sectionDrag.parentId !== @js($parentId)) { dropPosition = null; return; }
                     $event.dataTransfer.dropEffect = 'move';
                     const rect = $event.currentTarget.getBoundingClientRect();
                     dropPosition = ($event.clientY - rect.top) < rect.height / 2 ? 'before' : 'after';
@@ -204,6 +213,7 @@
                     const position = dropPosition;
                     dropPosition = null;
                     $store.sectionDrag.sourceId = null;
+                    $store.sectionDrag.parentId = null;
                     if (! sourceId || ! position || sourceId === @js($id)) return;
                     moving = true;
                     $wire.moveBlock(sourceId, @js($id), position);
@@ -212,7 +222,7 @@
                     'opacity-40': $store.sectionDrag.sourceId === @js($id),
                     'opacity-60': moving,
                 }"
-                class="relative rounded-md cursor-grab active:cursor-grabbing {{ $isSelected ? 'bg-cyan-500/10 ring-1 ring-cyan-500/30' : 'hover:bg-neutral-800' }}"
+                class="relative {{ $depth > 0 ? 'ml-5' : '' }} {{ $isGroup ? 'mt-1 border' : '' }} rounded-md cursor-grab active:cursor-grabbing {{ $rowClasses }}"
             >
                 <div
                     x-show="dropPosition === 'before'"
@@ -224,21 +234,38 @@
                     x-cloak
                     class="pointer-events-none absolute inset-x-0 -bottom-0.5 h-0.5 rounded bg-cyan-400"
                 ></div>
+                @if ($depth > 0)
+                    <div class="pointer-events-none absolute -left-3 bottom-1/2 top-0 w-px bg-neutral-800"></div>
+                    <div class="pointer-events-none absolute -left-3 top-1/2 h-px w-3 bg-neutral-800"></div>
+                @endif
                 <div class="flex items-center gap-2 px-2 py-1.5">
-                    <input
-                        type="checkbox"
-                        @checked($isSelected)
-                        wire:click.stop="$dispatch('block-selection-toggled', { blockId: @js($id) })"
-                        class="h-4 w-4 rounded border-neutral-700 bg-neutral-950 text-cyan-400 focus:ring-cyan-400"
-                        aria-label="Include {{ $label }} in multi edit"
-                    >
+                    @if ($isGroup)
+                        <div
+                            class="flex h-4 w-4 shrink-0 items-center justify-center rounded border border-cyan-500/40 bg-cyan-500/10 text-[9px] font-bold text-cyan-200"
+                            title="Grouped section"
+                            aria-hidden="true"
+                        >G</div>
+                    @else
+                        <input
+                            type="checkbox"
+                            @checked($isMultiSelected)
+                            wire:click.stop="$dispatch('block-selection-toggled', { blockId: @js($id) })"
+                            class="h-4 w-4 rounded border-neutral-700 bg-neutral-950 text-cyan-400 focus:ring-cyan-400"
+                            aria-label="Include {{ $label }} in multi edit"
+                        >
+                    @endif
                     <button
                         type="button"
                         onclick="window.dispatchEvent(new CustomEvent('preview-selection-changed', { detail: { nodeId: @js($id), scrollIntoView: true } }))"
                         wire:click="$dispatch('node-selected', { nodeId: @js($id), scrollIntoView: true })"
                         class="min-w-0 flex-1 text-left text-sm text-neutral-200"
                     >
-                        <span class="block truncate">{{ $label }}</span>
+                        <span class="flex min-w-0 items-center gap-1.5">
+                            <span class="block truncate {{ $isGroup ? 'font-semibold text-white' : '' }}">{{ $label }}</span>
+                            @if ($isGroup)
+                                <span class="shrink-0 rounded-sm bg-neutral-800 px-1 text-[10px] font-medium uppercase tracking-normal text-neutral-400">{{ $childCount }}</span>
+                            @endif
+                        </span>
                         <span class="block truncate text-xs text-neutral-500">{{ $id }}</span>
                     </button>
                     <button

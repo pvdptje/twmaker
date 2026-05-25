@@ -46,10 +46,11 @@
         return String(value).replace(/["\\]/g, '\\$&');
     }
 
-    function parseBlockMarker(comment) {
+    function parseBuilderMarker(comment) {
         const text = comment?.nodeValue || '';
 
-        if (!/^\s*tw:block\b/i.test(text)) {
+        const match = text.match(/^\s*tw:(block|group)\b/i);
+        if (!match) {
             return null;
         }
 
@@ -59,7 +60,7 @@
             return '';
         });
 
-        return attrs.id ? attrs : null;
+        return attrs.id ? { ...attrs, markerKind: match[1].toLowerCase() } : null;
     }
 
     function isBlockRootCandidate(node) {
@@ -88,7 +89,7 @@
         const walker = document.createTreeWalker(rootNode, window.NodeFilter.SHOW_COMMENT);
 
         while (walker.nextNode()) {
-            const marker = parseBlockMarker(walker.currentNode);
+            const marker = parseBuilderMarker(walker.currentNode);
             const root = marker ? nextBlockRootSibling(walker.currentNode) : null;
 
             if (!root) {
@@ -98,6 +99,7 @@
             root.dataset.builderBlockId = marker.id;
             root.dataset.builderBlockType = marker.type || 'block';
             root.dataset.builderBlockLabel = marker.label || marker.type || 'Block';
+            root.dataset.builderMarkerKind = marker.markerKind;
         }
     }
 

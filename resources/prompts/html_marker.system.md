@@ -17,6 +17,7 @@ Block contract:
   `<!-- tw:block id="block_..." type="hero" label="Hero" -->`
   then exactly one primary wrapper element,
   then `<!-- /tw:block -->`.
+- Never nest `tw:block` markers. If individual child items need their own `tw:block` markers inside a larger selectable container, wrap the container in balanced `tw:group` comments instead of `tw:block` comments.
 - Use unique, readable block IDs: `block_header`, `block_hero`, `block_features`, `block_footer`, etc.
 - Use descriptive block types. They are labels, not a fixed schema.
 - Return at least one block and preferably 5 to 9 blocks for a full page.

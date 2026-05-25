@@ -51,6 +51,25 @@ class QuickElementEditorTest extends TestCase
         );
     }
 
+    public function test_replaces_element_inside_group_wrapper(): void
+    {
+        $html = <<<'HTML'
+<!-- tw:group id="block_features" type="features" label="Features" -->
+<section><h2>Old title</h2>
+  <!-- tw:block id="block_card" type="card" label="Card" -->
+  <article>Card</article>
+  <!-- /tw:block -->
+</section>
+<!-- /tw:group -->
+HTML;
+
+        $updated = $this->editor()->replace($html, 'block_features:0', '<h2>New title</h2>');
+
+        $this->assertStringContainsString('tw:group id="block_features"', $updated);
+        $this->assertStringContainsString('<h2>New title</h2>', $updated);
+        $this->assertStringContainsString('tw:block id="block_card"', $updated);
+    }
+
     private function editor(): QuickElementEditor
     {
         $blocks = new BlockIndexer;

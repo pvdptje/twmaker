@@ -44,7 +44,7 @@ class TargetedEdit
         $provider ??= (string) config('llm.default_provider', 'anthropic');
         $targetIds = $this->normalizeTargetIds($targetIds);
         $htmlSource = (string) ($page->html_source ?? '');
-        $blockIndex = $this->blocks->index($htmlSource);
+        $blockIndex = $this->targetIndex($htmlSource, $targetIds);
         $targetBlocks = $this->targetBlocks($blockIndex, $targetIds);
 
         $this->assertContiguous($targetBlocks);
@@ -82,7 +82,7 @@ class TargetedEdit
 
         $replacement = $this->normalizeReplacementIds(
             $this->repairer->repair($this->stripCodeFence(trim((string) $response->text))),
-            $targetIds[0],
+            $targetBlocks[0],
         );
 
         $this->validator->assertValid($replacement);
@@ -151,9 +151,13 @@ class TargetedEdit
             $blockList .= "- {$block['id']} ({$block['type']}, \"{$block['label']}\")\n";
         }
 
-        $rangeNote = count($targetIds) === 1
-            ? 'Return one or more complete tw:block regions as the replacement.'
-            : 'Return one or more complete tw:block regions that replace the selected contiguous block range. The first returned block keeps the first selected block identity; extra returned blocks become new sections.';
+        if (count($targetIds) === 1 && (string) ($targetBlocks[0]['kind'] ?? 'block') === 'group') {
+            $rangeNote = 'The selected target is a tw:group wrapper. Prefer returning one complete tw:group region with the same group id when the parent container should remain selectable. The group may contain child tw:block regions, but tw:block markers must never be nested.';
+        } else {
+            $rangeNote = count($targetIds) === 1
+                ? 'Return one or more complete tw:block regions as the replacement.'
+                : 'Return one or more complete tw:block regions that replace the selected contiguous block range. The first returned block keeps the first selected block identity; extra returned blocks become new sections.';
+        }
 
         $imageNote = $images !== []
             ? 'A visual reference '.(count($images) === 1 ? 'screenshot is' : count($images).' screenshots are')
@@ -184,6 +188,24 @@ class TargetedEdit
         );
     }
 
+    /**
+     * @param  array<int, string>  $targetIds
+     * @return array<int, array<string, mixed>>
+     */
+    private function targetIndex(string $htmlSource, array $targetIds): array
+    {
+        $blocks = $this->blocks->index($htmlSource);
+        $known = array_flip(array_column($blocks, 'id'));
+
+        foreach ($targetIds as $id) {
+            if (! isset($known[$id])) {
+                return $this->blocks->indexSelectable($htmlSource);
+            }
+        }
+
+        return $blocks;
+    }
+
     private function surroundingHtml(string $htmlSource, array $targetBlocks): string
     {
         $start = max(0, (int) $targetBlocks[0]['start_offset'] - 2500);
@@ -211,9 +233,9 @@ class TargetedEdit
     }
 
     /**
-     * @param  array<int, array{id: string, type: string, label: string, start_offset: int, end_offset: int, html: string, summary: string|null}>  $blockIndex
+     * @param  array<int, array{id: string, type: string, label: string, start_offset: int, end_offset: int, html: string, summary: string|null, kind?: string}>  $blockIndex
      * @param  array<int, string>  $targetIds
-     * @return array<int, array{id: string, type: string, label: string, start_offset: int, end_offset: int, html: string, summary: string|null, position: int}>
+     * @return array<int, array{id: string, type: string, label: string, start_offset: int, end_offset: int, html: string, summary: string|null, kind?: string, position: int}>
      */
     private function targetBlocks(array $blockIndex, array $targetIds): array
     {
@@ -267,8 +289,16 @@ class TargetedEdit
         return trim($text);
     }
 
-    private function normalizeReplacementIds(string $replacement, string $targetId): string
+    /**
+     * @param  array{id: string, kind?: string}  $targetBlock
+     */
+    private function normalizeReplacementIds(string $replacement, array $targetBlock): string
     {
+        $targetId = (string) $targetBlock['id'];
+        if (($targetBlock['kind'] ?? 'block') === 'group') {
+            return $this->normalizeGroupReplacementId($replacement, $targetId);
+        }
+
         $blocks = $this->blocks->index($replacement);
 
         foreach (array_reverse($blocks) as $index => $block) {
@@ -298,5 +328,37 @@ class TargetedEdit
         }
 
         return $replacement;
+    }
+
+    private function normalizeGroupReplacementId(string $replacement, string $targetId): string
+    {
+        $groups = $this->blocks->indexGroups($replacement);
+        if ($groups === []) {
+            return $replacement;
+        }
+
+        $first = $groups[0];
+        $oldId = (string) ($first['id'] ?? '');
+
+        if ($oldId === '' || $oldId === $targetId) {
+            return $replacement;
+        }
+
+        $groupHtml = substr($replacement, (int) $first['start_offset'], (int) $first['end_offset'] - (int) $first['start_offset']);
+        $groupHtml = str_replace(
+            [
+                'id="'.$oldId.'"',
+                "id='{$oldId}'",
+            ],
+            [
+                'id="'.$targetId.'"',
+                "id='{$targetId}'",
+            ],
+            $groupHtml,
+        );
+
+        return substr($replacement, 0, (int) $first['start_offset'])
+            .$groupHtml
+            .substr($replacement, (int) $first['end_offset']);
     }
 }

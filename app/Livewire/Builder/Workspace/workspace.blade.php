@@ -3,7 +3,7 @@
     class="grid h-screen min-h-[44rem] grid-cols-[18rem_minmax(0,1fr)_20rem] grid-rows-[1fr_12rem] bg-neutral-950 text-neutral-100"
 >
     <aside class="row-span-2 border-r border-neutral-800 bg-neutral-900">
-        <livewire:builder.left-sidebar.left-sidebar :project="$project" :page="$page" :block-index="$block_index" :selected-block-ids="$selected_block_ids" :key="'left-'.$page->id" />
+        <livewire:builder.left-sidebar.left-sidebar :project="$project" :page="$page" :block-index="$block_index" :selected-node-id="$selected_node_id" :selected-block-ids="$selected_block_ids" :key="'left-'.$page->id" />
     </aside>
 
     <section class="min-h-0 bg-neutral-950">

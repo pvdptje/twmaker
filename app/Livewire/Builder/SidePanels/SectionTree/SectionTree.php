@@ -22,6 +22,9 @@ class SectionTree extends Component
     public array $blockIndex = [];
 
     #[Reactive]
+    public ?string $selectedNodeId = null;
+
+    #[Reactive]
     public array $selectedBlockIds = [];
 
     public bool $insertOpen = false;
@@ -137,7 +140,26 @@ class SectionTree extends Component
             return;
         }
 
-        $ids = array_column($this->blockIndex, 'id');
+        $source = $this->outlineItem($sourceBlockId);
+        $target = $this->outlineItem($targetBlockId);
+
+        if ($source === null || $target === null) {
+            return;
+        }
+
+        if (($source['parent_id'] ?? null) !== ($target['parent_id'] ?? null)) {
+            $this->dispatch('section-move-failed', sourceBlockId: $sourceBlockId, errors: ['Grouped items can only be moved within their parent group.']);
+
+            return;
+        }
+
+        $ids = array_values(array_map(
+            fn (array $item): string => (string) ($item['id'] ?? ''),
+            array_filter(
+                $this->blockIndex,
+                fn (array $item): bool => ($item['parent_id'] ?? null) === ($source['parent_id'] ?? null),
+            ),
+        ));
         $sourceIndex = array_search($sourceBlockId, $ids, true);
         $targetIndex = array_search($targetBlockId, $ids, true);
 
@@ -178,7 +200,7 @@ class SectionTree extends Component
             return null;
         }
 
-        foreach (app(BlockIndexer::class)->index($source) as $block) {
+        foreach (app(BlockIndexer::class)->indexSelectable($source) as $block) {
             if (($block['id'] ?? '') === $blockId) {
                 return (string) ($block['html'] ?? '');
             }
@@ -261,5 +283,16 @@ class SectionTree extends Component
         }
 
         return 'Inserting section '.$position.' selected block.';
+    }
+
+    private function outlineItem(string $id): ?array
+    {
+        foreach ($this->blockIndex as $item) {
+            if (($item['id'] ?? null) === $id) {
+                return $item;
+            }
+        }
+
+        return null;
     }
 }

@@ -38,6 +38,12 @@ class HtmlDocumentValidator
             $errors[] = 'Block markers are unbalanced.';
         }
 
+        $groupOpenCount = preg_match_all('/<!--\s*tw:group\b/i', $html);
+        $groupCloseCount = preg_match_all('/<!--\s*\/tw:group\s*-->/i', $html);
+        if ($groupOpenCount !== $groupCloseCount) {
+            $errors[] = 'Group markers are unbalanced.';
+        }
+
         if ($this->hasNestedBlockMarkers($html)) {
             $errors[] = 'Block markers must not be nested.';
         }
@@ -48,13 +54,16 @@ class HtmlDocumentValidator
         }
 
         $ids = [];
-        foreach ($blocks as $block) {
+        foreach ($this->blocks->indexSelectable($html) as $block) {
+            $kind = (string) ($block['kind'] ?? 'block');
             if ($block['id'] === '') {
-                $errors[] = 'Every block marker must include an id attribute.';
+                $errors[] = $kind === 'group'
+                    ? 'Every group marker must include an id attribute.'
+                    : 'Every block marker must include an id attribute.';
             }
 
             if (isset($ids[$block['id']])) {
-                $errors[] = "Duplicate block id [{$block['id']}].";
+                $errors[] = "Duplicate selectable id [{$block['id']}].";
             }
             $ids[$block['id']] = true;
 

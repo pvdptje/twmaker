@@ -19,18 +19,18 @@ class QuickElementEditor
         [$blockId, $path] = $this->parseEditId($editId);
         $replacementHtml = trim($replacementHtml);
 
-        if (preg_match('/<!--\s*\/?\s*tw:block\b/i', $replacementHtml)) {
-            throw new HtmlValidationException(['Quick edit HTML must not include block marker comments.']);
+        if (preg_match('/<!--\s*\/?\s*tw:(?:block|group)\b/i', $replacementHtml)) {
+            throw new HtmlValidationException(['Quick edit HTML must not include builder marker comments.']);
         }
 
         $replacement = $this->singleReplacementElement($replacementHtml);
 
-        foreach ($this->blocks->index($htmlSource) as $block) {
+        foreach ($this->blocks->indexSelectable($htmlSource) as $block) {
             if ($block['id'] !== $blockId) {
                 continue;
             }
 
-            $updatedBlock = $this->replaceInsideBlock($block['html'], $path, $replacement);
+            $updatedBlock = $this->replaceInsideBlock($block['html'], $path, $replacement, (string) ($block['kind'] ?? 'block'));
             $updatedHtml = substr($htmlSource, 0, $block['start_offset'])
                 .$updatedBlock
                 .substr($htmlSource, $block['end_offset']);
@@ -59,10 +59,11 @@ class QuickElementEditor
         return [$match[1], $path];
     }
 
-    private function replaceInsideBlock(string $blockHtml, array $path, string $replacementHtml): string
+    private function replaceInsideBlock(string $blockHtml, array $path, string $replacementHtml, string $kind = 'block'): string
     {
-        if (! preg_match('/^(<!--\s*tw:block\b[^>]*-->)(.*)(<!--\s*\/tw:block\s*-->)$/is', $blockHtml, $match)) {
-            throw new HtmlValidationException(['Selected block is malformed.']);
+        $marker = $kind === 'group' ? 'group' : 'block';
+        if (! preg_match('/^(<!--\s*tw:'.$marker.'\b[^>]*-->)(.*)(<!--\s*\/tw:'.$marker.'\s*-->)$/is', $blockHtml, $match)) {
+            throw new HtmlValidationException(['Selected builder region is malformed.']);
         }
 
         $document = $this->loadFragment('<div id="tw-quick-edit-root">'.$match[2].'</div>');

@@ -89,8 +89,9 @@
         <livewire:builder.side-panels.section-tree.section-tree
             :page="$page"
             :block-index="$blockIndex"
+            :selected-node-id="$selectedNodeId"
             :selected-block-ids="$selectedBlockIds"
-            :key="'section-tree-'.md5(json_encode($blockIndex)).'-'.md5(json_encode($selectedBlockIds))"
+            :key="'section-tree-'.md5(json_encode($blockIndex)).'-'.md5((string) $selectedNodeId).'-'.md5(json_encode($selectedBlockIds))"
         />
     </div>
 

@@ -80,4 +80,62 @@ HTML;
         $this->assertSame(['block_features'], array_column($blocks, 'id'));
         $this->assertStringNotContainsString('block_hero', $updated);
     }
+
+    public function test_selectable_index_includes_group_wrappers_and_child_blocks(): void
+    {
+        $html = <<<'HTML'
+<!-- tw:group id="block_features" type="features" label="Features" -->
+<section>
+  <!-- tw:block id="block_card_1" type="card" label="Card 1" -->
+  <article>One</article>
+  <!-- /tw:block -->
+  <!-- tw:block id="block_card_2" type="card" label="Card 2" -->
+  <article>Two</article>
+  <!-- /tw:block -->
+</section>
+<!-- /tw:group -->
+HTML;
+
+        $indexer = new BlockIndexer;
+
+        $this->assertSame(['block_card_1', 'block_card_2'], array_column($indexer->index($html), 'id'));
+        $this->assertSame(['block_features', 'block_card_1', 'block_card_2'], array_column($indexer->indexSelectable($html), 'id'));
+        $this->assertSame('group', $indexer->indexSelectable($html)[0]['kind']);
+        $this->assertSame(['', 'block_features', 'block_features'], array_map(
+            fn (mixed $value): string => (string) $value,
+            array_column($indexer->indexOutline($html), 'parent_id'),
+        ));
+    }
+
+    public function test_move_block_moves_group_as_whole_and_children_only_within_parent(): void
+    {
+        $html = <<<'HTML'
+<!-- tw:block id="block_hero" type="hero" label="Hero" -->
+<section>Hero</section>
+<!-- /tw:block -->
+<!-- tw:group id="block_features" type="features" label="Features" -->
+<section>
+  <!-- tw:block id="block_card_1" type="card" label="Card 1" -->
+  <article>One</article>
+  <!-- /tw:block -->
+  <!-- tw:block id="block_card_2" type="card" label="Card 2" -->
+  <article>Two</article>
+  <!-- /tw:block -->
+</section>
+<!-- /tw:group -->
+<!-- tw:block id="block_footer" type="footer" label="Footer" -->
+<footer>Footer</footer>
+<!-- /tw:block -->
+HTML;
+
+        $indexer = new BlockIndexer;
+        $groupMoved = $indexer->moveBlock($html, 'block_features', 'block_hero', 'before');
+        $this->assertSame(['block_features', 'block_card_1', 'block_card_2', 'block_hero', 'block_footer'], array_column($indexer->indexOutline($groupMoved), 'id'));
+
+        $childMoved = $indexer->moveBlock($html, 'block_card_2', 'block_card_1', 'before');
+        $this->assertSame(['block_hero', 'block_features', 'block_card_2', 'block_card_1', 'block_footer'], array_column($indexer->indexOutline($childMoved), 'id'));
+
+        $this->expectException(\App\Services\Html\HtmlValidationException::class);
+        $indexer->moveBlock($html, 'block_card_1', 'block_footer', 'before');
+    }
 }

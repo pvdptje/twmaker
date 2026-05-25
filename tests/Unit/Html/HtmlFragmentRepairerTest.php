@@ -28,7 +28,7 @@ class HtmlFragmentRepairerTest extends TestCase
         );
     }
 
-    public function test_flattens_nested_block_markers_by_removing_parent_markers(): void
+    public function test_flattens_nested_block_markers_by_converting_parent_to_group(): void
     {
         $html = <<<'HTML'
 <!-- tw:block id="block_grid" type="grid" label="Grid" -->
@@ -47,7 +47,8 @@ HTML;
 
         $repaired = (new HtmlFragmentRepairer)->repair($html);
 
-        $this->assertStringNotContainsString('block_grid', $repaired);
+        $this->assertStringContainsString('tw:group id="block_grid"', $repaired);
+        $this->assertStringContainsString('<!-- /tw:group -->', $repaired);
         $this->assertStringContainsString('<section>', $repaired);
         $this->assertStringContainsString('tw:block id="block_card_1"', $repaired);
         $this->assertStringContainsString('tw:block id="block_card_2"', $repaired);
