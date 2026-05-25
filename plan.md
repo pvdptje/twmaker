@@ -210,6 +210,7 @@ Do not revive these old assumptions:
 | Full document enhancement | `app/Services/Generation/Stages/DocumentEnhancer.php` |
 | Site page planning | `app/Services/Generation/SitePagePlanner.php` |
 | Related page prompting | `app/Services/Generation/RelatedPagePromptBuilder.php` |
+| Generated-site zip finalizing | `app/Services/Generation/SiteZipFinalizer.php` |
 | HTML indexing | `app/Services/Html/BlockIndexer.php` |
 | HTML validation | `app/Services/Html/HtmlDocumentValidator.php` |
 | HTML repair/sanitizing | `app/Services/Html/HtmlFragmentRepairer.php`, `app/Services/Html/HtmlSafetySanitizer.php` |
@@ -226,9 +227,7 @@ Do not revive these old assumptions:
 | `InsertSectionJob` | Insert one new block before/after an anchor |
 | `EnhanceDocumentJob` | Rewrite the full document for editability, color refresh, or custom refinement |
 | `GenerateRelatedPageJob` | Generate a sibling page using source page style/header/footer context |
-| `GenerateSiteRunJob` | Orchestrate a reviewed multi-page site run from one source page |
-| `GenerateSitePageJob` | Generate one selected page in a site run using the related-page pipeline |
-| `FinalizeSiteZipJob` | Render source/generated pages into a stored zip artifact |
+| `GenerateSiteRunJob` | Orchestrate a reviewed multi-page site run from one source page and finalize its stored zip |
 | `GranularizeBlocksJob` | Compatibility wrapper around document enhancement |
 
 ### Frontend
@@ -474,9 +473,9 @@ This feature starts from the project dashboard page list. Each generated source 
 3. `SitePagePlanner` receives the source page name, prompt, marked HTML excerpt, local menu/link extraction, current project pages, provider/model, and resolved team API key.
 4. The planner returns a JSON list of proposed pages with name, slug, brief, source menu label or reason, and confidence. It should infer the amount of pages from the source page navigation/menu first, then fill obvious missing site pages only when useful.
 5. The user reviews the proposed list, removes unwanted items, and optionally edits page names/briefs if the first implementation has time. Removal is required; inline editing is useful but not required for the first pass.
-6. Pressing "Proceed" creates a `site_generation_runs` row and one `site_generation_run_pages` row per selected item, then dispatches the queued generation chain.
-7. The queued chain generates each selected sibling page using the existing related-page generation path and source page style/header/footer context.
-8. The final job renders the source page plus generated pages with `Renderer::renderDownloadHtml`, writes a zip to local storage, and updates the run with `completed`, path, filename, byte size, and timestamps.
+6. Pressing "Proceed" creates a `site_generation_runs` row and one `site_generation_run_pages` row per selected item, then dispatches `GenerateSiteRunJob`.
+7. `GenerateSiteRunJob` loops through the selected sibling pages using the existing related-page generation path and source page style/header/footer context.
+8. When all selected pages complete, `SiteZipFinalizer` renders the source page plus generated pages with `Renderer::renderDownloadHtml`, writes a zip to local storage, and updates the run with `completed`, path, filename, byte size, and timestamps.
 9. The project dashboard shows the latest generated-site zip on the source page row. If multiple completed runs exist for the page, show a compact dropdown/list ordered newest first.
 
 Generation principles:
@@ -555,7 +554,7 @@ Important behavior:
 
 Generated-site zips are stored artifacts, not temporary downloads:
 
-- `FinalizeSiteZipJob` writes the zip to `storage/app/private` or the configured local disk.
+- `SiteZipFinalizer` writes the zip to `storage/app/private` or the configured local disk.
 - `SiteGenerationRunDownloadController` authorizes through the run's project/team and streams the stored file.
 - The zip contains the source page plus the selected generated pages from that run, not every page in the project.
 - The project dashboard page row exposes the latest completed zip and a dropdown/list when prior runs exist.
@@ -684,7 +683,7 @@ Implementation shape:
 - Add `SitePagePlanner`, a structured LLM service that proposes pages from source HTML, menu items, current project pages, and the source prompt.
 - Extend `RelatedPagePromptBuilder` or add a site-aware wrapper so each generated page receives the full reviewed page map and stable export filenames.
 - Add dashboard UI state for provider/model choice, planner loading, proposal review, item removal, and proceed.
-- Dispatch a queued chain on proceed: generate selected pages, then finalize the zip.
+- Dispatch `GenerateSiteRunJob` on proceed; the job generates selected pages sequentially, then finalizes the zip.
 - Show run status and completed zips on the source page row, with a dropdown/list for older zips.
 
 Planner schema:
@@ -697,8 +696,8 @@ Queue behavior:
 
 - The planner call happens before queue dispatch so the user can review the list.
 - Page generation happens only after proceed.
-- Jobs should mark per-page status as they start/finish and mark the run failed if any required page fails.
-- The finalizer should still be able to build a zip from completed pages if the run policy later allows partial success. First pass can treat any page failure as a failed run.
+- The orchestration job should mark per-page status as pages start/finish and mark the run failed if any required page fails.
+- The finalizer should still be able to build a zip from completed pages if the run policy later allows partial success. First pass treats any page failure as a failed run.
 
 Acceptance:
 

@@ -99,8 +99,12 @@
                                         <a href="{{ route('builder.workspace', [$project, $page]) }}" wire:navigate class="inline-flex h-8 items-center rounded-md border border-neutral-700 px-3 text-sm font-semibold text-neutral-200 hover:border-cyan-500 hover:text-cyan-200">Open</a>
                                         @if (trim((string) ($page->html_source ?? '')) !== '')
                                             <a href="{{ route('builder.pages.download-html', [$project, $page]) }}" class="inline-flex h-8 items-center rounded-md border border-neutral-700 px-3 text-sm font-semibold text-neutral-200 hover:border-emerald-500 hover:text-emerald-200">Download</a>
+                                            <button type="button" wire:click="openGenerateSite('{{ $page->id }}')" wire:loading.attr="disabled" class="inline-flex h-8 items-center rounded-md border border-cyan-900/70 px-3 text-sm font-semibold text-cyan-200 hover:border-cyan-500">
+                                                Generate site
+                                            </button>
                                         @else
                                             <button type="button" disabled class="inline-flex h-8 cursor-not-allowed items-center rounded-md border border-neutral-800 px-3 text-sm font-semibold text-neutral-600">Download</button>
+                                            <button type="button" disabled class="inline-flex h-8 cursor-not-allowed items-center rounded-md border border-neutral-800 px-3 text-sm font-semibold text-neutral-600">Generate site</button>
                                         @endif
                                         <button type="button" wire:click="startRenamingPage('{{ $page->id }}')" class="inline-flex h-8 items-center rounded-md border border-neutral-700 px-3 text-sm font-semibold text-neutral-200 hover:border-neutral-500">Rename</button>
                                         <button
@@ -111,6 +115,48 @@
                                         >Delete</button>
                                     </div>
                                 </div>
+
+                                @php
+                                    $siteRuns = $page->siteGenerationRuns ?? collect();
+                                    $completedSiteRuns = $siteRuns->where('status', 'completed')->filter(fn ($run) => filled($run->zip_path));
+                                    $activeSiteRun = $siteRuns->first(fn ($run) => in_array($run->status, ['queued', 'running'], true));
+                                    $failedSiteRun = $siteRuns->first(fn ($run) => $run->status === 'failed');
+                                @endphp
+
+                                @if ($completedSiteRuns->isNotEmpty() || $activeSiteRun || $failedSiteRun)
+                                    <div class="mt-3 flex flex-wrap items-center gap-2 pl-11 text-xs">
+                                        @if ($activeSiteRun)
+                                            <span class="rounded border border-cyan-900/70 bg-cyan-950/40 px-2 py-1 font-medium text-cyan-200">
+                                                Site run {{ $activeSiteRun->status }}
+                                            </span>
+                                        @endif
+
+                                        @if ($failedSiteRun)
+                                            <span class="rounded border border-rose-900/70 bg-rose-950/30 px-2 py-1 font-medium text-rose-200">
+                                                Latest site run failed
+                                            </span>
+                                        @endif
+
+                                        @if ($completedSiteRuns->isNotEmpty())
+                                            <details class="relative">
+                                                <summary class="cursor-pointer rounded border border-emerald-900/70 bg-emerald-950/30 px-2 py-1 font-medium text-emerald-200 hover:border-emerald-500">
+                                                    {{ $completedSiteRuns->count() === 1 ? 'Site zip' : $completedSiteRuns->count().' site zips' }}
+                                                </summary>
+                                                <div class="absolute right-0 z-20 mt-2 w-72 rounded-md border border-neutral-700 bg-neutral-950 p-2 shadow-2xl">
+                                                    @foreach ($completedSiteRuns as $siteRun)
+                                                        <a
+                                                            href="{{ route('builder.pages.site-runs.download', [$project, $page, $siteRun]) }}"
+                                                            class="block rounded px-2 py-2 text-neutral-200 hover:bg-neutral-800 hover:text-white"
+                                                        >
+                                                            <span class="block truncate font-semibold">{{ $siteRun->zip_filename ?: 'site.zip' }}</span>
+                                                            <span class="mt-0.5 block text-neutral-500">{{ optional($siteRun->completed_at)->diffForHumans() ?: 'Completed' }}</span>
+                                                        </a>
+                                                    @endforeach
+                                                </div>
+                                            </details>
+                                        @endif
+                                    </div>
+                                @endif
                             @endif
                         </article>
                     @empty
@@ -124,4 +170,82 @@
             </section>
         </section>
     </div>
+
+    @if ($sitePlannerOpen)
+        <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-6">
+            <section class="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-lg border border-neutral-700 bg-neutral-950 shadow-2xl">
+                <div class="flex items-start justify-between gap-4 border-b border-neutral-800 px-5 py-4">
+                    <div>
+                        <h2 class="text-base font-semibold text-white">Generate site</h2>
+                        <p class="mt-1 text-sm text-neutral-400">Review the pages before queueing generation.</p>
+                    </div>
+                    <button type="button" wire:click="closeGenerateSite" class="rounded border border-neutral-700 px-2 py-1 text-sm font-semibold text-neutral-300 hover:border-neutral-500">Close</button>
+                </div>
+
+                <div class="space-y-4 px-5 py-4">
+                    <div class="grid gap-3 sm:grid-cols-2">
+                        <label class="flex flex-col gap-1 text-sm font-medium text-neutral-300">
+                            Provider
+                            <select wire:model="siteProvider" wire:change="refreshSiteModel" class="h-9 rounded-md border border-neutral-700 bg-neutral-950 px-3 text-sm text-white outline-none focus:border-cyan-400">
+                                @foreach ($siteProviderOptions as $providerOption)
+                                    <option value="{{ $providerOption['id'] }}">{{ $providerOption['label'] }}</option>
+                                @endforeach
+                            </select>
+                        </label>
+
+                        <label class="flex flex-col gap-1 text-sm font-medium text-neutral-300">
+                            Model
+                            <select wire:model="siteModel" class="h-9 rounded-md border border-neutral-700 bg-neutral-950 px-3 text-sm text-white outline-none focus:border-cyan-400">
+                                @foreach ($siteModelOptions as $modelOption)
+                                    <option value="{{ $modelOption['id'] }}">{{ $modelOption['label'] }}</option>
+                                @endforeach
+                            </select>
+                        </label>
+                    </div>
+
+                    <div class="flex flex-wrap items-center gap-2">
+                        <button type="button" wire:click="planSitePages" wire:loading.attr="disabled" class="inline-flex h-8 items-center rounded-md border border-neutral-700 px-3 text-sm font-semibold text-neutral-200 hover:border-cyan-500 hover:text-cyan-200">
+                            Recalculate
+                        </button>
+                        <span wire:loading wire:target="openGenerateSite,planSitePages" class="text-sm text-cyan-200">Planning pages...</span>
+                    </div>
+
+                    @if ($sitePlanningError)
+                        <div class="rounded-md border border-rose-900/70 bg-rose-950/30 px-3 py-2 text-sm text-rose-100">{{ $sitePlanningError }}</div>
+                    @endif
+
+                    @if ($sitePlannerSummary !== '')
+                        <p class="rounded-md border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-neutral-300">{{ $sitePlannerSummary }}</p>
+                    @endif
+
+                    <div class="divide-y divide-neutral-800 rounded-lg border border-neutral-800">
+                        @forelse ($siteProposals as $index => $proposal)
+                            <div wire:key="site-proposal-{{ $index }}" class="flex gap-3 px-3 py-3">
+                                <div class="min-w-0 flex-1">
+                                    <div class="flex flex-wrap items-center gap-2">
+                                        <h3 class="font-semibold text-white">{{ $proposal['name'] }}</h3>
+                                        <span class="rounded bg-neutral-800 px-1.5 py-0.5 text-xs text-neutral-300">{{ $proposal['slug'] }}.html</span>
+                                    </div>
+                                    <p class="mt-1 text-sm text-neutral-400">{{ $proposal['brief'] }}</p>
+                                    <p class="mt-1 text-xs text-neutral-500">{{ $proposal['reason'] }}</p>
+                                </div>
+                                <button type="button" wire:click="removeSiteProposal({{ $index }})" class="h-8 rounded-md border border-neutral-700 px-2 text-sm font-semibold text-neutral-300 hover:border-rose-500 hover:text-rose-200">
+                                    Remove
+                                </button>
+                            </div>
+                        @empty
+                            <div class="px-3 py-8 text-center text-sm text-neutral-500">No proposed pages yet.</div>
+                        @endforelse
+                    </div>
+                </div>
+
+                <div class="flex flex-wrap items-center justify-end gap-2 border-t border-neutral-800 px-5 py-4">
+                    <button type="button" wire:click="closeGenerateSite" class="inline-flex h-9 items-center rounded-md border border-neutral-700 px-3 text-sm font-semibold text-neutral-200 hover:border-neutral-500">Cancel</button>
+                    <button type="button" wire:click="proceedGenerateSite" wire:loading.attr="disabled" class="inline-flex h-9 items-center rounded-md bg-cyan-400 px-3 text-sm font-semibold text-neutral-950 hover:bg-cyan-300 disabled:cursor-wait disabled:bg-cyan-700">
+                        Proceed
+                    </button>
+                </div>
+            </section>
+        </div>
+    @endif
 </main>

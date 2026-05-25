@@ -56,6 +56,16 @@ class Page extends Model
         return $this->hasMany(GenerationEvent::class);
     }
 
+    public function siteGenerationRuns(): HasMany
+    {
+        return $this->hasMany(SiteGenerationRun::class, 'source_page_id')->latest();
+    }
+
+    public function siteGenerationRunPages(): HasMany
+    {
+        return $this->hasMany(SiteGenerationRunPage::class, 'target_page_id');
+    }
+
     public function versions(): HasMany
     {
         return $this->hasMany(PageVersion::class);

@@ -43,6 +43,11 @@ class Project extends Model
         return $this->hasMany(Page::class);
     }
 
+    public function siteGenerationRuns(): HasMany
+    {
+        return $this->hasMany(SiteGenerationRun::class);
+    }
+
     public function team(): BelongsTo
     {
         return $this->belongsTo(Team::class);

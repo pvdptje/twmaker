@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Jobs\EnhanceDocumentJob;
 use App\Jobs\GeneratePageJob;
 use App\Jobs\GenerateRelatedPageJob;
+use App\Jobs\GenerateSiteRunJob;
 use App\Jobs\InsertSectionJob;
 use App\Jobs\TargetedEditJob;
 use App\Livewire\Builder\Inspector\EditForm\EditForm;
@@ -23,9 +24,14 @@ use App\Livewire\Setup\LlmSetup;
 use App\Models\Page;
 use App\Models\PageVersion;
 use App\Models\Project;
+use App\Models\SiteGenerationRun;
+use App\Models\SiteGenerationRunPage;
 use App\Models\User;
 use App\Services\Html\BlockIndexer;
 use App\Services\Ids\IdGenerator;
+use App\Services\Llm\LlmProvider;
+use App\Services\Llm\StructuredRequest;
+use App\Services\Llm\StructuredResponse;
 use App\Services\Llm\TeamProviderCredentials;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
@@ -432,6 +438,83 @@ class BuilderShellTest extends TestCase
         Queue::assertPushed(GenerateRelatedPageJob::class, fn (GenerateRelatedPageJob $job): bool => $job->sourcePageId === $page->id
             && $job->targetPageId === $newPage->id
             && $job->brief === 'Create a pricing page for small teams.');
+    }
+
+    public function test_project_dashboard_reviews_and_queues_generated_site_run(): void
+    {
+        Queue::fake();
+        $this->cacheProviderModels('anthropic', 'test-site-key', [
+            ['id' => 'claude-test', 'label' => 'Claude Test'],
+        ]);
+        $this->app->instance(LlmProvider::class, new class implements LlmProvider
+        {
+            public function sendStructured(StructuredRequest $request): StructuredResponse
+            {
+                return new StructuredResponse($request->stage, $request->model, [
+                    'summary' => 'Pages inferred from the menu.',
+                    'pages' => [
+                        [
+                            'name' => 'Pricing',
+                            'slug' => 'pricing',
+                            'brief' => 'Create pricing for teams.',
+                            'source' => 'menu',
+                            'source_label' => 'Pricing',
+                            'reason' => 'Pricing appears in the navigation.',
+                            'confidence' => 0.9,
+                        ],
+                        [
+                            'name' => 'Contact',
+                            'slug' => 'contact',
+                            'brief' => 'Create a contact page.',
+                            'source' => 'menu',
+                            'source_label' => 'Contact',
+                            'reason' => 'Contact appears in the navigation.',
+                            'confidence' => 0.8,
+                        ],
+                    ],
+                ]);
+            }
+        });
+
+        $project = Project::query()->create([
+            'id' => app(IdGenerator::class)->project(),
+            'name' => 'Acme',
+        ]);
+        $page = Page::query()->create([
+            'id' => app(IdGenerator::class)->page(),
+            'project_id' => $project->id,
+            'name' => 'Homepage',
+            'prompt' => 'A landing page',
+            'html_source' => '<!-- tw:block id="block_header" type="header" label="Header" --><header><nav><a href="/pricing">Pricing</a><a href="/contact">Contact</a></nav></header><!-- /tw:block -->',
+            'status' => 'valid',
+        ]);
+
+        Livewire::test(ProjectDashboard::class, ['project' => $project])
+            ->assertSee('Generate site')
+            ->call('openGenerateSite', $page->id)
+            ->assertSet('sitePlannerSummary', 'Pages inferred from the menu.')
+            ->assertSee('Pricing')
+            ->assertSee('Contact')
+            ->call('removeSiteProposal', 1)
+            ->assertDontSee('Contact')
+            ->call('proceedGenerateSite')
+            ->assertSet('sitePlannerOpen', false);
+
+        $run = SiteGenerationRun::query()->firstOrFail();
+        $runPage = SiteGenerationRunPage::query()->firstOrFail();
+
+        $this->assertSame($page->id, $run->source_page_id);
+        $this->assertSame('queued', $run->status);
+        $this->assertSame('Pricing', $runPage->name);
+        $this->assertDatabaseHas('pages', [
+            'name' => 'Pricing',
+            'status' => 'draft',
+        ]);
+
+        Queue::assertPushed(GenerateSiteRunJob::class, fn (GenerateSiteRunJob $job): bool => $job->siteGenerationRunId === $run->id
+            && $job->provider === 'anthropic'
+            && $job->model === 'claude-test'
+            && $job->apiKey === 'test-site-key');
     }
 
     public function test_page_html_download_returns_current_html_as_attachment(): void

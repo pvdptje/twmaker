@@ -43,4 +43,9 @@ class Team extends Model
     {
         return $this->hasMany(TeamProviderCredential::class);
     }
+
+    public function siteGenerationRuns(): HasMany
+    {
+        return $this->hasMany(SiteGenerationRun::class);
+    }
 }

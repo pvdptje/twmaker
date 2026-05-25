@@ -30,6 +30,20 @@ class RelatedPagePromptBuilder
         ])));
     }
 
+    /**
+     * @param  array<int, array{name: string, filename: string, current?: bool}>  $siteMap
+     */
+    public function buildForSiteRun(Page $sourcePage, Page $targetPage, string $brief, array $siteMap): string
+    {
+        $map = json_encode($siteMap, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) ?: '[]';
+
+        return $this->build($sourcePage, $targetPage, $brief).trim("\n\n"
+            ."This page is part of a generated static site export.\n"
+            ."Use this exact site filename map when creating header/footer/navigation links:\n{$map}\n\n"
+            .'For same-site navigation, use relative href values from the filename field. The current page may link to itself, but primary navigation should point at the matching HTML files instead of placeholders, route URLs, or section-only anchors.'
+        );
+    }
+
     private function sourceExcerpt(string $html): string
     {
         $html = trim($html);

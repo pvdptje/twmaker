@@ -18,6 +18,8 @@ class IdGenerator
         'element_instance' => 'inst_',
         'generation_event' => 'evt_',
         'team_provider_credential' => 'cred_',
+        'site_generation_run' => 'srun_',
+        'site_generation_run_page' => 'srpg_',
     ];
 
     public function make(string $entity): string
@@ -77,5 +79,15 @@ class IdGenerator
     public function teamProviderCredential(): string
     {
         return $this->make('team_provider_credential');
+    }
+
+    public function siteGenerationRun(): string
+    {
+        return $this->make('site_generation_run');
+    }
+
+    public function siteGenerationRunPage(): string
+    {
+        return $this->make('site_generation_run_page');
     }
 }

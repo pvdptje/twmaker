@@ -4,6 +4,7 @@ use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\RegisterController;
 use App\Http\Controllers\PageHtmlDownloadController;
 use App\Http\Controllers\ProjectHtmlDownloadController;
+use App\Http\Controllers\SiteGenerationRunDownloadController;
 use App\Livewire\Builder\Workspace\Workspace;
 use App\Livewire\Projects\ProjectDashboard\ProjectDashboard;
 use App\Livewire\Projects\ProjectList\ProjectList;
@@ -26,6 +27,7 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/setup/llm', LlmSetup::class)->name('setup.llm');
     Route::get('/projects/{project}', ProjectDashboard::class)->name('projects.show');
     Route::get('/projects/{project}/download-html', ProjectHtmlDownloadController::class)->name('builder.projects.download-html');
+    Route::get('/projects/{project}/pages/{page}/site-runs/{siteGenerationRun}/download', SiteGenerationRunDownloadController::class)->name('builder.pages.site-runs.download');
     Route::get('/projects/{project}/pages/{page}', Workspace::class)->name('builder.workspace');
     Route::get('/projects/{project}/pages/{page}/download-html', PageHtmlDownloadController::class)->name('builder.pages.download-html');
 });
