@@ -524,6 +524,12 @@ HTML;
             'stage' => 'document_enhancer',
             'level' => 'success',
         ]);
+        $event = $page->generationEvents()
+            ->where('kind', 'enhance_applied')
+            ->first();
+
+        $this->assertIsArray($event?->payload);
+        $this->assertArrayNotHasKey('html_source', $event->payload);
         $this->assertCount(1, $page->versions()->get());
     }
 

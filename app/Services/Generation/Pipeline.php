@@ -328,7 +328,6 @@ class Pipeline
 
             $this->events->record($page, 'enhance_applied', 'document_enhancer', 'success', $result['explanation'], payload: [
                 'blocks' => $result['blocks'] ?? [],
-                'html_source' => $htmlSource,
                 'summary' => $summary,
             ] + $this->payloadWithUsage($result));
 

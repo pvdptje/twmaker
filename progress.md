@@ -99,12 +99,14 @@ done
 - [2026-05-25] M5.enhancements-menu-verification: `vendor\bin\pint --dirty`, `php artisan test tests\Feature\BuilderShellTest.php`, `php artisan test tests\Feature\Generation\PipelineTest.php`, `php artisan test`, and `npm.cmd run build` pass.
 - [2026-05-25] M5.quick-edit-snapshots: quick inline HTML edits now create a `page_versions` snapshot of the previous marked HTML before saving.
 - [2026-05-25] M5.quick-edit-snapshots-verification: `vendor\bin\pint --dirty`, `php artisan test tests\Feature\BuilderShellTest.php --filter=workspace_saves_quick_dom_element_edits`, `php artisan test tests\Feature\BuilderShellTest.php`, and `php artisan test` pass.
+- [2026-05-25] M5.enhancement-refresh-fix: removed full page HTML from `enhance_applied` event payloads so terminal enhancement broadcasts stay small enough to reach the workspace refresh listener.
+- [2026-05-25] M5.enhancement-refresh-verification: `vendor\bin\pint --dirty`, `php artisan test tests\Feature\Generation\PipelineTest.php --filter=enhances_document`, `php artisan test tests\Feature\BuilderShellTest.php --filter=workspace_refreshes_generated_html_state_when_broadcast_finishes`, and `php artisan test` pass.
 
 ## In Progress
 - None active after local verification.
 - Last activity: 2026-05-25
-- Files touched: app/Livewire/Builder/Workspace/Workspace.php, tests/Feature/BuilderShellTest.php, progress.md
-- Current state: Quick inline HTML edits snapshot the previous page HTML as an `edit` page version before overwriting `html_source`, and skip snapshots for empty or unchanged HTML.
+- Files touched: app/Services/Generation/Pipeline.php, tests/Feature/Generation/PipelineTest.php, progress.md
+- Current state: Enhancement completion events no longer broadcast the full enhanced page HTML. The page row remains the source of truth, stream output still shows generated HTML, and the smaller terminal event can trigger the workspace full refresh.
 
 ## Blocked
 - None.
@@ -151,6 +153,7 @@ done
 - Block granularization is a full-document refinement pass rather than a targeted edit. It may replace a coarse parent block with multiple sibling child blocks, but validation rejects nested `tw:block` markers so later targeted edits still operate on clean block boundaries.
 - Document-wide enhancement presets should share one backend stage (`document_enhancer`) so new actions can be added by defining a prompt instruction instead of creating new one-off queued jobs.
 - Quick inline HTML edits should participate in the same version history as AI edits, inserts, removes, moves, and enhancements so manual code changes are restorable.
+- Terminal generation events should not broadcast full-document HTML unless the browser needs it for an incremental patch. Full-refresh paths should keep the DB row as the source of truth and let the workspace fetch fresh preview HTML after `generation-finished`.
 
 ## Spec Change Proposals
 - None. Previous marked-HTML pivot proposal was approved by the user and applied to `plan.md` as R3.
@@ -319,9 +322,11 @@ done
 - `tests/Feature/Generation/PipelineTest.php`: modified: covers document enhancer success, ID normalization, version snapshots, and nested-marker rejection.
 - `app/Livewire/Builder/Workspace/Workspace.php`: modified: creates a `PageVersion` snapshot before persisting a changed quick inline HTML edit.
 - `tests/Feature/BuilderShellTest.php`: modified: asserts quick inline HTML edits store the previous marked HTML in version history.
+- `app/Services/Generation/Pipeline.php`: modified: removes `html_source` from `enhance_applied` event payloads.
+- `tests/Feature/Generation/PipelineTest.php`: modified: asserts enhancement terminal events do not carry full page HTML.
 
 ## Next Up (Top 3)
-1. M5: manually browser-test quick inline edit restore from the version list.
+1. M5: manually browser-test enhancement completion refresh without pressing browser refresh.
 2. M5: add stale-selection and malformed-edit UX handling in the inspector.
 3. M5: consider streaming progress for non-HTML LLM fields such as edit explanations or usage summaries.
 
@@ -377,3 +382,4 @@ done
 - `npm.cmd run build` still reports Vite's existing large chunk warning for `assets/app-*.js`; the build exits successfully.
 - M5 enhancements menu verification passed: `vendor\bin\pint --dirty`, `php artisan test tests\Feature\BuilderShellTest.php` (43 tests), `php artisan test tests\Feature\Generation\PipelineTest.php` (20 tests), `php artisan test` (179 tests, 421 assertions), and `npm.cmd run build`.
 - M5 quick edit snapshot verification passed: `vendor\bin\pint --dirty`, `php artisan test tests\Feature\BuilderShellTest.php --filter=workspace_saves_quick_dom_element_edits` (1 test), `php artisan test tests\Feature\BuilderShellTest.php` (43 tests, 169 assertions), and `php artisan test` (179 tests, 425 assertions).
+- M5 enhancement refresh verification passed: `vendor\bin\pint --dirty`, `php artisan test tests\Feature\Generation\PipelineTest.php --filter=enhances_document` (1 test), `php artisan test tests\Feature\BuilderShellTest.php --filter=workspace_refreshes_generated_html_state_when_broadcast_finishes` (1 test), and `php artisan test` (179 tests, 427 assertions).
