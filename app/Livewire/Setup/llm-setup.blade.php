@@ -7,29 +7,58 @@
         editingProvider: @entangle('editingProvider').live,
         editingModel: @entangle('editingModel').live,
         providers: @js(array_column($providerOptions, 'id')),
+        modelsByProvider: @js($modelOptionsByProvider),
+        sharedKey: 'twmaker.builder.modelSelection',
         keyName(provider) { return `twmaker.apiKey.${provider}`; },
         setupName(kind, field) { return `twmaker.llmDefaults.${kind}.${field}`; },
+        builderName(kind, field) { return `twmaker.builder.${kind}.${field}`; },
+        selectedModelOption() {
+            return (this.modelsByProvider[this.primaryProvider] || [])
+                .find((model) => model.id === this.primaryModel) || null;
+        },
+        syncDefaults() {
+            this.editingProvider = this.primaryProvider;
+            this.editingModel = this.primaryModel;
+        },
+        persistProviderKey(provider) {
+            const key = this.apiKeys[provider] || '';
+            if (key) localStorage.setItem(this.keyName(provider), key);
+            else localStorage.removeItem(this.keyName(provider));
+        },
         load() {
             this.providers.forEach((provider) => {
                 this.apiKeys[provider] = localStorage.getItem(this.keyName(provider)) || '';
             });
 
-            this.primaryProvider = localStorage.getItem(this.setupName('primary', 'provider')) || this.primaryProvider;
-            this.primaryModel = localStorage.getItem(this.setupName('primary', 'model')) || this.primaryModel;
-            this.editingProvider = localStorage.getItem(this.setupName('editing', 'provider')) || this.editingProvider;
-            this.editingModel = localStorage.getItem(this.setupName('editing', 'model')) || this.editingModel;
+            this.primaryProvider = localStorage.getItem(this.setupName('primary', 'provider'))
+                || localStorage.getItem(this.setupName('editing', 'provider'))
+                || this.primaryProvider;
+            this.primaryModel = localStorage.getItem(this.setupName('primary', 'model'))
+                || localStorage.getItem(this.setupName('editing', 'model'))
+                || this.primaryModel;
+            this.syncDefaults();
         },
         persist() {
+            this.syncDefaults();
             this.providers.forEach((provider) => {
-                const key = this.apiKeys[provider] || '';
-                if (key) localStorage.setItem(this.keyName(provider), key);
-                else localStorage.removeItem(this.keyName(provider));
+                this.persistProviderKey(provider);
             });
 
             localStorage.setItem(this.setupName('primary', 'provider'), this.primaryProvider);
             localStorage.setItem(this.setupName('primary', 'model'), this.primaryModel);
             localStorage.setItem(this.setupName('editing', 'provider'), this.editingProvider);
             localStorage.setItem(this.setupName('editing', 'model'), this.editingModel);
+            localStorage.setItem(this.builderName('primary', 'provider'), this.primaryProvider);
+            localStorage.setItem(this.builderName('editing', 'provider'), this.primaryProvider);
+            localStorage.setItem(this.builderName('primary', `model.${this.primaryProvider}`), this.primaryModel);
+            localStorage.setItem(this.builderName('editing', `model.${this.primaryProvider}`), this.primaryModel);
+
+            const modelOption = this.selectedModelOption();
+            localStorage.setItem(this.sharedKey, JSON.stringify({
+                provider: this.primaryProvider,
+                model: this.primaryModel,
+                modalities: Array.isArray(modelOption?.modalities) ? modelOption.modalities : ['text'],
+            }));
         },
     }"
     x-init="load()"
@@ -56,7 +85,7 @@
                                 <h2 class="text-base font-semibold text-white">{{ $providerOption['label'] }}</h2>
                                 <p class="mt-1 text-xs text-neutral-500">{{ $providerOption['driver'] }} provider</p>
                             </div>
-                            <button type="button" wire:click="refreshModels('{{ $providerOption['id'] }}')" class="rounded-md border border-neutral-700 px-3 py-2 text-sm font-semibold text-neutral-200 hover:border-neutral-500">Refresh models</button>
+                            <button type="button" x-on:click="persistProviderKey('{{ $providerOption['id'] }}')" wire:click="refreshModels('{{ $providerOption['id'] }}')" class="rounded-md border border-neutral-700 px-3 py-2 text-sm font-semibold text-neutral-200 hover:border-neutral-500">Refresh models</button>
                         </div>
 
                         <label class="mt-4 block text-xs font-medium text-neutral-400">
@@ -79,31 +108,11 @@
         <aside class="rounded-lg border border-neutral-800 bg-neutral-900 p-4">
             <h2 class="text-base font-semibold text-white">Defaults</h2>
 
-            <div class="mt-4 border-b border-neutral-800 pb-4">
-                <div class="text-xs font-semibold uppercase tracking-normal text-neutral-500">Primary generation</div>
-                <label class="mt-3 block text-xs font-medium text-neutral-400">
-                    Provider
-                    <select wire:model.live="primaryProvider" x-model="primaryProvider" class="mt-1 w-full rounded-md border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400">
-                        @foreach ($providerOptions as $providerOption)
-                            <option value="{{ $providerOption['id'] }}">{{ $providerOption['label'] }}</option>
-                        @endforeach
-                    </select>
-                </label>
-                <label class="mt-3 block text-xs font-medium text-neutral-400">
-                    Model
-                    <select wire:model.live="primaryModel" x-model="primaryModel" class="mt-1 w-full rounded-md border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400">
-                        @foreach (($modelOptionsByProvider[$primaryProvider] ?? []) as $modelOption)
-                            <option value="{{ $modelOption['id'] }}">{{ $modelOption['label'] }} ({{ $modelOption['id'] }})</option>
-                        @endforeach
-                    </select>
-                </label>
-            </div>
-
             <div class="mt-4">
-                <div class="text-xs font-semibold uppercase tracking-normal text-neutral-500">Editing</div>
+                <div class="text-xs font-semibold uppercase tracking-normal text-neutral-500">Builder model</div>
                 <label class="mt-3 block text-xs font-medium text-neutral-400">
                     Provider
-                    <select wire:model.live="editingProvider" x-model="editingProvider" class="mt-1 w-full rounded-md border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400">
+                    <select wire:model.live="primaryProvider" x-model="primaryProvider" x-on:change="syncDefaults()" class="mt-1 w-full rounded-md border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400">
                         @foreach ($providerOptions as $providerOption)
                             <option value="{{ $providerOption['id'] }}">{{ $providerOption['label'] }}</option>
                         @endforeach
@@ -111,8 +120,8 @@
                 </label>
                 <label class="mt-3 block text-xs font-medium text-neutral-400">
                     Model
-                    <select wire:model.live="editingModel" x-model="editingModel" class="mt-1 w-full rounded-md border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400">
-                        @foreach (($modelOptionsByProvider[$editingProvider] ?? []) as $modelOption)
+                    <select wire:model.live="primaryModel" x-model="primaryModel" x-on:change="syncDefaults()" class="mt-1 w-full rounded-md border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400">
+                        @foreach (($modelOptionsByProvider[$primaryProvider] ?? []) as $modelOption)
                             <option value="{{ $modelOption['id'] }}">{{ $modelOption['label'] }} ({{ $modelOption['id'] }})</option>
                         @endforeach
                     </select>

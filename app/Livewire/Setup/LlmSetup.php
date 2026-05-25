@@ -31,14 +31,20 @@ class LlmSetup extends Component
     public function mount(): void
     {
         $this->primaryProvider = $this->registry()->defaultProvider();
-        $this->editingProvider = $this->primaryProvider;
         $this->primaryModel = $this->defaultModel($this->primaryProvider, 'section_generator');
-        $this->editingModel = $this->defaultModel($this->editingProvider, 'targeted_edit');
+        $this->syncEditingDefaults();
     }
 
     public function updatedPrimaryProvider(): void
     {
         $this->primaryModel = $this->defaultModel($this->primaryProvider, 'section_generator');
+        $this->syncEditingDefaults();
+        $this->saveStatus = '';
+    }
+
+    public function updatedPrimaryModel(): void
+    {
+        $this->syncEditingDefaults();
         $this->saveStatus = '';
     }
 
@@ -68,6 +74,8 @@ class LlmSetup extends Component
 
     public function save(): void
     {
+        $this->syncEditingDefaults();
+
         $this->validate([
             'apiKeys' => ['array'],
             'apiKeys.*' => ['nullable', 'string', 'max:500'],
@@ -138,11 +146,18 @@ class LlmSetup extends Component
 
         if ($this->primaryProvider === $provider && ! in_array($this->primaryModel, $modelIds, true)) {
             $this->primaryModel = $this->defaultModel($provider, 'section_generator');
+            $this->syncEditingDefaults();
         }
 
         if ($this->editingProvider === $provider && ! in_array($this->editingModel, $modelIds, true)) {
             $this->editingModel = $this->defaultModel($provider, 'targeted_edit');
         }
+    }
+
+    private function syncEditingDefaults(): void
+    {
+        $this->editingProvider = $this->primaryProvider;
+        $this->editingModel = $this->primaryModel;
     }
 
     private function registry(): LlmRegistry

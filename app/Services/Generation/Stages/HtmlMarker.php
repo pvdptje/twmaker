@@ -35,7 +35,6 @@ class HtmlMarker
                 'raw_html' => $artifact['raw_html'] ?? $artifact['html_source'] ?? '',
             ],
             maxTokens: (int) config("llm.providers.{$provider}.marker_max_tokens", 8000),
-            temperature: 0.2,
             apiKey: $apiKey,
         ));
 

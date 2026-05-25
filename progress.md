@@ -101,12 +101,15 @@ done
 - [2026-05-25] M5.quick-edit-snapshots-verification: `vendor\bin\pint --dirty`, `php artisan test tests\Feature\BuilderShellTest.php --filter=workspace_saves_quick_dom_element_edits`, `php artisan test tests\Feature\BuilderShellTest.php`, and `php artisan test` pass.
 - [2026-05-25] M5.enhancement-refresh-fix: removed full page HTML from `enhance_applied` event payloads so terminal enhancement broadcasts stay small enough to reach the workspace refresh listener.
 - [2026-05-25] M5.enhancement-refresh-verification: `vendor\bin\pint --dirty`, `php artisan test tests\Feature\Generation\PipelineTest.php --filter=enhances_document`, `php artisan test tests\Feature\BuilderShellTest.php --filter=workspace_refreshes_generated_html_state_when_broadcast_finishes`, and `php artisan test` pass.
+- [2026-05-25] M5.builder-model-selection-cleanup: setup now uses one builder model default, persists shared builder selection, and the canvas selector hydrates browser-key provider catalogs.
+- [2026-05-25] M5.llm-temperature-removal: removed fixed temperature settings from generation stages, request DTOs, Prism calls, and the old temperature retry path so providers use their model defaults.
+- [2026-05-25] M5.model-selection-temperature-verification: `vendor\bin\pint.bat --dirty`, `php artisan test`, and `npm.cmd run build` pass.
 
 ## In Progress
 - None active after local verification.
 - Last activity: 2026-05-25
-- Files touched: app/Services/Generation/Pipeline.php, tests/Feature/Generation/PipelineTest.php, progress.md
-- Current state: Enhancement completion events no longer broadcast the full enhanced page HTML. The page row remains the source of truth, stream output still shows generated HTML, and the smaller terminal event can trigger the workspace full refresh.
+- Files touched: app/Livewire/Builder/ModelSelector/ModelSelector.php, app/Livewire/Builder/ModelSelector/model-selector.blade.php, app/Livewire/Setup/LlmSetup.php, app/Livewire/Setup/llm-setup.blade.php, app/Services/Generation/Stages/DocumentEnhancer.php, app/Services/Generation/Stages/HtmlMarker.php, app/Services/Generation/Stages/SectionGenerator.php, app/Services/Generation/Stages/SectionInserter.php, app/Services/Generation/Stages/TargetedEdit.php, app/Services/Llm/PrismProvider.php, app/Services/Llm/StructuredRequest.php, app/Services/Llm/TextRequest.php, tests/Feature/BuilderShellTest.php, tests/Unit/Llm/PrismProviderTest.php, progress.md
+- Current state: Local changes are verified and ready to commit, push, and deploy.
 
 ## Blocked
 - None.
@@ -154,11 +157,28 @@ done
 - Document-wide enhancement presets should share one backend stage (`document_enhancer`) so new actions can be added by defining a prompt instruction instead of creating new one-off queued jobs.
 - Quick inline HTML edits should participate in the same version history as AI edits, inserts, removes, moves, and enhancements so manual code changes are restorable.
 - Terminal generation events should not broadcast full-document HTML unless the browser needs it for an incremental patch. Full-refresh paths should keep the DB row as the source of truth and let the workspace fetch fresh preview HTML after `generation-finished`.
+- Setup and builder should use one shared model selection for generation, insertion, editing, and document enhancements; separate setup defaults are unnecessary while the shared selector can still feed every action.
+- LLM requests should not set temperature. Provider/model defaults are safer across mixed dynamic model catalogs than guessing support or retrying after rejection.
 
 ## Spec Change Proposals
 - None. Previous marked-HTML pivot proposal was approved by the user and applied to `plan.md` as R3.
 
 ## Files Created Or Modified This Session
+- `app/Livewire/Builder/ModelSelector/ModelSelector.php`: modified: added browser API key aware model-choice hydration.
+- `app/Livewire/Builder/ModelSelector/model-selector.blade.php`: modified: fetches browser-key catalog choices and persists shared builder selection.
+- `app/Livewire/Setup/LlmSetup.php`: modified: syncs setup defaults to one builder model selection.
+- `app/Livewire/Setup/llm-setup.blade.php`: modified: replaces two setup selectors with one builder model selector and persists shared/default selection state.
+- `app/Services/Generation/Stages/DocumentEnhancer.php`: modified: stops passing temperature to text requests.
+- `app/Services/Generation/Stages/HtmlMarker.php`: modified: stops passing temperature to structured requests.
+- `app/Services/Generation/Stages/SectionGenerator.php`: modified: removes stage temperature arguments from full generation and retry requests.
+- `app/Services/Generation/Stages/SectionInserter.php`: modified: stops passing temperature to text requests.
+- `app/Services/Generation/Stages/TargetedEdit.php`: modified: stops passing temperature to text requests.
+- `app/Services/Llm/PrismProvider.php`: modified: removed Prism temperature forwarding and temperature retry helpers.
+- `app/Services/Llm/StructuredRequest.php`: modified: removed the temperature field.
+- `app/Services/Llm/TextRequest.php`: modified: removed the temperature field.
+- `tests/Feature/BuilderShellTest.php`: modified: covers one setup selector and browser-key model catalog hydration.
+- `tests/Unit/Llm/PrismProviderTest.php`: modified: covers request DTOs not exposing temperature.
+- `progress.md`: modified: recorded model-selection and temperature cleanup verification.
 - `app/Services/Rendering/Renderer.php`: created: document, preview, section, node, and element rendering service.
 - `app/Services/Rendering/TailwindClassMap.php`: created: renderer class map with dev-mode safelist assertions.
 - `resources/views/render/document.blade.php`: created: document render root.

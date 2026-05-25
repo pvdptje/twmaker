@@ -57,7 +57,6 @@ class DocumentEnhancer
                 'existing_block_count' => count($existingIds),
             ],
             maxTokens: (int) config("llm.providers.{$provider}.section_max_tokens", 32000),
-            temperature: 0.2,
             apiKey: $apiKey,
         );
 

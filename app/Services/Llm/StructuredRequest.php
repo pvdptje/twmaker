@@ -14,7 +14,6 @@ class StructuredRequest
         public readonly array $schema,
         public readonly array $context = [],
         public readonly int $maxTokens = 4096,
-        public readonly int|float|null $temperature = 0.2,
         public readonly ?string $apiKey = null,
     ) {}
 

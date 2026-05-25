@@ -10,6 +10,7 @@ use App\Jobs\TargetedEditJob;
 use App\Livewire\Builder\Inspector\EditForm\EditForm;
 use App\Livewire\Builder\Inspector\VersionList\VersionList;
 use App\Livewire\Builder\LeftSidebar\LeftSidebar;
+use App\Livewire\Builder\ModelSelector\ModelSelector;
 use App\Livewire\Builder\RightInspector\RightInspector;
 use App\Livewire\Builder\SidePanels\GenerationControls\GenerationControls;
 use App\Livewire\Builder\SidePanels\SectionTree\SectionTree;
@@ -56,8 +57,8 @@ class BuilderShellTest extends TestCase
             ->assertSee('Provider keys')
             ->assertSee('stored only in this browser')
             ->assertSee('Server env keys are optional fallbacks')
-            ->assertSee('Primary generation')
-            ->assertSee('Editing')
+            ->assertSee('Builder model')
+            ->assertDontSee('Primary generation')
             ->assertSee('Anthropic')
             ->assertSee('DeepSeek')
             ->assertSee('OpenAI')
@@ -79,6 +80,22 @@ class BuilderShellTest extends TestCase
             ->set('editingModel', 'claude-sonnet-4-20250514')
             ->call('save')
             ->assertSet('saveStatus', 'Setup saved on this browser.');
+    }
+
+    public function test_builder_model_selector_loads_catalogs_for_browser_api_keys(): void
+    {
+        $this->cacheProviderModels('openai', 'test-browser-openai-key', [
+            ['id' => 'gpt-4.1-mini', 'label' => 'GPT 4.1 Mini'],
+            ['id' => 'gpt-4o', 'label' => 'GPT 4o', 'modalities' => ['text', 'image']],
+        ]);
+
+        $choices = app(ModelSelector::class)->choicesForApiKeys([
+            'openai' => 'test-browser-openai-key',
+        ]);
+
+        $this->assertContains('openai|gpt-4.1-mini', array_column($choices, 'value'));
+        $this->assertContains('openai|gpt-4o', array_column($choices, 'value'));
+        $this->assertContains('image', $choices[array_search('openai|gpt-4o', array_column($choices, 'value'), true)]['modalities']);
     }
 
     public function test_project_dashboard_creates_an_empty_page_and_redirects_to_workspace(): void

@@ -65,7 +65,6 @@ class TargetedEdit
                 'reference_images' => count($images),
             ],
             maxTokens: (int) config("llm.providers.{$provider}.edit_max_tokens", 8000),
-            temperature: 0.4,
             apiKey: $apiKey,
             images: $images,
         );

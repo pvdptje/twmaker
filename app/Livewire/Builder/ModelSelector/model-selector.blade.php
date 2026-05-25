@@ -3,6 +3,7 @@
     x-data="{
         selectedValue: @js($defaultValue),
         choices: @js($choices),
+        providerIds: @js($providerIds),
         sharedKey: 'twmaker.builder.modelSelection',
         storageKey(provider) { return `twmaker.apiKey.${provider}`; },
         defaultKey(kind, field) { return `twmaker.llmDefaults.${kind}.${field}`; },
@@ -40,6 +41,36 @@
 
             return provider && model && this.hasChoice(provider, model) ? { provider, model } : null;
         },
+        browserApiKeys() {
+            return this.providerIds.reduce((keys, provider) => {
+                const apiKey = localStorage.getItem(this.storageKey(provider)) || '';
+                if (apiKey) keys[provider] = apiKey;
+
+                return keys;
+            }, {});
+        },
+        hydrateChoices() {
+            const apiKeys = this.browserApiKeys();
+            if (Object.keys(apiKeys).length === 0) {
+                this.loadSelection();
+
+                return;
+            }
+
+            this.$wire.choicesForApiKeys(apiKeys)
+                .then((choices) => {
+                    if (Array.isArray(choices) && choices.length > 0) {
+                        this.choices = choices;
+
+                        if (!this.selectedChoice()) {
+                            this.selectedValue = choices[0].value;
+                        }
+                    }
+
+                    this.loadSelection();
+                })
+                .catch(() => this.loadSelection());
+        },
         loadSelection() {
             const stored = this.parseStoredSelection();
             if (stored) {
@@ -73,7 +104,7 @@
             }));
         },
     }"
-    x-init="loadSelection(); $watch('selectedValue', () => saveSelection())"
+    x-init="hydrateChoices(); $watch('selectedValue', () => saveSelection())"
 >
     <label for="builder-model-selector" class="text-xs font-medium text-neutral-500">Model</label>
     <select

@@ -25,7 +25,7 @@ class SectionGenerator
     {
         $provider ??= (string) config('llm.default_provider', 'anthropic');
         $prompt = $promptOverride ?? $page->prompt;
-        $result = $this->send($page, 'section_generator', $this->prompts->system('section_generator'), $this->buildUserPrompt($prompt, $images), 0.7, $provider, $model, $apiKey, $images);
+        $result = $this->send($page, 'section_generator', $this->prompts->system('section_generator'), $this->buildUserPrompt($prompt, $images), $provider, $model, $apiKey, $images);
 
         if (trim($result->html) !== '') {
             return $result;
@@ -36,7 +36,6 @@ class SectionGenerator
             'section_generator_retry',
             $this->prompts->system('section_generator')."\n\nCritical recovery instruction: the previous response returned empty HTML. Return one complete standalone HTML document with balanced tw:block markers. Do not leave the response blank.",
             $this->buildUserPrompt("Generate the complete marked Tailwind HTML document now. Original prompt: {$prompt}", $images),
-            0.4,
             $provider,
             $model,
             $apiKey,
@@ -53,7 +52,7 @@ class SectionGenerator
     /**
      * @param  array<int, array{base64: string, mime_type: string}>  $images
      */
-    private function send(Page $page, string $stage, string $systemPrompt, string $userPrompt, float $temperature, string $provider, ?string $model, ?string $apiKey, array $images = []): SectionGenerationResult
+    private function send(Page $page, string $stage, string $systemPrompt, string $userPrompt, string $provider, ?string $model, ?string $apiKey, array $images = []): SectionGenerationResult
     {
         $this->streamBuffer->resetRun($page->id, $stage);
 
@@ -69,7 +68,6 @@ class SectionGenerator
                 'reference_images' => count($images),
             ],
             maxTokens: (int) config("llm.providers.{$provider}.section_max_tokens", 8000),
-            temperature: $temperature,
             apiKey: $apiKey,
             images: $images,
         );
