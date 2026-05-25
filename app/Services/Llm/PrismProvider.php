@@ -12,6 +12,7 @@ use Prism\Prism\Streaming\Events\TextDeltaEvent;
 use Prism\Prism\Streaming\Events\ToolCallDeltaEvent;
 use Prism\Prism\Streaming\Events\ToolCallEvent;
 use Prism\Prism\Tool;
+use Prism\Prism\ValueObjects\Media\Image;
 use Prism\Prism\ValueObjects\Messages\SystemMessage;
 use Throwable;
 
@@ -117,7 +118,7 @@ class PrismProvider implements LlmProvider
                 ->using($this->prismProvider($request->provider), $request->model, $this->providerConfig($request))
                 ->withClientOptions($this->clientOptions($request) + ['stream' => true])
                 ->withSystemPrompt($this->systemMessage($request))
-                ->withPrompt($userContent)
+                ->withPrompt($userContent, $this->imageContent($request))
                 ->withMaxTokens($request->maxTokens)
                 ->usingTemperature($request->temperature)
                 ->asStream();
@@ -408,6 +409,27 @@ class PrismProvider implements LlmProvider
         return $message->withProviderOptions(['cacheType' => AnthropicCacheType::Ephemeral]);
     }
 
+    /**
+     * @return array<int, Image>
+     */
+    private function imageContent(TextRequest $request): array
+    {
+        $images = [];
+
+        foreach ($request->images as $entry) {
+            $base64 = (string) ($entry['base64'] ?? '');
+            $mime = (string) ($entry['mime_type'] ?? '');
+
+            if ($base64 === '' || $mime === '') {
+                continue;
+            }
+
+            $images[] = Image::fromBase64($base64, $mime);
+        }
+
+        return $images;
+    }
+
     private function buildUserContent(StructuredRequest|TextRequest $request): string
     {
         if ($request instanceof TextRequest) {
@@ -465,6 +487,7 @@ class PrismProvider implements LlmProvider
                 maxTokens: $request->maxTokens,
                 temperature: $request->temperature,
                 apiKey: $request->apiKey,
+                images: $request->images,
             );
         }
 

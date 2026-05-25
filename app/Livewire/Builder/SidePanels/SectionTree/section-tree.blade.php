@@ -4,8 +4,15 @@
         provider: '',
         model: '',
         apiKey: '',
+        modalities: [],
+        visionAvailable: false,
         insertRunning: false,
+        attachments: [],
+        attachError: '',
+        dragOver: false,
         sharedKey: 'twmaker.builder.modelSelection',
+        maxAttachments: 3,
+        allowedAttachMimes: ['image/png', 'image/jpeg', 'image/webp', 'image/gif'],
         storageKey(provider) { return `twmaker.apiKey.${provider}`; },
         defaultKey(field) { return `twmaker.llmDefaults.editing.${field}`; },
         selectionKey(field) { return `twmaker.builder.editing.${field}`; },
@@ -27,10 +34,104 @@
             this.provider = event.detail?.provider || this.provider;
             this.model = event.detail?.model || this.model;
             this.apiKey = event.detail?.apiKey || '';
+            this.modalities = Array.isArray(event.detail?.modalities) ? event.detail.modalities : ['text'];
+            this.visionAvailable = this.modalities.includes('image');
+            if (!this.visionAvailable && this.attachments.length > 0) {
+                this.attachments = [];
+                this.attachError = 'Selected model does not accept images. Attachments cleared.';
+            }
+        },
+        clearAttachments() {
+            this.attachments = [];
+            this.attachError = '';
+            this.dragOver = false;
+        },
+        removeAttachment(index) {
+            this.attachments.splice(index, 1);
+        },
+        async attachFile(file) {
+            this.attachError = '';
+            if (!file) return;
+            if (!this.visionAvailable) {
+                this.attachError = 'Pick a vision-capable model to attach images.';
+                return;
+            }
+            if (this.attachments.length >= this.maxAttachments) {
+                this.attachError = `Up to ${this.maxAttachments} images per request.`;
+                return;
+            }
+            if (!file.type || !this.allowedAttachMimes.includes(file.type)) {
+                this.attachError = 'Only PNG, JPEG, GIF, or WebP images are supported.';
+                return;
+            }
+            try {
+                this.attachments.push(await this.downsizeImage(file));
+            } catch (error) {
+                this.attachError = 'Could not read that image.';
+            }
+        },
+        downsizeImage(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onerror = () => reject(reader.error);
+                reader.onload = () => {
+                    const img = new Image();
+                    img.onerror = () => reject(new Error('decode failed'));
+                    img.onload = () => {
+                        try {
+                            const maxSide = 1568;
+                            let { width, height } = img;
+                            if (width > maxSide || height > maxSide) {
+                                if (width >= height) {
+                                    height = Math.round(height * (maxSide / width));
+                                    width = maxSide;
+                                } else {
+                                    width = Math.round(width * (maxSide / height));
+                                    height = maxSide;
+                                }
+                            }
+                            const canvas = document.createElement('canvas');
+                            canvas.width = width;
+                            canvas.height = height;
+                            canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+                            const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+                            const base64 = dataUrl.split(',')[1] || '';
+                            resolve({ dataUrl, base64, mimeType: 'image/jpeg', name: file.name || 'screenshot.jpg' });
+                        } catch (error) { reject(error); }
+                    };
+                    img.src = reader.result;
+                };
+                reader.readAsDataURL(file);
+            });
+        },
+        handlePaste(event) {
+            const items = event.clipboardData?.items;
+            if (!items) return;
+            for (const item of items) {
+                if (item.kind === 'file' && item.type && item.type.startsWith('image/')) {
+                    event.preventDefault();
+                    this.attachFile(item.getAsFile());
+                    return;
+                }
+            }
+        },
+        handleDrop(event) {
+            const files = event.dataTransfer?.files;
+            if (!files) return;
+            for (const file of files) {
+                if (file.type && file.type.startsWith('image/')) {
+                    this.attachFile(file);
+                }
+            }
+        },
+        serializedAttachments() {
+            return this.attachments.map((item) => ({ base64: item.base64, mime_type: item.mimeType }));
         },
         startInsert() {
             this.loadSelection();
-            this.$wire.insertSectionWithSelection(this.provider || null, this.model || null, this.apiKey || null);
+            const payload = this.serializedAttachments();
+            this.$wire.insertSectionWithSelection(this.provider || null, this.model || null, this.apiKey || null, payload);
+            this.clearAttachments();
         },
         beginInsert(event) {
             if (event.detail?.pageId && event.detail.pageId !== @js($page->id)) return;
@@ -74,19 +175,11 @@
             @php($label = $section['label'] ?? $section['type'] ?? 'block')
             @php($isSelected = in_array($id, $selectedBlockIds, true))
             @if ($insertOpen && $insertAnchorBlockId === $id && $insertPosition === 'before')
-                <form x-on:submit.prevent="startInsert()" class="mb-1 rounded-md border border-cyan-500/30 bg-neutral-950 p-2">
-                    <textarea wire:model="insertInstruction" rows="3" class="w-full rounded-md border border-neutral-800 bg-neutral-900 px-2 py-1.5 text-sm text-white outline-none focus:border-cyan-400" placeholder="Describe the new section"></textarea>
-                    @error('insertInstruction')
-                        <div class="mt-1 text-xs text-red-300">{{ $message }}</div>
-                    @enderror
-                    <div class="mt-2 flex items-center gap-2">
-                        <button type="submit" x-bind:disabled="insertRunning" wire:loading.attr="disabled" wire:target="insertSectionWithSelection,insertSection" class="inline-flex h-8 flex-1 items-center justify-center rounded-md bg-cyan-500 px-2 text-xs font-semibold text-neutral-950 hover:bg-cyan-400 disabled:bg-neutral-800 disabled:text-neutral-400">
-                            <span wire:loading.remove wire:target="insertSectionWithSelection,insertSection" x-text="insertRunning ? 'Inserting' : 'Insert before'"></span>
-                            <span wire:loading wire:target="insertSectionWithSelection,insertSection">Inserting</span>
-                        </button>
-                        <button type="button" wire:click="cancelInsert" class="h-8 rounded-md border border-neutral-700 px-2 text-xs text-neutral-300 hover:border-neutral-500">Cancel</button>
-                    </div>
-                </form>
+                @include('builder._section-insert-form', [
+                    'wrapperClasses' => 'mb-1 rounded-md border border-cyan-500/30 bg-neutral-950 p-2',
+                    'submitLabel' => 'Insert before',
+                    'loadingLabel' => 'Inserting',
+                ])
             @endif
             <div
                 x-data="{ menuOpen: false, confirmRemove: false, removing: false, dropPosition: null, moving: false, copying: false, copied: false, copyError: false }"
@@ -272,37 +365,21 @@
                 </div>
             </div>
             @if ($insertOpen && $insertAnchorBlockId === $id && $insertPosition === 'after')
-                <form x-on:submit.prevent="startInsert()" class="mt-1 rounded-md border border-cyan-500/30 bg-neutral-950 p-2">
-                    <textarea wire:model="insertInstruction" rows="3" class="w-full rounded-md border border-neutral-800 bg-neutral-900 px-2 py-1.5 text-sm text-white outline-none focus:border-cyan-400" placeholder="Describe the new section"></textarea>
-                    @error('insertInstruction')
-                        <div class="mt-1 text-xs text-red-300">{{ $message }}</div>
-                    @enderror
-                    <div class="mt-2 flex items-center gap-2">
-                        <button type="submit" x-bind:disabled="insertRunning" wire:loading.attr="disabled" wire:target="insertSectionWithSelection,insertSection" class="inline-flex h-8 flex-1 items-center justify-center rounded-md bg-cyan-500 px-2 text-xs font-semibold text-neutral-950 hover:bg-cyan-400 disabled:bg-neutral-800 disabled:text-neutral-400">
-                            <span wire:loading.remove wire:target="insertSectionWithSelection,insertSection" x-text="insertRunning ? 'Inserting' : 'Insert after'"></span>
-                            <span wire:loading wire:target="insertSectionWithSelection,insertSection">Inserting</span>
-                        </button>
-                        <button type="button" wire:click="cancelInsert" class="h-8 rounded-md border border-neutral-700 px-2 text-xs text-neutral-300 hover:border-neutral-500">Cancel</button>
-                    </div>
-                </form>
+                @include('builder._section-insert-form', [
+                    'wrapperClasses' => 'mt-1 rounded-md border border-cyan-500/30 bg-neutral-950 p-2',
+                    'submitLabel' => 'Insert after',
+                    'loadingLabel' => 'Inserting',
+                ])
             @endif
         @empty
             <div class="rounded-md border border-dashed border-neutral-800 px-3 py-5 text-sm text-neutral-500">No sections yet.</div>
         @endforelse
         @if ($insertOpen && $insertAnchorBlockId === null)
-            <form x-on:submit.prevent="startInsert()" class="mt-2 rounded-md border border-cyan-500/30 bg-neutral-950 p-2">
-                <textarea wire:model="insertInstruction" rows="3" class="w-full rounded-md border border-neutral-800 bg-neutral-900 px-2 py-1.5 text-sm text-white outline-none focus:border-cyan-400" placeholder="Describe the new section"></textarea>
-                @error('insertInstruction')
-                    <div class="mt-1 text-xs text-red-300">{{ $message }}</div>
-                @enderror
-                <div class="mt-2 flex items-center gap-2">
-                    <button type="submit" x-bind:disabled="insertRunning" wire:loading.attr="disabled" wire:target="insertSectionWithSelection,insertSection" class="inline-flex h-8 flex-1 items-center justify-center rounded-md bg-cyan-500 px-2 text-xs font-semibold text-neutral-950 hover:bg-cyan-400 disabled:bg-neutral-800 disabled:text-neutral-400">
-                        <span wire:loading.remove wire:target="insertSectionWithSelection,insertSection" x-text="insertRunning ? 'Inserting' : 'Insert section'"></span>
-                        <span wire:loading wire:target="insertSectionWithSelection,insertSection">Inserting</span>
-                    </button>
-                    <button type="button" wire:click="cancelInsert" class="h-8 rounded-md border border-neutral-700 px-2 text-xs text-neutral-300 hover:border-neutral-500">Cancel</button>
-                </div>
-            </form>
+            @include('builder._section-insert-form', [
+                'wrapperClasses' => 'mt-2 rounded-md border border-cyan-500/30 bg-neutral-950 p-2',
+                'submitLabel' => 'Insert section',
+                'loadingLabel' => 'Inserting',
+            ])
         @endif
     </div>
 </section>

@@ -37,6 +37,17 @@ class SectionTree extends Component
 
     public string $insertApiKey = '';
 
+    /**
+     * @var array<int, array{base64: string, mime_type: string}>
+     */
+    public array $insertImages = [];
+
+    private const MAX_INSERT_IMAGES = 3;
+
+    private const MAX_INSERT_IMAGE_BYTES = 5_500_000; // ~5MB decoded; matches Anthropic's per-image limit.
+
+    private const ALLOWED_INSERT_IMAGE_MIMES = ['image/png', 'image/jpeg', 'image/webp'];
+
     public function openInsert(?string $anchorBlockId = null, string $position = 'after'): void
     {
         $this->insertOpen = true;
@@ -52,14 +63,25 @@ class SectionTree extends Component
         $this->insertAnchorBlockId = null;
         $this->insertPosition = 'after';
         $this->insertInstruction = '';
+        $this->insertImages = [];
         $this->resetErrorBag();
     }
 
-    public function insertSectionWithSelection(?string $provider = null, ?string $model = null, ?string $apiKey = null): void
+    /**
+     * @param  array<int, array{base64?: string, mime_type?: string}>|null  $attachments
+     */
+    public function insertSectionWithSelection(?string $provider = null, ?string $model = null, ?string $apiKey = null, ?array $attachments = null): void
     {
         $this->insertProvider = $this->normalizedProvider($provider);
         $this->insertApiKey = (string) $apiKey;
         $this->insertModel = $this->normalizedModel($this->insertProvider, $model);
+        $this->insertImages = $this->normalizedAttachments($attachments);
+
+        if ($this->insertImages !== [] && ! $this->registry()->supportsModality($this->insertProvider, $this->insertModel, 'image', $this->normalizedApiKey())) {
+            $this->addError('insertInstruction', 'The selected model does not accept image input. Pick a vision-capable model or remove the attachments.');
+
+            return;
+        }
 
         $this->insertSection();
     }
@@ -103,6 +125,7 @@ class SectionTree extends Component
             $this->insertProvider !== '' ? $this->insertProvider : null,
             $this->insertModel !== '' ? $this->insertModel : null,
             $this->normalizedApiKey(),
+            $this->insertImages,
         );
 
         $this->cancelInsert();
@@ -212,6 +235,48 @@ class SectionTree extends Component
         }
 
         return $this->registry()->defaultModel($provider, 'targeted_edit', $this->normalizedApiKey());
+    }
+
+    /**
+     * @param  array<int, array{base64?: string, mime_type?: string}>|null  $attachments
+     * @return array<int, array{base64: string, mime_type: string}>
+     */
+    private function normalizedAttachments(?array $attachments): array
+    {
+        if (! is_array($attachments) || $attachments === []) {
+            return [];
+        }
+
+        $normalized = [];
+
+        foreach (array_slice($attachments, 0, self::MAX_INSERT_IMAGES) as $entry) {
+            if (! is_array($entry)) {
+                continue;
+            }
+
+            $base64 = trim((string) ($entry['base64'] ?? ''));
+            $mime = strtolower(trim((string) ($entry['mime_type'] ?? '')));
+
+            if ($base64 === '' || ! in_array($mime, self::ALLOWED_INSERT_IMAGE_MIMES, true)) {
+                continue;
+            }
+
+            if (! preg_match('/^[A-Za-z0-9+\/=\s]+$/', $base64)) {
+                continue;
+            }
+
+            $decodedLength = (int) (strlen($base64) * 3 / 4);
+            if ($decodedLength > self::MAX_INSERT_IMAGE_BYTES) {
+                continue;
+            }
+
+            $normalized[] = [
+                'base64' => preg_replace('/\s+/', '', $base64) ?? '',
+                'mime_type' => $mime,
+            ];
+        }
+
+        return $normalized;
     }
 
     private function normalizedApiKey(): ?string

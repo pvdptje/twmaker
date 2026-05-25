@@ -17,6 +17,9 @@ class InsertSectionJob implements ShouldBeEncrypted, ShouldQueue
 
     public int $timeout = 300;
 
+    /**
+     * @param  array<int, array{base64: string, mime_type: string}>  $images
+     */
     public function __construct(
         public readonly string $pageId,
         public readonly ?string $anchorBlockId,
@@ -25,6 +28,7 @@ class InsertSectionJob implements ShouldBeEncrypted, ShouldQueue
         public readonly ?string $provider = null,
         public readonly ?string $model = null,
         public readonly ?string $apiKey = null,
+        public readonly array $images = [],
     ) {}
 
     public function handle(Pipeline $pipeline): void
@@ -38,6 +42,7 @@ class InsertSectionJob implements ShouldBeEncrypted, ShouldQueue
                 $this->provider,
                 $this->model,
                 $this->apiKey,
+                $this->images,
             );
         } catch (Throwable $exception) {
             // Pipeline records insert_rejected. Keep sync queue mode from surfacing a Livewire 500 overlay.

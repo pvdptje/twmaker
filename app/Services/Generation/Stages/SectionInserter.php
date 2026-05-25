@@ -25,7 +25,10 @@ class SectionInserter
         private readonly GenerationStreamBuffer $streamBuffer,
     ) {}
 
-    public function insert(Page $page, ?string $anchorBlockId, string $position, string $instruction, ?string $provider = null, ?string $model = null, ?string $apiKey = null): array
+    /**
+     * @param  array<int, array{base64: string, mime_type: string}>  $images
+     */
+    public function insert(Page $page, ?string $anchorBlockId, string $position, string $instruction, ?string $provider = null, ?string $model = null, ?string $apiKey = null, array $images = []): array
     {
         $provider ??= (string) config('llm.default_provider', 'anthropic');
         $position = $position === 'before' ? 'before' : 'after';
@@ -42,16 +45,18 @@ class SectionInserter
             provider: $provider,
             model: $model ?: (string) config("llm.providers.{$provider}.models.targeted_edit"),
             systemPrompt: $this->prompts->system('section_inserter'),
-            userPrompt: $this->buildUserPrompt($instruction, $position, $anchorBlock, $existingIds, $htmlSource),
+            userPrompt: $this->buildUserPrompt($instruction, $position, $anchorBlock, $existingIds, $htmlSource, $images),
             context: [
                 'page_id' => $page->id,
                 'page_name' => $page->name,
                 'anchor_id' => $anchorBlock['id'] ?? '',
                 'position' => $position,
+                'reference_images' => count($images),
             ],
             maxTokens: (int) config("llm.providers.{$provider}.edit_max_tokens", 8000),
             temperature: 0.6,
             apiKey: $apiKey,
+            images: $images,
         );
 
         try {
@@ -141,8 +146,9 @@ class SectionInserter
 
     /**
      * @param  array<int, string>  $existingIds
+     * @param  array<int, array{base64: string, mime_type: string}>  $images
      */
-    private function buildUserPrompt(string $instruction, string $position, array $anchorBlock, array $existingIds, string $htmlSource): string
+    private function buildUserPrompt(string $instruction, string $position, array $anchorBlock, array $existingIds, string $htmlSource, array $images = []): string
     {
         $blockList = '';
         foreach ($existingIds as $id) {
@@ -164,8 +170,14 @@ class SectionInserter
         $context = $this->surroundingHtml($htmlSource, $anchorBlock);
         $contextSection = $context !== '' ? "Surrounding HTML for visual style context:\n{$context}" : 'Page is currently empty.';
 
+        $imageNote = $images !== []
+            ? 'A visual reference '.(count($images) === 1 ? 'screenshot is' : count($images).' screenshots are')
+                .' attached. Recreate the layout, hierarchy, colors and overall style shown in the reference while honoring the user instruction. Adapt the content to fit the rest of the page when the reference conflicts with the surrounding context.'
+            : null;
+
         return implode("\n\n", array_filter([
             "User instruction for the new section:\n{$instruction}",
+            $imageNote,
             $anchorDescription,
             $positionNote,
             "Existing block ids on the page (do not reuse):\n".trim($blockList),

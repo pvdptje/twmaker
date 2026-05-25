@@ -467,7 +467,78 @@ class BuilderShellTest extends TestCase
             && $job->instruction === 'Add a compact customer logo band'
             && $job->provider === 'anthropic'
             && $job->model === 'claude-haiku-4-5-20251001'
-            && $job->apiKey === 'test-insert-key');
+            && $job->apiKey === 'test-insert-key'
+            && $job->images === []);
+    }
+
+    public function test_section_tree_forwards_image_attachments_when_model_supports_vision(): void
+    {
+        Queue::fake();
+        $this->cacheProviderModels('anthropic', 'test-insert-key', [
+            ['id' => 'claude-haiku-4-5-20251001', 'label' => 'Claude Haiku 4.5'],
+        ]);
+
+        $project = Project::query()->create([
+            'id' => app(IdGenerator::class)->project(),
+            'name' => 'Acme',
+        ]);
+        $page = Page::query()->create([
+            'id' => app(IdGenerator::class)->page(),
+            'project_id' => $project->id,
+            'name' => 'Homepage',
+            'prompt' => '',
+            'html_source' => $this->markedHtmlSource(),
+            'status' => 'valid',
+        ]);
+        $blockIndex = app(BlockIndexer::class)->index($page->html_source);
+
+        $imageBase64 = base64_encode('binary-screenshot-bytes');
+
+        Livewire::test(SectionTree::class, ['page' => $page, 'blockIndex' => $blockIndex])
+            ->call('openInsert', 'block_hero', 'after')
+            ->set('insertInstruction', 'Recreate this pricing table')
+            ->call('insertSectionWithSelection', 'anthropic', 'claude-haiku-4-5-20251001', 'test-insert-key', [
+                ['base64' => $imageBase64, 'mime_type' => 'image/png'],
+                ['base64' => '', 'mime_type' => 'image/png'], // dropped: empty
+                ['base64' => $imageBase64, 'mime_type' => 'image/bogus'], // dropped: bad mime
+            ])
+            ->assertSet('insertOpen', false);
+
+        Queue::assertPushed(InsertSectionJob::class, fn (InsertSectionJob $job): bool => count($job->images) === 1
+            && $job->images[0]['mime_type'] === 'image/png'
+            && $job->images[0]['base64'] === $imageBase64);
+    }
+
+    public function test_section_tree_rejects_attachments_when_model_does_not_support_vision(): void
+    {
+        Queue::fake();
+        $this->cacheProviderModels('deepseek', 'test-insert-key', [
+            ['id' => 'deepseek-chat', 'label' => 'DeepSeek Chat'],
+        ]);
+
+        $project = Project::query()->create([
+            'id' => app(IdGenerator::class)->project(),
+            'name' => 'Acme',
+        ]);
+        $page = Page::query()->create([
+            'id' => app(IdGenerator::class)->page(),
+            'project_id' => $project->id,
+            'name' => 'Homepage',
+            'prompt' => '',
+            'html_source' => $this->markedHtmlSource(),
+            'status' => 'valid',
+        ]);
+        $blockIndex = app(BlockIndexer::class)->index($page->html_source);
+
+        Livewire::test(SectionTree::class, ['page' => $page, 'blockIndex' => $blockIndex])
+            ->call('openInsert', 'block_hero', 'after')
+            ->set('insertInstruction', 'Recreate this hero')
+            ->call('insertSectionWithSelection', 'deepseek', 'deepseek-chat', 'test-insert-key', [
+                ['base64' => base64_encode('bytes'), 'mime_type' => 'image/png'],
+            ])
+            ->assertHasErrors('insertInstruction');
+
+        Queue::assertNotPushed(InsertSectionJob::class);
     }
 
     public function test_section_tree_removes_a_block_and_snapshots_a_version(): void

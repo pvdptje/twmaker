@@ -110,7 +110,10 @@ class Pipeline
         return $this->editMany($page, [$targetId], $instruction, $provider, $model, $apiKey);
     }
 
-    public function insertSection(Page $page, ?string $anchorBlockId, string $position, string $instruction, ?string $provider = null, ?string $model = null, ?string $apiKey = null): array
+    /**
+     * @param  array<int, array{base64: string, mime_type: string}>  $images
+     */
+    public function insertSection(Page $page, ?string $anchorBlockId, string $position, string $instruction, ?string $provider = null, ?string $model = null, ?string $apiKey = null, array $images = []): array
     {
         $provider ??= (string) config('llm.default_provider', 'anthropic');
         $position = $position === 'before' ? 'before' : 'after';
@@ -121,11 +124,12 @@ class Pipeline
                 'instruction' => $instruction,
                 'anchor_id' => $eventTargetId,
                 'position' => $position,
+                'reference_images' => count($images),
             ]);
         }
 
         try {
-            $result = $this->sectionInserter->insert($page, $eventTargetId, $position, $instruction, $provider, $model, $apiKey);
+            $result = $this->sectionInserter->insert($page, $eventTargetId, $position, $instruction, $provider, $model, $apiKey, $images);
             $htmlSource = $this->blockIndexer->insertBlocks(
                 (string) ($page->html_source ?? ''),
                 (string) ($eventTargetId ?? ''),
