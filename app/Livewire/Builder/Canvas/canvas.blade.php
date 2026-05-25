@@ -116,10 +116,13 @@
                         this.expanded = localStorage.getItem(this.storageKey) === '1';
                         this.apply();
                     },
-                    toggle() {
-                        this.expanded = !this.expanded;
+                    setExpanded(value) {
+                        this.expanded = value === true;
                         localStorage.setItem(this.storageKey, this.expanded ? '1' : '0');
                         this.apply();
+                    },
+                    toggle() {
+                        this.setExpanded(!this.expanded);
                     },
                     apply() {
                         const main = document.querySelector('main[data-builder-workspace-page-id]');
@@ -131,6 +134,7 @@
                     },
                 }"
                 @click="toggle()"
+                x-on:builder-preview-restored.window="setExpanded(false)"
                 :title="expanded ? 'Restore sidebars' : 'Expand preview'"
                 :aria-label="expanded ? 'Restore sidebars' : 'Expand preview'"
                 :aria-pressed="expanded"

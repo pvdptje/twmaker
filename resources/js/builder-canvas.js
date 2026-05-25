@@ -616,6 +616,10 @@ body { margin: 0; background: #fff; color: #171717; font-family: ui-sans-serif, 
         bindPreviewFrame();
     }
 
+    function notifyPreviewRestored() {
+        window.dispatchEvent(new CustomEvent('builder-preview-restored'));
+    }
+
     function bootCanvas() {
         bindQuickEditorControls();
         bindPreviewFrame();
@@ -693,6 +697,8 @@ body { margin: 0; background: #fff; color: #171717; font-family: ui-sans-serif, 
             if (previewFrame) {
                 previewFrame.dataset.selectedNodeId = event.data.nodeId || '';
             }
+
+            notifyPreviewRestored();
 
             if (event.data.openQuickEdit === true) {
                 showQuickEditor(event.data.quickEdit);
