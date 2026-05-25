@@ -19,6 +19,44 @@
                     Download HTML
                 </span>
             @endif
+
+            <button
+                type="button"
+                x-data="{
+                    expanded: false,
+                    storageKey: 'twmaker.builder.previewExpanded',
+                    init() {
+                        this.expanded = localStorage.getItem(this.storageKey) === '1';
+                        this.apply();
+                    },
+                    toggle() {
+                        this.expanded = !this.expanded;
+                        localStorage.setItem(this.storageKey, this.expanded ? '1' : '0');
+                        this.apply();
+                    },
+                    apply() {
+                        const main = document.querySelector('main[data-builder-workspace-page-id]');
+                        if (!main) return;
+                        main.style.gridTemplateColumns = this.expanded ? 'minmax(0,1fr)' : '';
+                        main.querySelectorAll(':scope > aside').forEach((aside) => {
+                            aside.style.display = this.expanded ? 'none' : '';
+                        });
+                    },
+                }"
+                @click="toggle()"
+                :title="expanded ? 'Restore sidebars' : 'Expand preview'"
+                :aria-label="expanded ? 'Restore sidebars' : 'Expand preview'"
+                :aria-pressed="expanded"
+                class="inline-flex h-8 items-center gap-1.5 rounded-md border border-neutral-800 bg-neutral-900 px-2.5 text-xs font-medium text-neutral-300 transition hover:border-neutral-700 hover:text-white focus:outline-none focus:ring-2 focus:ring-cyan-400/40"
+            >
+                <svg x-show="!expanded" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" class="h-3.5 w-3.5" aria-hidden="true">
+                    <path d="M3 8V3h5M17 8V3h-5M3 12v5h5M17 12v5h-5" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <svg x-show="expanded" x-cloak viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" class="h-3.5 w-3.5" aria-hidden="true">
+                    <path d="M8 3v5H3M12 3v5h5M8 17v-5H3M12 17v-5h5" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <span x-text="expanded ? 'Collapse' : 'Expand'"></span>
+            </button>
         </div>
     </div>
 
