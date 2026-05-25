@@ -2,7 +2,7 @@
 
 > Status: living product and architecture plan.
 > Last rewritten: 2026-05-25.
-> Current track: V1 and V1.1 are complete. V1.2 is moving provider API keys from browser storage to encrypted team database storage.
+> Current track: V1 and V1.1 are complete. V1.2 is moving provider API keys from browser storage to encrypted team database storage. Next track: V1.3 generated-site exports from a source page.
 > Companion file: `progress.md` is the historical session log. It is useful context, but this file is the current north star.
 > Encoding: ASCII only.
 
@@ -22,7 +22,8 @@ The key breakthrough is that the page is plain marked HTML, not a rigid JSON com
 4. Generate a complete Tailwind HTML page.
 5. Select blocks in the preview or section tree.
 6. Apply targeted edits, insert new sections, reorder sections, remove sections, quick-edit an element, or run full-document enhancements.
-7. Download a single page as HTML or the whole project as a zip.
+7. From a strong source page, ask the app to propose the rest of the site, review/remove proposed pages, and generate a site zip.
+8. Download a single page as HTML, a generated-site zip, or the whole project as a zip.
 
 ### What V1 Is
 
@@ -193,6 +194,7 @@ Do not revive these old assumptions:
 | `/setup/llm` | Team LLM provider setup |
 | `/projects/{project}` | Project dashboard and page list |
 | `/projects/{project}/download-html` | Download generated project pages as a zip |
+| `/projects/{project}/pages/{page}/site-runs/{siteGenerationRun}/download` | Download a stored generated-site zip for a source page |
 | `/projects/{project}/pages/{page}` | Builder workspace |
 | `/projects/{project}/pages/{page}/download-html` | Download one page as HTML |
 
@@ -206,6 +208,7 @@ Do not revive these old assumptions:
 | Targeted edit | `app/Services/Generation/Stages/TargetedEdit.php` |
 | Section insertion | `app/Services/Generation/Stages/SectionInserter.php` |
 | Full document enhancement | `app/Services/Generation/Stages/DocumentEnhancer.php` |
+| Site page planning | `app/Services/Generation/SitePagePlanner.php` |
 | Related page prompting | `app/Services/Generation/RelatedPagePromptBuilder.php` |
 | HTML indexing | `app/Services/Html/BlockIndexer.php` |
 | HTML validation | `app/Services/Html/HtmlDocumentValidator.php` |
@@ -223,6 +226,9 @@ Do not revive these old assumptions:
 | `InsertSectionJob` | Insert one new block before/after an anchor |
 | `EnhanceDocumentJob` | Rewrite the full document for editability, color refresh, or custom refinement |
 | `GenerateRelatedPageJob` | Generate a sibling page using source page style/header/footer context |
+| `GenerateSiteRunJob` | Orchestrate a reviewed multi-page site run from one source page |
+| `GenerateSitePageJob` | Generate one selected page in a site run using the related-page pipeline |
+| `FinalizeSiteZipJob` | Render source/generated pages into a stored zip artifact |
 | `GranularizeBlocksJob` | Compatibility wrapper around document enhancement |
 
 ### Frontend
@@ -238,6 +244,7 @@ Do not revive these old assumptions:
 | Generation controls | `app/Livewire/Builder/SidePanels/GenerationControls/*` |
 | Inspector edit form | `app/Livewire/Builder/Inspector/EditForm/*` |
 | Model selector | `app/Livewire/Builder/ModelSelector/*` |
+| Project dashboard and generated-site review | `app/Livewire/Projects/ProjectDashboard/*` |
 
 ---
 
@@ -295,6 +302,56 @@ Snapshots are taken before meaningful mutations, including generation, targeted 
 - `occurred_at`
 
 Events are persisted and broadcast. The stream panel should always be able to reconstruct the recent run after reload.
+
+### Site Generation Runs
+
+`site_generation_runs`
+
+- `id`
+- `team_id`
+- `project_id`
+- `source_page_id`
+- `status`: `draft`, `queued`, `running`, `completed`, `failed`
+- `provider`
+- `model`
+- `planned_pages`: reviewed planner output as JSON
+- `generated_page_ids`: generated sibling page IDs as JSON for quick display/export
+- `zip_disk`: default `local`
+- `zip_path`: nullable until completed
+- `zip_filename`
+- `zip_byte_size`
+- `error_message`
+- `started_at`
+- `completed_at`
+- timestamps
+
+Purpose:
+
+- Keep a durable record of every generated-site export initiated from a source page.
+- Drive the page-row zip dropdown in the project dashboard.
+- Keep the source page as the root of the run without changing `pages.html_source` as the page source of truth.
+
+### Site Generation Run Pages
+
+`site_generation_run_pages`
+
+- `id`
+- `site_generation_run_id`
+- `target_page_id`
+- `sort_order`
+- `name`
+- `slug`
+- `brief`
+- `source`: `menu`, `planner`, `user`
+- `status`: `queued`, `generating`, `completed`, `failed`, `skipped`
+- `error_message`
+- timestamps
+
+Purpose:
+
+- Track each reviewed page item independently.
+- Make partial failures visible.
+- Leave room for retrying one failed page later without repeating the full site run.
 
 ### Legacy Tables
 
@@ -408,6 +465,29 @@ Enhancement must preserve valid markers and avoid nested blocks. It is the right
 
 `GenerateRelatedPageJob` builds a prompt from a source page, reusing header/footer when found and carrying over the visual system. This lets a project grow beyond a single landing page while keeping brand continuity.
 
+### Generated Site From Source Page
+
+This feature starts from the project dashboard page list. Each generated source page gets a "Generate site" action.
+
+1. User clicks "Generate site" on a page row. The action is disabled until the source page has non-empty valid HTML.
+2. The dashboard opens a review modal and runs a structured LLM planner call before any page-generation jobs are queued.
+3. `SitePagePlanner` receives the source page name, prompt, marked HTML excerpt, local menu/link extraction, current project pages, provider/model, and resolved team API key.
+4. The planner returns a JSON list of proposed pages with name, slug, brief, source menu label or reason, and confidence. It should infer the amount of pages from the source page navigation/menu first, then fill obvious missing site pages only when useful.
+5. The user reviews the proposed list, removes unwanted items, and optionally edits page names/briefs if the first implementation has time. Removal is required; inline editing is useful but not required for the first pass.
+6. Pressing "Proceed" creates a `site_generation_runs` row and one `site_generation_run_pages` row per selected item, then dispatches the queued generation chain.
+7. The queued chain generates each selected sibling page using the existing related-page generation path and source page style/header/footer context.
+8. The final job renders the source page plus generated pages with `Renderer::renderDownloadHtml`, writes a zip to local storage, and updates the run with `completed`, path, filename, byte size, and timestamps.
+9. The project dashboard shows the latest generated-site zip on the source page row. If multiple completed runs exist for the page, show a compact dropdown/list ordered newest first.
+
+Generation principles:
+
+- Do not overwrite a non-empty existing page unless the user explicitly chose that in a later UI. First pass should create new sibling pages or reuse only empty placeholder pages that were created for the run.
+- The source page is included in the zip, but it is not regenerated.
+- Page filenames are slugged and deduplicated before generation starts. Prompts should include the filename map so generated navigation can point at stable local HTML filenames.
+- If nav links still come back inconsistent, the zip finalizer may do conservative local link normalization for obvious same-site menu hrefs.
+- Queued jobs that carry the resolved API key must implement `ShouldBeEncrypted`.
+- Store only artifact metadata in the database. Store zip bytes on Laravel's `local` disk under a path such as `site-runs/{run_id}/{filename}.zip`.
+
 ---
 
 ## 8. LLM And Model Layer
@@ -471,6 +551,15 @@ Important behavior:
 
 `ProjectHtmlDownloadController` returns a zip of every generated page in the project. Filenames are slugged and deduplicated.
 
+### Generated Site Zip
+
+Generated-site zips are stored artifacts, not temporary downloads:
+
+- `FinalizeSiteZipJob` writes the zip to `storage/app/private` or the configured local disk.
+- `SiteGenerationRunDownloadController` authorizes through the run's project/team and streams the stored file.
+- The zip contains the source page plus the selected generated pages from that run, not every page in the project.
+- The project dashboard page row exposes the latest completed zip and a dropdown/list when prior runs exist.
+
 ### Export Principle
 
 Export should be plain HTML that works outside the builder. It may include Tailwind CDN and Alpine CDN. It must not include the preview bridge, selection overlays, or builder-only behavior.
@@ -510,6 +599,7 @@ Use targeted tests while developing:
 ```powershell
 php artisan test tests\Feature\BuilderShellTest.php
 php artisan test tests\Feature\Generation\PipelineTest.php
+php artisan test tests\Feature\Generation\GeneratedSiteRunTest.php
 php artisan test tests\Unit\Html\BlockIndexerTest.php
 php artisan test tests\Unit\Llm\PrismProviderTest.php
 ```
@@ -583,11 +673,48 @@ Acceptance:
 - Team outsiders cannot read, use, replace, or delete another team's keys.
 - Tests cover encryption/non-display behavior and all AI entry points.
 
-### P2: Keep The Fast Builder Feeling
+### P2: V1.3 Generated Site Exports
+
+Add a "Generate site" workflow to each generated page row in the project dashboard.
+
+Implementation shape:
+
+- Add `site_generation_runs` and `site_generation_run_pages` migrations, models, relationships, and ID prefixes.
+- Add a stored zip download route/controller scoped by project/team membership.
+- Add `SitePagePlanner`, a structured LLM service that proposes pages from source HTML, menu items, current project pages, and the source prompt.
+- Extend `RelatedPagePromptBuilder` or add a site-aware wrapper so each generated page receives the full reviewed page map and stable export filenames.
+- Add dashboard UI state for provider/model choice, planner loading, proposal review, item removal, and proceed.
+- Dispatch a queued chain on proceed: generate selected pages, then finalize the zip.
+- Show run status and completed zips on the source page row, with a dropdown/list for older zips.
+
+Planner schema:
+
+- `pages`: array of objects with `name`, `slug`, `brief`, `source`, `source_label`, `reason`, `confidence`.
+- `summary`: short explanation of how many pages were proposed and why.
+- Reject empty planner output with a calm UI error and no queued jobs.
+
+Queue behavior:
+
+- The planner call happens before queue dispatch so the user can review the list.
+- Page generation happens only after proceed.
+- Jobs should mark per-page status as they start/finish and mark the run failed if any required page fails.
+- The finalizer should still be able to build a zip from completed pages if the run policy later allows partial success. First pass can treat any page failure as a failed run.
+
+Acceptance:
+
+- A page row with valid HTML has a "Generate site" action.
+- Clicking it produces a reviewable proposed page list based on the source page and menu items.
+- The user can remove proposed pages before proceeding.
+- Proceed queues generation for the selected pages and eventually stores a local zip artifact.
+- Completed zips are visible and downloadable from the source page row.
+- Team outsiders cannot plan, queue, inspect, or download another team's site runs.
+- Tests cover planner request shape with a fake LLM, run persistence, queue/finalizer behavior, download authorization, and dashboard visibility.
+
+### P3: Keep The Fast Builder Feeling
 
 The current system feels fast because preview updates are incremental, Livewire state is slim, and streams are throttled. Preserve that. Any feature that pushes full HTML through Livewire state, bloats broadcast payloads, or remounts the iframe unnecessarily should be treated as a regression.
 
-### P3: Stale Selection And Malformed Edit UX
+### P4: Stale Selection And Malformed Edit UX
 
 Improve inspector handling when:
 
@@ -598,7 +725,7 @@ Improve inspector handling when:
 
 The user should see a calm, actionable message and the UI should clear or repair stale selection state.
 
-### P4: Enhancement Completion Browser Pass
+### P5: Enhancement Completion Browser Pass
 
 Manually verify enhancement completion in the browser without a hard refresh:
 
@@ -608,7 +735,7 @@ Manually verify enhancement completion in the browser without a hard refresh:
 - Terminal events with small payloads.
 - Preview refresh and section tree refresh.
 
-### P5: Version History UX
+### P6: Version History UX
 
 Version snapshots exist. The next useful layer is a restore UI:
 
@@ -617,7 +744,7 @@ Version snapshots exist. The next useful layer is a restore UI:
 - Restore a version into `pages.html_source`.
 - Snapshot the current version before restore.
 
-### P6: Export Polish
+### P7: Export Polish
 
 Decide whether public export should strip marker comments by default, or offer both:
 
@@ -626,11 +753,11 @@ Decide whether public export should strip marker comments by default, or offer b
 
 Also consider optional CSS inlining or a no-CDN export later.
 
-### P7: Model Cost Coverage
+### P8: Model Cost Coverage
 
 Expand `config/llm_pricing.php` only for models we actually use. Keep unknown models graceful. Do not guess prices casually.
 
-### P8: Related Page Workflow
+### P9: Related Page Workflow
 
 Make related page generation more visible in the UI:
 
@@ -638,7 +765,7 @@ Make related page generation more visible in the UI:
 - Preserve header/footer where useful.
 - Keep style continuity.
 
-### P9: Prompt And Provider Hardening
+### P10: Prompt And Provider Hardening
 
 Continue hardening around provider quirks:
 
@@ -660,6 +787,7 @@ When changing builder behavior, start here:
 - AI edits: `TargetedEdit.php`, `targeted_edit.system.md`, `TargetedEditJob.php`.
 - Full generation: `SectionGenerator.php`, `section_generator.system.md`, `Pipeline::generate`.
 - Full-document passes: `DocumentEnhancer.php`, `document_enhancer.system.md`.
+- Generated-site workflow: `ProjectDashboard.php`, `project-dashboard.blade.php`, `SitePagePlanner.php`, `RelatedPagePromptBuilder.php`, generated-site jobs, generated-site download controller.
 - Provider/model behavior: `config/llm.php`, `LlmRegistry.php`, `ProviderModelCatalog.php`, `PrismProvider.php`.
 - Usage/cost display: `ModelPricing.php`, `config/llm_pricing.php`, stream panel views.
 
@@ -718,3 +846,15 @@ V1.2 is successful when:
 - Browser localStorage is no longer the primary API-key storage path.
 - Env keys remain optional fallbacks.
 - Team access rules protect stored keys the same way they protect projects/pages.
+
+## 20. End State For V1.3
+
+V1.3 is successful when:
+
+- Every generated page row can start a generated-site workflow.
+- The app uses an LLM planner call to infer the rest of the site from the source page and its menu.
+- The user reviews the proposed page list and can remove unwanted pages before any generation queue starts.
+- The queue generates selected sibling pages using the existing related-page system.
+- A stored local zip artifact is attached to the source page row when the run completes.
+- Multiple generated-site zips for the same source page remain available through a compact row dropdown/list.
+- Authorization, provider-key handling, and queued job encryption match the rest of the builder.
