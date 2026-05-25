@@ -8,6 +8,7 @@ use App\Models\Page;
 use App\Services\Generation\GenerationEventRecorder;
 use App\Services\Llm\ImageAttachments;
 use App\Services\Llm\LlmRegistry;
+use App\Services\Llm\TeamProviderCredentials;
 use Illuminate\Contracts\View\View;
 use Livewire\Component;
 
@@ -35,7 +36,7 @@ class GenerationControls extends Component
     public function mount(Page $page): void
     {
         $this->prompt = $page->prompt;
-        $this->provider = $this->storedProvider() ?? $this->registry()->defaultProvider();
+        $this->provider = $this->storedProvider() ?? $this->defaultProvider();
         $this->model = $this->storedModel($this->provider) ?? $this->defaultModel();
     }
 
@@ -77,7 +78,6 @@ class GenerationControls extends Component
             'prompt' => ['required', 'string', 'min:3', 'max:5000'],
             'provider' => ['required', 'string', 'in:'.implode(',', $this->providerIds())],
             'model' => ['required', 'string', 'in:'.implode(',', $this->modelIds())],
-            'apiKey' => ['nullable', 'string', 'max:500'],
         ]);
 
         if ($this->images !== [] && ! $this->registry()->supportsModality($this->provider, $this->model, 'image', $this->normalizedApiKey())) {
@@ -106,7 +106,7 @@ class GenerationControls extends Component
     {
         $this->provider = $provider;
         $this->model = $model;
-        $this->apiKey = (string) $apiKey;
+        $this->apiKey = '';
         $this->images = app(ImageAttachments::class)->normalize($attachments);
         $this->storeProvider();
         $this->storeModel();
@@ -118,7 +118,7 @@ class GenerationControls extends Component
     {
         $this->provider = $provider;
         $this->model = $model;
-        $this->apiKey = (string) $apiKey;
+        $this->apiKey = '';
         $this->customEnhancementPrompt = (string) $customPrompt;
         $this->storeProvider();
         $this->storeModel();
@@ -131,7 +131,6 @@ class GenerationControls extends Component
         $this->validate([
             'provider' => ['required', 'string', 'in:'.implode(',', $this->providerIds())],
             'model' => ['required', 'string', 'in:'.implode(',', $this->modelIds())],
-            'apiKey' => ['nullable', 'string', 'max:500'],
         ]);
 
         if (trim((string) ($this->page->html_source ?? '')) === '') {
@@ -175,7 +174,7 @@ class GenerationControls extends Component
 
     private function providerOptions(): array
     {
-        return $this->registry()->implementedProviders();
+        return $this->credentials()->configuredProviderOptions($this->credentials()->teamForPage($this->page));
     }
 
     private function providerIds(): array
@@ -222,9 +221,7 @@ class GenerationControls extends Component
 
     private function normalizedApiKey(): ?string
     {
-        $apiKey = trim($this->apiKey);
-
-        return $apiKey === '' ? null : $apiKey;
+        return $this->credentials()->apiKey($this->credentials()->teamForPage($this->page), $this->provider);
     }
 
     private function registry(): LlmRegistry
@@ -247,24 +244,33 @@ class GenerationControls extends Component
             return true;
         }
 
-        return $this->normalizedApiKey() !== null
-            || trim((string) config("llm.providers.{$this->provider}.api_key")) !== '';
+        return $this->credentials()->canFetchModels($this->credentials()->teamForPage($this->page), $this->provider);
     }
 
     private function storedProvider(): ?string
     {
         $provider = session('builder.primary.provider');
 
-        return is_string($provider) && $this->registry()->isImplementedProvider($provider) ? $provider : null;
+        return is_string($provider) && in_array($provider, $this->providerIds(), true) ? $provider : null;
     }
 
     private function storedModel(string $provider): ?string
     {
         $model = session("builder.primary.models.{$provider}");
 
-        return is_string($model) && in_array($model, $this->registry()->modelIds($provider, $this->normalizedApiKey()), true)
+        return is_string($model) && in_array($model, $this->registry()->modelIds($provider, $this->credentials()->apiKey($this->credentials()->teamForPage($this->page), $provider)), true)
             ? $model
             : null;
+    }
+
+    private function defaultProvider(): string
+    {
+        return (string) ($this->providerIds()[0] ?? $this->registry()->defaultProvider());
+    }
+
+    private function credentials(): TeamProviderCredentials
+    {
+        return app(TeamProviderCredentials::class);
     }
 
     private function storeProvider(): void

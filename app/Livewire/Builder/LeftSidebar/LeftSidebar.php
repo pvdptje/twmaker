@@ -8,6 +8,7 @@ use App\Models\Project;
 use App\Services\Generation\GenerationEventRecorder;
 use App\Services\Ids\IdGenerator;
 use App\Services\Llm\LlmRegistry;
+use App\Services\Llm\TeamProviderCredentials;
 use Illuminate\Contracts\View\View;
 use Livewire\Attributes\Reactive;
 use Livewire\Component;
@@ -59,7 +60,7 @@ class LeftSidebar extends Component
     public function createRelatedPageWithSelection(?string $provider = null, ?string $model = null, ?string $apiKey = null): mixed
     {
         $this->relatedProvider = $this->normalizedProvider($provider);
-        $this->relatedApiKey = (string) $apiKey;
+        $this->relatedApiKey = '';
         $this->relatedModel = $this->normalizedModel($this->relatedProvider, $model);
 
         return $this->createRelatedPage();
@@ -70,9 +71,8 @@ class LeftSidebar extends Component
         $validated = $this->validate([
             'relatedPageName' => ['required', 'string', 'max:160'],
             'relatedPageBrief' => ['nullable', 'string', 'max:2000'],
-            'relatedProvider' => ['nullable', 'string'],
+            'relatedProvider' => ['nullable', 'string', 'in:'.implode(',', $this->providerIds())],
             'relatedModel' => ['nullable', 'string'],
-            'relatedApiKey' => ['nullable', 'string', 'max:500'],
         ]);
 
         if (trim((string) ($this->page->html_source ?? '')) === '') {
@@ -132,32 +132,50 @@ class LeftSidebar extends Component
     {
         $provider = is_string($provider) ? trim($provider) : '';
 
-        return $this->registry()->isImplementedProvider($provider)
+        return in_array($provider, $this->providerIds(), true)
             ? $provider
-            : $this->registry()->defaultProvider();
+            : $this->defaultProvider();
     }
 
     private function normalizedModel(string $provider, ?string $model): string
     {
         $model = is_string($model) ? trim($model) : '';
-        $modelIds = $this->registry()->modelIds($provider, $this->normalizedApiKey());
+        $modelIds = $this->registry()->modelIds($provider, $this->apiKeyForProvider($provider));
 
         if ($model !== '' && in_array($model, $modelIds, true)) {
             return $model;
         }
 
-        return $this->registry()->defaultModel($provider, 'section_generator', $this->normalizedApiKey());
+        return $this->registry()->defaultModel($provider, 'section_generator', $this->apiKeyForProvider($provider));
     }
 
     private function normalizedApiKey(): ?string
     {
-        $apiKey = trim($this->relatedApiKey);
-
-        return $apiKey === '' ? null : $apiKey;
+        return $this->apiKeyForProvider($this->relatedProvider);
     }
 
     private function registry(): LlmRegistry
     {
         return app(LlmRegistry::class);
+    }
+
+    private function providerIds(): array
+    {
+        return array_column($this->credentials()->configuredProviderOptions($this->credentials()->teamForPage($this->page)), 'id');
+    }
+
+    private function defaultProvider(): string
+    {
+        return (string) ($this->providerIds()[0] ?? $this->registry()->defaultProvider());
+    }
+
+    private function apiKeyForProvider(string $provider): ?string
+    {
+        return $this->credentials()->apiKey($this->credentials()->teamForPage($this->page), $provider);
+    }
+
+    private function credentials(): TeamProviderCredentials
+    {
+        return app(TeamProviderCredentials::class);
     }
 }

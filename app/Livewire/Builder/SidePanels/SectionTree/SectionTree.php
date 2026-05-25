@@ -10,6 +10,7 @@ use App\Services\Html\BlockIndexer;
 use App\Services\Html\HtmlValidationException;
 use App\Services\Llm\ImageAttachments;
 use App\Services\Llm\LlmRegistry;
+use App\Services\Llm\TeamProviderCredentials;
 use Illuminate\Contracts\View\View;
 use Livewire\Attributes\Reactive;
 use Livewire\Component;
@@ -71,7 +72,7 @@ class SectionTree extends Component
     public function insertSectionWithSelection(?string $provider = null, ?string $model = null, ?string $apiKey = null, ?array $attachments = null): void
     {
         $this->insertProvider = $this->normalizedProvider($provider);
-        $this->insertApiKey = (string) $apiKey;
+        $this->insertApiKey = '';
         $this->insertModel = $this->normalizedModel($this->insertProvider, $model);
         $this->insertImages = $this->normalizedAttachments($attachments);
 
@@ -90,9 +91,8 @@ class SectionTree extends Component
             'insertAnchorBlockId' => ['nullable', 'string'],
             'insertPosition' => ['required', 'string', 'in:before,after'],
             'insertInstruction' => ['required', 'string', 'min:3', 'max:5000'],
-            'insertProvider' => ['nullable', 'string'],
+            'insertProvider' => ['nullable', 'string', 'in:'.implode(',', $this->providerIds())],
             'insertModel' => ['nullable', 'string'],
-            'insertApiKey' => ['nullable', 'string', 'max:500'],
         ]);
 
         $anchorId = $this->insertAnchorBlockId !== '' ? $this->insertAnchorBlockId : null;
@@ -238,21 +238,21 @@ class SectionTree extends Component
     {
         $provider = is_string($provider) ? trim($provider) : '';
 
-        return $this->registry()->isImplementedProvider($provider)
+        return in_array($provider, $this->providerIds(), true)
             ? $provider
-            : $this->registry()->defaultProvider();
+            : $this->defaultProvider();
     }
 
     private function normalizedModel(string $provider, ?string $model): string
     {
         $model = is_string($model) ? trim($model) : '';
-        $modelIds = $this->registry()->modelIds($provider, $this->normalizedApiKey());
+        $modelIds = $this->registry()->modelIds($provider, $this->apiKeyForProvider($provider));
 
         if ($model !== '' && in_array($model, $modelIds, true)) {
             return $model;
         }
 
-        return $this->registry()->defaultModel($provider, 'targeted_edit', $this->normalizedApiKey());
+        return $this->registry()->defaultModel($provider, 'targeted_edit', $this->apiKeyForProvider($provider));
     }
 
     /**
@@ -266,14 +266,32 @@ class SectionTree extends Component
 
     private function normalizedApiKey(): ?string
     {
-        $apiKey = trim($this->insertApiKey);
-
-        return $apiKey === '' ? null : $apiKey;
+        return $this->apiKeyForProvider($this->insertProvider);
     }
 
     private function registry(): LlmRegistry
     {
         return app(LlmRegistry::class);
+    }
+
+    private function providerIds(): array
+    {
+        return array_column($this->credentials()->configuredProviderOptions($this->credentials()->teamForPage($this->page)), 'id');
+    }
+
+    private function defaultProvider(): string
+    {
+        return (string) ($this->providerIds()[0] ?? $this->registry()->defaultProvider());
+    }
+
+    private function apiKeyForProvider(string $provider): ?string
+    {
+        return $this->credentials()->apiKey($this->credentials()->teamForPage($this->page), $provider);
+    }
+
+    private function credentials(): TeamProviderCredentials
+    {
+        return app(TeamProviderCredentials::class);
     }
 
     private function insertRequestedSummary(?string $anchorBlockId, string $position): string

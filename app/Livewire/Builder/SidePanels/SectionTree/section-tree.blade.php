@@ -3,7 +3,6 @@
     x-data="{
         provider: '',
         model: '',
-        apiKey: '',
         modalities: [],
         visionAvailable: false,
         insertRunning: false,
@@ -13,7 +12,6 @@
         sharedKey: 'twmaker.builder.modelSelection',
         maxAttachments: 3,
         allowedAttachMimes: ['image/png', 'image/jpeg', 'image/webp', 'image/gif'],
-        storageKey(provider) { return `twmaker.apiKey.${provider}`; },
         defaultKey(field) { return `twmaker.llmDefaults.editing.${field}`; },
         selectionKey(field) { return `twmaker.builder.editing.${field}`; },
         loadSelection() {
@@ -30,12 +28,10 @@
                 }
             } catch (error) {}
 
-            this.apiKey = this.provider ? (localStorage.getItem(this.storageKey(this.provider)) || '') : '';
         },
         updateSelection(event) {
             this.provider = event.detail?.provider || this.provider;
             this.model = event.detail?.model || this.model;
-            this.apiKey = event.detail?.apiKey || '';
             this.modalities = Array.isArray(event.detail?.modalities) ? event.detail.modalities : ['text'];
             this.visionAvailable = this.modalities.includes('image');
             if (!this.visionAvailable && this.attachments.length > 0) {
@@ -132,7 +128,7 @@
         startInsert() {
             this.loadSelection();
             const payload = this.serializedAttachments();
-            this.$wire.insertSectionWithSelection(this.provider || null, this.model || null, this.apiKey || null, payload);
+            this.$wire.insertSectionWithSelection(this.provider || null, this.model || null, null, payload);
             this.clearAttachments();
         },
         beginInsert(event) {

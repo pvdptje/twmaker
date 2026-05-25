@@ -38,4 +38,9 @@ class Team extends Model
     {
         return $this->hasMany(Page::class);
     }
+
+    public function providerCredentials(): HasMany
+    {
+        return $this->hasMany(TeamProviderCredential::class);
+    }
 }

@@ -3,10 +3,8 @@
     x-data="{
         provider: @js($provider),
         model: @js($model),
-        apiKey: '',
         ...window.builderImageAttachments(),
         sharedKey: 'twmaker.builder.modelSelection',
-        storageKey(provider) { return `twmaker.apiKey.${provider}`; },
         defaultKey(field) { return `twmaker.llmDefaults.editing.${field}`; },
         selectionKey(field) { return `twmaker.builder.editing.${field}`; },
         loadSelection() {
@@ -22,19 +20,17 @@
                 }
             } catch (error) {}
 
-            this.apiKey = this.provider ? (localStorage.getItem(this.storageKey(this.provider)) || '') : '';
         },
         updateSelection(event) {
             this.provider = event.detail?.provider || this.provider;
             this.model = event.detail?.model || this.model;
-            this.apiKey = event.detail?.apiKey || '';
             this.updateAttachmentModalities(event.detail?.modalities);
         },
         editRunning: false,
         startEdit() {
             this.loadSelection();
             const payload = this.serializedAttachments();
-            this.$wire.applyEditWithSelection(this.provider, this.model, this.apiKey, payload);
+            this.$wire.applyEditWithSelection(this.provider, this.model, null, payload);
             this.clearAttachments();
         },
         beginEdit(event) {
@@ -72,10 +68,6 @@
         <div class="mt-2 text-xs text-red-300">{{ $message }}</div>
     @enderror
     @error('model')
-        <div class="mt-2 text-xs text-red-300">{{ $message }}</div>
-    @enderror
-    <input type="hidden" wire:model="apiKey">
-    @error('apiKey')
         <div class="mt-2 text-xs text-red-300">{{ $message }}</div>
     @enderror
     @if ($modelCatalogStatus !== '')

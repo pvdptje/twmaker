@@ -4,12 +4,16 @@
 > Encoding: pure ASCII. Do not introduce non-ASCII characters when editing.
 
 ## Current Milestone
-V1.1 - Basic Authentication And Invisible Teams
+V1.2 - Persisted Provider API Keys
 
 ## Status
-done
+implemented, awaiting browser verification
 
 ## Completed Tasks
+- [2026-05-25] V1.1.acceptance: user verified basic authentication and invisible team ownership in the browser; V1.1 is done.
+- [2026-05-25] V1.2.scope: planned encrypted database storage for provider API keys. Recommendation is team-level credentials by default, with optional user-level overrides deferred until personal billing/private-key use cases appear.
+- [2026-05-25] V1.2.team-provider-keys: added encrypted team provider credentials, an Add provider setup flow, configured-provider-only model selection, replace/delete controls, server-side key resolution for all AI entry points, and a Reload models action for all configured providers.
+- [2026-05-25] V1.2.team-provider-keys-verification: `vendor\bin\pint.bat --dirty`, `php artisan test tests\Feature\BuilderShellTest.php`, `php artisan test`, `npm.cmd run test:js`, and `npm.cmd run build` pass.
 - [2026-05-25] V1.acceptance: V1 is complete; the builder supports marked-HTML generation, targeted edits, section insert/remove/reorder, quick element edits, full-document enhancements, live preview streaming, versions, and HTML export.
 - [2026-05-25] V1.1.scope: started basic auth and team ownership. Users get invisible default teams; projects/pages are scoped to team membership; no email verification, role layer, invites, or team setup UI yet.
 - [2026-05-25] V1.1.auth-teams: added users, strong-password registration, login/logout, invisible teams, team membership, team-scoped projects/pages, team access checks, and auth coverage.
@@ -163,7 +167,7 @@ done
 - Marker insertion is a separate LLM stage after freeform HTML generation. This preserves creative freedom and makes marker/validation failures easier to diagnose and repair.
 - Workspace owns a lightweight page signature (`status`, `updated_at`, `html_source`, `block_index`) and remounts nested preview components only when that signature changes.
 - DeepSeek text generation should use streaming without tools/tool_choice; structured stages keep forced tool calls with thinking disabled. This avoids DeepSeek thinking-mode tool-choice errors while preserving structured output where needed.
-- For the open-source distribution, browser localStorage is the primary key-storage path. Env API keys should be treated as optional operator fallbacks, not required setup.
+- Superseded by V1.2: browser localStorage is no longer the primary key-storage path. Team database credentials are primary; env API keys are optional operator fallbacks.
 - Block granularization is a full-document refinement pass rather than a targeted edit. It may replace a coarse parent block with multiple sibling child blocks, but validation rejects nested `tw:block` markers so later targeted edits still operate on clean block boundaries.
 - Document-wide enhancement presets should share one backend stage (`document_enhancer`) so new actions can be added by defining a prompt instruction instead of creating new one-off queued jobs.
 - Quick inline HTML edits should participate in the same version history as AI edits, inserts, removes, moves, and enhancements so manual code changes are restorable.

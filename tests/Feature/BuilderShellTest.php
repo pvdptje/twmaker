@@ -26,6 +26,7 @@ use App\Models\Project;
 use App\Models\User;
 use App\Services\Html\BlockIndexer;
 use App\Services\Ids\IdGenerator;
+use App\Services\Llm\TeamProviderCredentials;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -170,10 +171,10 @@ class BuilderShellTest extends TestCase
         $this->get(route('setup.llm'))
             ->assertOk()
             ->assertSee('LLM setup')
-            ->assertSee('Provider keys')
-            ->assertSee('stored only in this browser')
-            ->assertSee('Server env keys are optional fallbacks')
-            ->assertSee('Builder model')
+            ->assertSee('Configured providers')
+            ->assertSee('encrypted in the database')
+            ->assertSee('Add provider')
+            ->assertSee('Defaults appear after the first provider is added')
             ->assertDontSee('Primary generation')
             ->assertSee('Anthropic')
             ->assertSee('DeepSeek')
@@ -181,33 +182,49 @@ class BuilderShellTest extends TestCase
             ->assertSee('Gemini');
     }
 
-    public function test_llm_setup_saves_browser_backed_defaults(): void
+    public function test_llm_setup_adds_team_provider_credentials_and_saves_defaults(): void
     {
-        $this->cacheProviderModels('anthropic', 'test-setup-key', [
-            ['id' => 'claude-haiku-4-5-20251001', 'label' => 'Claude Haiku 4.5'],
-            ['id' => 'claude-sonnet-4-20250514', 'label' => 'Claude Sonnet 4'],
+        Http::fake([
+            'https://api.anthropic.com/v1/models*' => Http::response([
+                'data' => [
+                    ['id' => 'claude-haiku-4-5-20251001', 'display_name' => 'Claude Haiku 4.5'],
+                    ['id' => 'claude-sonnet-4-20250514', 'display_name' => 'Claude Sonnet 4'],
+                ],
+                'has_more' => false,
+            ]),
         ]);
 
         Livewire::test(LlmSetup::class)
-            ->set('apiKeys.anthropic', 'test-setup-key')
-            ->set('primaryProvider', 'anthropic')
+            ->set('providerToAdd', 'anthropic')
+            ->set('newApiKey', 'test-setup-key')
+            ->call('addProvider')
+            ->assertSet('primaryProvider', 'anthropic')
+            ->assertSet('primaryModel', 'claude-haiku-4-5-20251001')
             ->set('primaryModel', 'claude-haiku-4-5-20251001')
-            ->set('editingProvider', 'anthropic')
-            ->set('editingModel', 'claude-sonnet-4-20250514')
             ->call('save')
-            ->assertSet('saveStatus', 'Setup saved on this browser.');
+            ->assertSet('saveStatus', 'Setup saved for this team.')
+            ->set('replacementKeys.anthropic', 'test-replaced-key')
+            ->call('replaceProviderKey', 'anthropic')
+            ->assertSet('replacementKeys.anthropic', '')
+            ->assertSet('saveStatus', 'Anthropic key replaced.');
+
+        $credential = $this->user->createDefaultTeam()->providerCredentials()->firstOrFail();
+
+        $this->assertSame('anthropic', $credential->provider);
+        $this->assertSame('test-replaced-key', $credential->refresh()->api_key);
+        $this->assertDatabaseMissing('team_provider_credentials', [
+            'api_key' => 'test-replaced-key',
+        ]);
     }
 
-    public function test_builder_model_selector_loads_catalogs_for_browser_api_keys(): void
+    public function test_builder_model_selector_loads_catalogs_for_team_provider_keys(): void
     {
         $this->cacheProviderModels('openai', 'test-browser-openai-key', [
             ['id' => 'gpt-4.1-mini', 'label' => 'GPT 4.1 Mini'],
             ['id' => 'gpt-4o', 'label' => 'GPT 4o', 'modalities' => ['text', 'image']],
         ]);
 
-        $choices = app(ModelSelector::class)->choicesForApiKeys([
-            'openai' => 'test-browser-openai-key',
-        ]);
+        $choices = app(ModelSelector::class)->choicesForConfiguredProviders();
 
         $this->assertContains('openai|gpt-4.1-mini', array_column($choices, 'value'));
         $this->assertContains('openai|gpt-4o', array_column($choices, 'value'));
@@ -378,6 +395,7 @@ class BuilderShellTest extends TestCase
     public function test_left_sidebar_creates_a_related_page_from_current_page(): void
     {
         Queue::fake();
+        $this->saveProviderKey('anthropic', 'test-related-key');
 
         $project = Project::query()->create([
             'id' => app(IdGenerator::class)->project(),
@@ -622,6 +640,7 @@ class BuilderShellTest extends TestCase
     public function test_generation_controls_refresh_provider_models(): void
     {
         Cache::flush();
+        $this->saveProviderKey('anthropic', 'test-model-key');
         Http::fake([
             'https://api.anthropic.com/v1/models*' => Http::response([
                 'data' => [
@@ -1731,6 +1750,13 @@ HTML,
 
     private function cacheProviderModels(string $provider, string $apiKey, array $models): void
     {
+        $this->saveProviderKey($provider, $apiKey);
+
         Cache::put("llm:models:{$provider}:".hash('sha256', $apiKey), $models, now()->addMinute());
+    }
+
+    private function saveProviderKey(string $provider, string $apiKey): void
+    {
+        app(TeamProviderCredentials::class)->save($this->user->createDefaultTeam(), $provider, $apiKey);
     }
 }

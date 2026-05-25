@@ -2,7 +2,7 @@
 
 > Status: living product and architecture plan.
 > Last rewritten: 2026-05-25.
-> Current track: V1 is complete. V1.1 adds basic authentication and invisible team ownership.
+> Current track: V1 and V1.1 are complete. V1.2 is moving provider API keys from browser storage to encrypted team database storage.
 > Companion file: `progress.md` is the historical session log. It is useful context, but this file is the current north star.
 > Encoding: ASCII only.
 
@@ -112,7 +112,7 @@ Implemented providers are configured in `config/llm.php`:
 - Perplexity
 - Z.ai
 
-Provider API keys are primarily browser-local through the setup and builder UI, with env keys available as server-side fallbacks. Queued jobs that carry keys or image attachments implement `ShouldBeEncrypted`.
+Provider API keys are team-scoped through encrypted database credentials, with env keys available as server-side fallbacks. The browser carries provider/model selection only; generation, edit, insert, enhancement, and related-page flows resolve the raw key server-side from the page's team. Queued jobs that carry resolved keys or image attachments implement `ShouldBeEncrypted`.
 
 ### Current UX
 
@@ -125,13 +125,34 @@ The workspace is a four-area builder:
 
 ### Current Auth Direction
 
-V1.1 adds the minimum account boundary needed for real use:
+V1.1 added the minimum account boundary needed for real use:
 
 - Routes require login except login/register actions.
 - Every user receives a default team at registration.
 - Projects and pages are saved with `team_id`.
 - A user may access/edit projects and pages only through a team they belong to.
 - There is no permission layer inside a team yet.
+
+### Current API Key Direction
+
+V1.2 stores provider API keys in the database instead of browser localStorage.
+
+Keys are team-level and encrypted at rest.
+
+Why team-based:
+
+- Projects and pages are team-owned.
+- Any team member who can edit a project should be able to run generation/edit/enhancement flows for that project.
+- It avoids each team member having to configure keys separately before they can work.
+- It matches the future team setup direction without adding roles yet.
+
+Important security constraints:
+
+- Never display the raw key after save.
+- Allow replace/delete per provider.
+- Use Laravel encrypted casts or explicit encryption for stored secret values.
+- Continue allowing env keys as operator fallbacks.
+- Later, add optional user-level overrides if personal billing or private keys become important.
 
 ---
 
@@ -169,7 +190,7 @@ Do not revive these old assumptions:
 | Route | Purpose |
 |---|---|
 | `/` | Project list |
-| `/setup/llm` | Browser-local LLM setup |
+| `/setup/llm` | Team LLM provider setup |
 | `/projects/{project}` | Project dashboard and page list |
 | `/projects/{project}/download-html` | Download generated project pages as a zip |
 | `/projects/{project}/pages/{page}` | Builder workspace |
@@ -323,7 +344,7 @@ The preview bridge reads comments and annotates the next rendered element with r
 
 ### Full Page Generation
 
-1. User submits prompt, provider, model, optional API key, optional images.
+1. User submits prompt, provider, model, and optional images; the server resolves the team provider key.
 2. `GeneratePageJob` calls `Pipeline::generate`.
 3. `SectionGenerator` streams raw Tailwind HTML through Prism text streaming.
 4. Empty output is retried once.
@@ -526,7 +547,7 @@ A change is done when:
 
 ### P0: V1.1 Basic Auth And Team Ownership
 
-Add the account foundation without changing the builder workflow:
+Completed. The account foundation exists without changing the builder workflow:
 
 - Users can register, log in, and log out.
 - Passwords must be strong.
@@ -535,11 +556,38 @@ Add the account foundation without changing the builder workflow:
 - Projects and pages are team-owned and scoped through team membership.
 - Existing builder operations keep their current speed and streaming behavior.
 
-### P1: Keep The Fast Builder Feeling
+### P1: V1.2 Persisted Provider API Keys
+
+Move provider API keys out of browser localStorage and into encrypted database storage.
+
+Recommended shape:
+
+- Add a `team_provider_credentials` table.
+- Columns: `id`, `team_id`, `provider`, encrypted `api_key`, timestamps.
+- Unique index on `team_id` plus `provider`.
+- Setup page reads/writes team credentials for the authenticated user's default team.
+- Setup page uses an "Add provider" flow instead of showing every provider key field at once.
+- Only configured providers are shown in the builder model selector.
+- A top-level "Reload models" action refreshes model catalogs for every configured provider.
+- Builder model selectors and generation forms hydrate provider availability from stored team keys.
+- Jobs should receive the resolved key server-side, or resolve by team/page context where practical.
+- The UI should show saved/not saved, last updated, replace, and delete states, but never reveal the stored value.
+- Browser localStorage remains only for non-secret provider/model selection state.
+
+Acceptance:
+
+- A user can save, replace, and delete a provider key.
+- Saved provider keys survive browser/device changes.
+- Generate, targeted edit, insert, enhancement, and related-page jobs can use stored team keys.
+- Env keys still work as fallbacks when no team key exists.
+- Team outsiders cannot read, use, replace, or delete another team's keys.
+- Tests cover encryption/non-display behavior and all AI entry points.
+
+### P2: Keep The Fast Builder Feeling
 
 The current system feels fast because preview updates are incremental, Livewire state is slim, and streams are throttled. Preserve that. Any feature that pushes full HTML through Livewire state, bloats broadcast payloads, or remounts the iframe unnecessarily should be treated as a regression.
 
-### P2: Stale Selection And Malformed Edit UX
+### P3: Stale Selection And Malformed Edit UX
 
 Improve inspector handling when:
 
@@ -550,7 +598,7 @@ Improve inspector handling when:
 
 The user should see a calm, actionable message and the UI should clear or repair stale selection state.
 
-### P3: Enhancement Completion Browser Pass
+### P4: Enhancement Completion Browser Pass
 
 Manually verify enhancement completion in the browser without a hard refresh:
 
@@ -560,7 +608,7 @@ Manually verify enhancement completion in the browser without a hard refresh:
 - Terminal events with small payloads.
 - Preview refresh and section tree refresh.
 
-### P4: Version History UX
+### P5: Version History UX
 
 Version snapshots exist. The next useful layer is a restore UI:
 
@@ -569,7 +617,7 @@ Version snapshots exist. The next useful layer is a restore UI:
 - Restore a version into `pages.html_source`.
 - Snapshot the current version before restore.
 
-### P5: Export Polish
+### P6: Export Polish
 
 Decide whether public export should strip marker comments by default, or offer both:
 
@@ -578,11 +626,11 @@ Decide whether public export should strip marker comments by default, or offer b
 
 Also consider optional CSS inlining or a no-CDN export later.
 
-### P6: Model Cost Coverage
+### P7: Model Cost Coverage
 
 Expand `config/llm_pricing.php` only for models we actually use. Keep unknown models graceful. Do not guess prices casually.
 
-### P7: Related Page Workflow
+### P8: Related Page Workflow
 
 Make related page generation more visible in the UI:
 
@@ -590,7 +638,7 @@ Make related page generation more visible in the UI:
 - Preserve header/footer where useful.
 - Keep style continuity.
 
-### P8: Prompt And Provider Hardening
+### P9: Prompt And Provider Hardening
 
 Continue hardening around provider quirks:
 
@@ -655,3 +703,18 @@ V1.1 is successful when:
 - Team members can access and edit team projects/pages.
 - Users outside the team receive 404s for those projects/pages.
 - The existing generation, enhancement, edit, stream, export, and version flows keep passing.
+
+That is done. Keep V1.1 invisible and boring until real team management exists.
+
+## 19. End State For V1.2
+
+V1.2 is successful when:
+
+- Provider API keys are saved encrypted in the database.
+- Keys are scoped to teams by default.
+- Raw keys are never displayed after save.
+- Users can save, replace, and delete keys from setup.
+- Builder model selection and all AI jobs use stored team keys.
+- Browser localStorage is no longer the primary API-key storage path.
+- Env keys remain optional fallbacks.
+- Team access rules protect stored keys the same way they protect projects/pages.

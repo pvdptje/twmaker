@@ -2,24 +2,27 @@
 
 namespace App\Livewire\Setup;
 
+use App\Models\Team;
 use App\Services\Llm\LlmRegistry;
+use App\Services\Llm\TeamProviderCredentials;
 use Illuminate\Contracts\View\View;
+use Illuminate\Validation\Rule;
 use Livewire\Component;
 
 class LlmSetup extends Component
 {
+    public string $providerToAdd = '';
+
+    public string $newApiKey = '';
+
     /**
      * @var array<string, string>
      */
-    public array $apiKeys = [];
+    public array $replacementKeys = [];
 
     public string $primaryProvider = '';
 
     public string $primaryModel = '';
-
-    public string $editingProvider = '';
-
-    public string $editingModel = '';
 
     /**
      * @var array<string, string>
@@ -30,87 +33,171 @@ class LlmSetup extends Component
 
     public function mount(): void
     {
-        $this->primaryProvider = $this->registry()->defaultProvider();
-        $this->primaryModel = $this->defaultModel($this->primaryProvider, 'section_generator');
-        $this->syncEditingDefaults();
+        $this->resetSelection();
     }
 
     public function updatedPrimaryProvider(): void
     {
-        $this->primaryModel = $this->defaultModel($this->primaryProvider, 'section_generator');
-        $this->syncEditingDefaults();
+        $this->primaryModel = $this->defaultModel($this->primaryProvider);
         $this->saveStatus = '';
     }
 
     public function updatedPrimaryModel(): void
     {
-        $this->syncEditingDefaults();
         $this->saveStatus = '';
     }
 
-    public function updatedEditingProvider(): void
+    public function addProvider(): void
     {
-        $this->editingModel = $this->defaultModel($this->editingProvider, 'targeted_edit');
-        $this->saveStatus = '';
+        $team = $this->team();
+        $providerIds = $this->providerIds();
+        $requiresKey = $this->providerToAdd !== ''
+            && (bool) config("llm.providers.{$this->providerToAdd}.requires_api_key", true)
+            && trim((string) config("llm.providers.{$this->providerToAdd}.api_key")) === '';
+
+        $this->validate([
+            'providerToAdd' => ['required', 'string', Rule::in($providerIds)],
+            'newApiKey' => [Rule::requiredIf($requiresKey), 'nullable', 'string', 'max:500'],
+        ]);
+
+        $this->credentials()->save($team, $this->providerToAdd, $this->newApiKey);
+
+        $provider = $this->providerToAdd;
+        $this->providerToAdd = '';
+        $this->newApiKey = '';
+        $this->saveStatus = config("llm.providers.{$provider}.label", ucfirst($provider)).' added to this team.';
+
+        if ($this->credentials()->canFetchModels($team, $provider)) {
+            $this->refreshModels($provider);
+        }
+
+        $this->resetSelection($provider);
+    }
+
+    public function removeProvider(string $provider): void
+    {
+        if (! in_array($provider, $this->configuredProviderIds(), true)) {
+            return;
+        }
+
+        $this->credentials()->delete($this->team(), $provider);
+        unset($this->modelCatalogStatuses[$provider]);
+        $this->saveStatus = config("llm.providers.{$provider}.label", ucfirst($provider)).' removed from this team.';
+        $this->resetSelection();
+    }
+
+    public function replaceProviderKey(string $provider): void
+    {
+        if (! in_array($provider, $this->configuredProviderIds(), true)) {
+            return;
+        }
+
+        $this->validate([
+            "replacementKeys.{$provider}" => ['required', 'string', 'max:500'],
+        ]);
+
+        $this->credentials()->save($this->team(), $provider, $this->replacementKeys[$provider] ?? '');
+        $this->replacementKeys[$provider] = '';
+        $this->saveStatus = config("llm.providers.{$provider}.label", ucfirst($provider)).' key replaced.';
+        $this->refreshModels($provider);
+        $this->resetSelection($provider);
+    }
+
+    public function reloadModels(): void
+    {
+        $configuredProviderIds = $this->configuredProviderIds();
+
+        if ($configuredProviderIds === []) {
+            $this->saveStatus = 'Add a provider before reloading models.';
+
+            return;
+        }
+
+        foreach ($configuredProviderIds as $provider) {
+            $this->refreshModels($provider);
+        }
+
+        $this->saveStatus = 'Model catalogs reloaded.';
     }
 
     public function refreshModels(string $provider): void
     {
-        if (! in_array($provider, $this->providerIds(), true)) {
+        if (! in_array($provider, $this->configuredProviderIds(), true)) {
             return;
         }
 
-        if (! $this->hasModelFetchKey($provider)) {
-            $this->modelCatalogStatuses[$provider] = 'Add an API key to refresh models.';
+        $team = $this->team();
+
+        if (! $this->credentials()->canFetchModels($team, $provider)) {
+            $this->modelCatalogStatuses[$provider] = 'Add an API key to reload models.';
 
             return;
         }
 
-        $models = $this->registry()->refreshModelOptions($provider, $this->normalizedApiKey($provider));
-        $this->ensureSelectedModelsAreAvailable($provider, $models);
+        $models = $this->registry()->refreshModelOptions($provider, $this->apiKey($provider));
+        $this->ensureSelectedModelIsAvailable($provider, $models);
 
         $this->modelCatalogStatuses[$provider] = count($models).' models refreshed.';
     }
 
     public function save(): void
     {
-        $this->syncEditingDefaults();
+        $configuredProviderIds = $this->configuredProviderIds();
 
         $this->validate([
-            'apiKeys' => ['array'],
-            'apiKeys.*' => ['nullable', 'string', 'max:500'],
-            'primaryProvider' => ['required', 'string', 'in:'.implode(',', $this->providerIds())],
-            'primaryModel' => ['required', 'string', 'in:'.implode(',', $this->modelIds($this->primaryProvider))],
-            'editingProvider' => ['required', 'string', 'in:'.implode(',', $this->providerIds())],
-            'editingModel' => ['required', 'string', 'in:'.implode(',', $this->modelIds($this->editingProvider))],
+            'primaryProvider' => ['required', 'string', Rule::in($configuredProviderIds)],
+            'primaryModel' => ['required', 'string', Rule::in($this->modelIds($this->primaryProvider))],
         ]);
 
-        $this->saveStatus = 'Setup saved on this browser.';
+        session([
+            'builder.primary.provider' => $this->primaryProvider,
+            'builder.editing.provider' => $this->primaryProvider,
+            "builder.primary.models.{$this->primaryProvider}" => $this->primaryModel,
+            "builder.editing.models.{$this->primaryProvider}" => $this->primaryModel,
+        ]);
+
+        $this->saveStatus = 'Setup saved for this team.';
     }
 
     public function render(): View
     {
+        $team = $this->team();
+        $configuredProviderOptions = $this->credentials()->configuredProviderOptions($team);
+
         return view()->file(__DIR__.'/llm-setup.blade.php', [
-            'providerOptions' => $this->providerOptions(),
-            'modelOptionsByProvider' => collect($this->providerIds())
+            'configuredProviderOptions' => $configuredProviderOptions,
+            'availableProviderOptions' => $this->credentials()->availableProviderOptions($team),
+            'modelOptionsByProvider' => collect(array_column($configuredProviderOptions, 'id'))
                 ->mapWithKeys(fn (string $provider): array => [$provider => $this->modelOptions($provider)])
                 ->all(),
         ])->layout('components.layouts.app', ['title' => 'LLM setup']);
     }
 
-    private function providerOptions(): array
+    private function resetSelection(?string $preferredProvider = null): void
     {
-        return $this->registry()->implementedProviders();
+        $providerIds = $this->configuredProviderIds();
+        $preferredProvider = is_string($preferredProvider) && in_array($preferredProvider, $providerIds, true)
+            ? $preferredProvider
+            : null;
+
+        $this->primaryProvider = $preferredProvider
+            ?? (in_array($this->primaryProvider, $providerIds, true) ? $this->primaryProvider : (string) ($providerIds[0] ?? ''));
+        $this->primaryModel = $this->primaryProvider !== '' ? $this->defaultModel($this->primaryProvider) : '';
     }
 
     private function providerIds(): array
     {
-        return array_column($this->providerOptions(), 'id');
+        return array_column($this->registry()->implementedProviders(), 'id');
+    }
+
+    private function configuredProviderIds(): array
+    {
+        return array_column($this->credentials()->configuredProviderOptions($this->team()), 'id');
     }
 
     private function modelOptions(string $provider): array
     {
-        return $this->registry()->modelOptions($provider, $this->normalizedApiKey($provider));
+        return $this->registry()->modelOptions($provider, $this->apiKey($provider));
     }
 
     private function modelIds(string $provider): array
@@ -118,46 +205,33 @@ class LlmSetup extends Component
         return array_column($this->modelOptions($provider), 'id');
     }
 
-    private function defaultModel(string $provider, string $stage): string
+    private function defaultModel(string $provider): string
     {
-        return $this->registry()->defaultModel($provider, $stage, $this->normalizedApiKey($provider));
+        return $this->registry()->defaultModel($provider, 'section_generator', $this->apiKey($provider));
     }
 
-    private function normalizedApiKey(string $provider): ?string
+    private function apiKey(string $provider): ?string
     {
-        $apiKey = trim((string) ($this->apiKeys[$provider] ?? ''));
-
-        return $apiKey === '' ? null : $apiKey;
+        return $this->credentials()->apiKey($this->team(), $provider);
     }
 
-    private function hasModelFetchKey(string $provider): bool
-    {
-        if (! (bool) config("llm.providers.{$provider}.requires_api_key", true)) {
-            return true;
-        }
-
-        return $this->normalizedApiKey($provider) !== null
-            || trim((string) config("llm.providers.{$provider}.api_key")) !== '';
-    }
-
-    private function ensureSelectedModelsAreAvailable(string $provider, array $models): void
+    private function ensureSelectedModelIsAvailable(string $provider, array $models): void
     {
         $modelIds = array_column($models, 'id');
 
         if ($this->primaryProvider === $provider && ! in_array($this->primaryModel, $modelIds, true)) {
-            $this->primaryModel = $this->defaultModel($provider, 'section_generator');
-            $this->syncEditingDefaults();
-        }
-
-        if ($this->editingProvider === $provider && ! in_array($this->editingModel, $modelIds, true)) {
-            $this->editingModel = $this->defaultModel($provider, 'targeted_edit');
+            $this->primaryModel = $this->defaultModel($provider);
         }
     }
 
-    private function syncEditingDefaults(): void
+    private function team(): Team
     {
-        $this->editingProvider = $this->primaryProvider;
-        $this->editingModel = $this->primaryModel;
+        return $this->credentials()->currentTeam();
+    }
+
+    private function credentials(): TeamProviderCredentials
+    {
+        return app(TeamProviderCredentials::class);
     }
 
     private function registry(): LlmRegistry

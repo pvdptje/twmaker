@@ -17,6 +17,7 @@ class IdGenerator
         'element' => 'elem_',
         'element_instance' => 'inst_',
         'generation_event' => 'evt_',
+        'team_provider_credential' => 'cred_',
     ];
 
     public function make(string $entity): string
@@ -71,5 +72,10 @@ class IdGenerator
     public function generationEvent(): string
     {
         return $this->make('generation_event');
+    }
+
+    public function teamProviderCredential(): string
+    {
+        return $this->make('team_provider_credential');
     }
 }

@@ -3,13 +3,11 @@
     x-data="{
         provider: @js($provider),
         model: @js($model),
-        apiKey: '',
         enhancementMenuOpen: false,
         customEnhancementOpen: false,
         customEnhancementPrompt: '',
         ...window.builderImageAttachments(),
         sharedKey: 'twmaker.builder.modelSelection',
-        storageKey(provider) { return `twmaker.apiKey.${provider}`; },
         defaultKey(field) { return `twmaker.llmDefaults.primary.${field}`; },
         selectionKey(field) { return `twmaker.builder.primary.${field}`; },
         loadSelection() {
@@ -25,23 +23,21 @@
                 }
             } catch (error) {}
 
-            this.apiKey = this.provider ? (localStorage.getItem(this.storageKey(this.provider)) || '') : '';
         },
         updateSelection(event) {
             this.provider = event.detail?.provider || this.provider;
             this.model = event.detail?.model || this.model;
-            this.apiKey = event.detail?.apiKey || '';
             this.updateAttachmentModalities(event.detail?.modalities);
         },
         startGenerate() {
             this.loadSelection();
             const payload = this.serializedAttachments();
-            this.$wire.generateWithSelection(this.provider, this.model, this.apiKey, payload);
+            this.$wire.generateWithSelection(this.provider, this.model, null, payload);
             this.clearAttachments();
         },
         startEnhancement(enhancement) {
             this.loadSelection();
-            this.$wire.runEnhancementWithSelection(enhancement, this.provider, this.model, this.apiKey, this.customEnhancementPrompt);
+            this.$wire.runEnhancementWithSelection(enhancement, this.provider, this.model, null, this.customEnhancementPrompt);
             this.enhancementMenuOpen = false;
             if (enhancement === 'custom') {
                 this.customEnhancementPrompt = '';
@@ -67,10 +63,6 @@
         <div class="mt-2 text-xs text-red-300">{{ $message }}</div>
     @enderror
     @error('model')
-        <div class="mt-2 text-xs text-red-300">{{ $message }}</div>
-    @enderror
-    <input type="hidden" wire:model="apiKey">
-    @error('apiKey')
         <div class="mt-2 text-xs text-red-300">{{ $message }}</div>
     @enderror
     @if ($modelCatalogStatus !== '')

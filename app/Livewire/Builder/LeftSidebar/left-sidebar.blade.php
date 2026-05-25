@@ -4,24 +4,21 @@
         x-data="{
             provider: '',
             model: '',
-            apiKey: '',
             sharedKey: 'twmaker.builder.modelSelection',
-            storageKey(provider) { return `twmaker.apiKey.${provider}`; },
             loadSelection() {
                 try {
                     const stored = JSON.parse(localStorage.getItem(this.sharedKey) || 'null');
                     this.provider = stored?.provider || '';
                     this.model = stored?.model || '';
                 } catch (error) {}
-                this.apiKey = this.provider ? (localStorage.getItem(this.storageKey(this.provider)) || '') : '';
             },
             createRelatedPage() {
                 this.loadSelection();
-                this.$wire.createRelatedPageWithSelection(this.provider || null, this.model || null, this.apiKey || null);
+                this.$wire.createRelatedPageWithSelection(this.provider || null, this.model || null, null);
             },
         }"
         x-init="loadSelection()"
-        x-on:builder-model-selection-changed.window="provider = $event.detail?.provider || provider; model = $event.detail?.model || model; apiKey = $event.detail?.apiKey || ''"
+        x-on:builder-model-selection-changed.window="provider = $event.detail?.provider || provider; model = $event.detail?.model || model"
     >
         <div class="flex items-center justify-between gap-3">
             <div class="min-w-0 text-sm font-semibold text-white">
