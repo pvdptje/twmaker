@@ -49,6 +49,66 @@ class BuilderShellTest extends TestCase
         ]);
     }
 
+    public function test_project_list_renames_a_project(): void
+    {
+        $project = Project::query()->create([
+            'id' => app(IdGenerator::class)->project(),
+            'name' => 'Acme',
+            'description' => 'Old description',
+        ]);
+
+        Livewire::test(ProjectList::class)
+            ->call('startRenamingProject', $project->id)
+            ->set('editingProjectName', 'Acme Studio')
+            ->set('editingProjectDescription', 'New description')
+            ->call('renameProject')
+            ->assertSet('editingProjectId', null);
+
+        $this->assertDatabaseHas('projects', [
+            'id' => $project->id,
+            'name' => 'Acme Studio',
+            'description' => 'New description',
+        ]);
+    }
+
+    public function test_project_list_deletes_a_project_and_its_pages(): void
+    {
+        $project = Project::query()->create([
+            'id' => app(IdGenerator::class)->project(),
+            'name' => 'Acme',
+        ]);
+        $page = Page::query()->create([
+            'id' => app(IdGenerator::class)->page(),
+            'project_id' => $project->id,
+            'name' => 'Homepage',
+            'prompt' => '',
+            'status' => 'valid',
+        ]);
+        PageVersion::query()->create([
+            'id' => app(IdGenerator::class)->pageVersion(),
+            'page_id' => $page->id,
+            'html_source' => '<section>Previous</section>',
+            'created_by_kind' => 'edit',
+            'created_at' => now('UTC'),
+        ]);
+        $page->generationEvents()->create([
+            'id' => app(IdGenerator::class)->generationEvent(),
+            'kind' => 'stage_completed',
+            'stage' => 'section_generator',
+            'level' => 'success',
+            'summary' => 'Generated page.',
+            'occurred_at' => now('UTC'),
+        ]);
+
+        Livewire::test(ProjectList::class)
+            ->call('deleteProject', $project->id);
+
+        $this->assertDatabaseMissing('projects', ['id' => $project->id]);
+        $this->assertDatabaseMissing('pages', ['id' => $page->id]);
+        $this->assertDatabaseCount('page_versions', 0);
+        $this->assertDatabaseCount('generation_events', 0);
+    }
+
     public function test_llm_setup_page_renders_provider_keys_and_defaults(): void
     {
         $this->get(route('setup.llm'))
@@ -116,6 +176,63 @@ class BuilderShellTest extends TestCase
         $this->assertSame($project->id, $page->project_id);
         $this->assertSame('draft', $page->status);
         $this->assertNull($page->html_source);
+    }
+
+    public function test_project_dashboard_renames_a_page(): void
+    {
+        $project = Project::query()->create([
+            'id' => app(IdGenerator::class)->project(),
+            'name' => 'Acme',
+        ]);
+        $page = Page::query()->create([
+            'id' => app(IdGenerator::class)->page(),
+            'project_id' => $project->id,
+            'name' => 'Homepage',
+            'prompt' => 'Old prompt',
+            'status' => 'draft',
+        ]);
+
+        Livewire::test(ProjectDashboard::class, ['project' => $project])
+            ->call('startRenamingPage', $page->id)
+            ->set('editingPageName', 'Pricing')
+            ->set('editingPagePrompt', 'New prompt')
+            ->call('renamePage')
+            ->assertSet('editingPageId', null);
+
+        $this->assertDatabaseHas('pages', [
+            'id' => $page->id,
+            'name' => 'Pricing',
+            'prompt' => 'New prompt',
+        ]);
+    }
+
+    public function test_project_dashboard_deletes_a_page(): void
+    {
+        $project = Project::query()->create([
+            'id' => app(IdGenerator::class)->project(),
+            'name' => 'Acme',
+        ]);
+        $page = Page::query()->create([
+            'id' => app(IdGenerator::class)->page(),
+            'project_id' => $project->id,
+            'name' => 'Homepage',
+            'prompt' => '',
+            'status' => 'valid',
+        ]);
+        PageVersion::query()->create([
+            'id' => app(IdGenerator::class)->pageVersion(),
+            'page_id' => $page->id,
+            'html_source' => '<section>Previous</section>',
+            'created_by_kind' => 'edit',
+            'created_at' => now('UTC'),
+        ]);
+
+        Livewire::test(ProjectDashboard::class, ['project' => $project])
+            ->call('deletePage', $page->id);
+
+        $this->assertDatabaseHas('projects', ['id' => $project->id]);
+        $this->assertDatabaseMissing('pages', ['id' => $page->id]);
+        $this->assertDatabaseCount('page_versions', 0);
     }
 
     public function test_workspace_renders_four_panel_shell_with_placeholder_canvas_and_empty_stream(): void

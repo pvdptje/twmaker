@@ -13,6 +13,12 @@ class ProjectList extends Component
 
     public string $description = '';
 
+    public ?string $editingProjectId = null;
+
+    public string $editingProjectName = '';
+
+    public string $editingProjectDescription = '';
+
     public function createProject(IdGenerator $ids): mixed
     {
         $validated = $this->validate([
@@ -28,6 +34,50 @@ class ProjectList extends Component
         ]);
 
         return $this->redirectRoute('projects.show', $project, navigate: true);
+    }
+
+    public function startRenamingProject(string $projectId): void
+    {
+        $project = Project::query()->findOrFail($projectId);
+
+        $this->editingProjectId = $project->id;
+        $this->editingProjectName = $project->name;
+        $this->editingProjectDescription = (string) ($project->description ?? '');
+        $this->resetValidation(['editingProjectName', 'editingProjectDescription']);
+    }
+
+    public function cancelRenamingProject(): void
+    {
+        $this->editingProjectId = null;
+        $this->editingProjectName = '';
+        $this->editingProjectDescription = '';
+        $this->resetValidation(['editingProjectName', 'editingProjectDescription']);
+    }
+
+    public function renameProject(): void
+    {
+        $validated = $this->validate([
+            'editingProjectName' => ['required', 'string', 'max:120'],
+            'editingProjectDescription' => ['nullable', 'string'],
+        ]);
+
+        $project = Project::query()->findOrFail($this->editingProjectId);
+
+        $project->update([
+            'name' => $validated['editingProjectName'],
+            'description' => $validated['editingProjectDescription'] ?: null,
+        ]);
+
+        $this->cancelRenamingProject();
+    }
+
+    public function deleteProject(string $projectId): void
+    {
+        Project::query()->findOrFail($projectId)->delete();
+
+        if ($this->editingProjectId === $projectId) {
+            $this->cancelRenamingProject();
+        }
     }
 
     public function render(): View

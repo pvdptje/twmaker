@@ -104,12 +104,14 @@ done
 - [2026-05-25] M5.builder-model-selection-cleanup: setup now uses one builder model default, persists shared builder selection, and the canvas selector hydrates browser-key provider catalogs.
 - [2026-05-25] M5.llm-temperature-removal: removed fixed temperature settings from generation stages, request DTOs, Prism calls, and the old temperature retry path so providers use their model defaults.
 - [2026-05-25] M5.model-selection-temperature-verification: `vendor\bin\pint.bat --dirty`, `php artisan test`, and `npm.cmd run build` pass.
+- [2026-05-25] M5.project-page-list-actions: added inline rename and confirmed delete actions for projects and project pages.
+- [2026-05-25] M5.project-page-list-actions-verification: `vendor\bin\pint.bat --dirty`, `php artisan test tests\Feature\BuilderShellTest.php`, `php artisan test`, `npm.cmd run build`, and `npm.cmd run test:js` pass.
 
 ## In Progress
 - None active after local verification.
 - Last activity: 2026-05-25
-- Files touched: app/Livewire/Builder/ModelSelector/ModelSelector.php, app/Livewire/Builder/ModelSelector/model-selector.blade.php, app/Livewire/Setup/LlmSetup.php, app/Livewire/Setup/llm-setup.blade.php, app/Services/Generation/Stages/DocumentEnhancer.php, app/Services/Generation/Stages/HtmlMarker.php, app/Services/Generation/Stages/SectionGenerator.php, app/Services/Generation/Stages/SectionInserter.php, app/Services/Generation/Stages/TargetedEdit.php, app/Services/Llm/PrismProvider.php, app/Services/Llm/StructuredRequest.php, app/Services/Llm/TextRequest.php, tests/Feature/BuilderShellTest.php, tests/Unit/Llm/PrismProviderTest.php, progress.md
-- Current state: Local changes are verified and ready to commit, push, and deploy.
+- Files touched: app/Livewire/Projects/ProjectList/ProjectList.php, app/Livewire/Projects/ProjectList/project-list.blade.php, app/Livewire/Projects/ProjectDashboard/ProjectDashboard.php, app/Livewire/Projects/ProjectDashboard/project-dashboard.blade.php, tests/Feature/BuilderShellTest.php, progress.md
+- Current state: Project/page rename and delete actions are implemented, verified, and ready to commit, push, and deploy.
 
 ## Blocked
 - None.
@@ -164,6 +166,12 @@ done
 - None. Previous marked-HTML pivot proposal was approved by the user and applied to `plan.md` as R3.
 
 ## Files Created Or Modified This Session
+- `app/Livewire/Projects/ProjectList/ProjectList.php`: modified: added project rename/delete Livewire actions.
+- `app/Livewire/Projects/ProjectList/project-list.blade.php`: modified: added inline project rename form plus confirmed delete action.
+- `app/Livewire/Projects/ProjectDashboard/ProjectDashboard.php`: modified: added page rename/delete Livewire actions scoped to the current project.
+- `app/Livewire/Projects/ProjectDashboard/project-dashboard.blade.php`: modified: added inline page rename form plus confirmed delete action.
+- `tests/Feature/BuilderShellTest.php`: modified: covers project/page rename and delete behavior, including cascade cleanup.
+- `progress.md`: modified: records this session and verification.
 - `app/Livewire/Builder/ModelSelector/ModelSelector.php`: modified: added browser API key aware model-choice hydration.
 - `app/Livewire/Builder/ModelSelector/model-selector.blade.php`: modified: fetches browser-key catalog choices and persists shared builder selection.
 - `app/Livewire/Setup/LlmSetup.php`: modified: syncs setup defaults to one builder model selection.
@@ -403,3 +411,4 @@ done
 - M5 enhancements menu verification passed: `vendor\bin\pint --dirty`, `php artisan test tests\Feature\BuilderShellTest.php` (43 tests), `php artisan test tests\Feature\Generation\PipelineTest.php` (20 tests), `php artisan test` (179 tests, 421 assertions), and `npm.cmd run build`.
 - M5 quick edit snapshot verification passed: `vendor\bin\pint --dirty`, `php artisan test tests\Feature\BuilderShellTest.php --filter=workspace_saves_quick_dom_element_edits` (1 test), `php artisan test tests\Feature\BuilderShellTest.php` (43 tests, 169 assertions), and `php artisan test` (179 tests, 425 assertions).
 - M5 enhancement refresh verification passed: `vendor\bin\pint --dirty`, `php artisan test tests\Feature\Generation\PipelineTest.php --filter=enhances_document` (1 test), `php artisan test tests\Feature\BuilderShellTest.php --filter=workspace_refreshes_generated_html_state_when_broadcast_finishes` (1 test), and `php artisan test` (179 tests, 427 assertions).
+- M5 project/page list actions verification passed: `vendor\bin\pint.bat --dirty`, `php artisan test tests\Feature\BuilderShellTest.php` (49 tests, 190 assertions), `php artisan test` (191 tests, 469 assertions), `npm.cmd run build`, and `npm.cmd run test:js` (20 tests).

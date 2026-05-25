@@ -30,13 +30,45 @@
             <div class="border-b border-neutral-800 px-4 py-3 text-sm font-medium text-neutral-300">Pages</div>
             <div class="divide-y divide-neutral-800">
                 @forelse ($pages as $page)
-                    <a href="{{ route('builder.workspace', [$project, $page]) }}" wire:navigate class="block px-4 py-3 hover:bg-neutral-800">
-                        <div class="flex items-center justify-between gap-4">
-                            <span class="font-medium text-white">{{ $page->name }}</span>
-                            <span class="rounded bg-neutral-800 px-2 py-1 text-xs text-neutral-300">{{ $page->status }}</span>
-                        </div>
-                        <div class="mt-1 text-sm text-neutral-400">{{ $page->prompt ?: 'Empty draft' }}</div>
-                    </a>
+                    <div wire:key="page-{{ $page->id }}" class="px-4 py-3 hover:bg-neutral-800">
+                        @if ($editingPageId === $page->id)
+                            <form wire:submit="renamePage" class="flex flex-col gap-3">
+                                <label class="flex flex-col gap-1 text-sm text-neutral-300">
+                                    Name
+                                    <input wire:model="editingPageName" class="rounded-md border border-neutral-700 bg-neutral-950 px-3 py-2 text-white outline-none focus:border-cyan-400" maxlength="160">
+                                    @error('editingPageName') <span class="text-xs text-rose-300">{{ $message }}</span> @enderror
+                                </label>
+                                <label class="flex flex-col gap-1 text-sm text-neutral-300">
+                                    Prompt
+                                    <textarea wire:model="editingPagePrompt" rows="4" class="rounded-md border border-neutral-700 bg-neutral-950 px-3 py-2 text-white outline-none focus:border-cyan-400"></textarea>
+                                    @error('editingPagePrompt') <span class="text-xs text-rose-300">{{ $message }}</span> @enderror
+                                </label>
+                                <div class="flex flex-wrap gap-2">
+                                    <button type="submit" class="rounded-md bg-cyan-400 px-3 py-2 text-sm font-semibold text-neutral-950 hover:bg-cyan-300">Save</button>
+                                    <button type="button" wire:click="cancelRenamingPage" class="rounded-md border border-neutral-700 px-3 py-2 text-sm font-semibold text-neutral-200 hover:border-neutral-500">Cancel</button>
+                                </div>
+                            </form>
+                        @else
+                            <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                <a href="{{ route('builder.workspace', [$project, $page]) }}" wire:navigate class="min-w-0 flex-1">
+                                    <div class="flex items-center gap-3">
+                                        <span class="truncate font-medium text-white">{{ $page->name }}</span>
+                                        <span class="shrink-0 rounded bg-neutral-800 px-2 py-1 text-xs text-neutral-300">{{ $page->status }}</span>
+                                    </div>
+                                    <div class="mt-1 text-sm text-neutral-400">{{ $page->prompt ?: 'Empty draft' }}</div>
+                                </a>
+                                <div class="flex shrink-0 flex-wrap gap-2">
+                                    <button type="button" wire:click="startRenamingPage('{{ $page->id }}')" class="rounded-md border border-neutral-700 px-3 py-2 text-sm font-semibold text-neutral-200 hover:border-neutral-500">Rename</button>
+                                    <button
+                                        type="button"
+                                        wire:confirm="Delete this page?"
+                                        wire:click="deletePage('{{ $page->id }}')"
+                                        class="rounded-md border border-rose-900/70 px-3 py-2 text-sm font-semibold text-rose-200 hover:border-rose-500"
+                                    >Delete</button>
+                                </div>
+                            </div>
+                        @endif
+                    </div>
                 @empty
                     <div class="px-4 py-8 text-sm text-neutral-400">No pages yet.</div>
                 @endforelse
