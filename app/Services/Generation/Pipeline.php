@@ -167,6 +167,67 @@ class Pipeline
         }
     }
 
+    public function moveSection(Page $page, string $sourceBlockId, string $targetBlockId, string $position): array
+    {
+        $sourceBlockId = trim($sourceBlockId);
+        $targetBlockId = trim($targetBlockId);
+        $position = $position === 'before' ? 'before' : 'after';
+
+        if ($sourceBlockId === '' || $targetBlockId === '') {
+            throw new HtmlValidationException(['A source and target block id are required to move a section.']);
+        }
+
+        if ($sourceBlockId === $targetBlockId) {
+            throw new HtmlValidationException(['Cannot move a section relative to itself.']);
+        }
+
+        $this->events->record($page, 'move_requested', 'section_mover', 'info', 'Reordering section.', $sourceBlockId, [
+            'source_id' => $sourceBlockId,
+            'target_id' => $targetBlockId,
+            'position' => $position,
+        ]);
+
+        try {
+            $currentHtml = (string) ($page->html_source ?? '');
+
+            $this->snapshotVersion($page, 'edit', 'Move: '.$sourceBlockId.' '.$position.' '.$targetBlockId);
+
+            $htmlSource = $this->cleanHtml($this->blockIndexer->moveBlock(
+                $currentHtml,
+                $sourceBlockId,
+                $targetBlockId,
+                $position,
+            ));
+            $this->htmlValidator->assertValid($htmlSource);
+            $blockIndex = $this->scrubArray($this->blockIndexer->index($htmlSource));
+            $document = $this->scrubArray($this->htmlArtifact(
+                $this->moveArtifact($page, $sourceBlockId, $targetBlockId, $position),
+                $htmlSource,
+                $blockIndex,
+            ));
+
+            $page->forceFill([
+                'html_source' => $htmlSource,
+                'rendered_html_cache' => $this->renderer->renderPreviewHtml($htmlSource, $page->name),
+                'status' => 'valid',
+                'last_generation_summary' => $document['page_metadata']['prompt_summary'] ?? null,
+            ])->save();
+
+            $this->events->record($page, 'move_applied', 'section_mover', 'success', 'Reordered section.', $sourceBlockId, [
+                'source_id' => $sourceBlockId,
+                'target_id' => $targetBlockId,
+                'position' => $position,
+            ]);
+
+            return $document;
+        } catch (Throwable $exception) {
+            $page->forceFill(['status' => 'valid'])->save();
+            $this->events->record($page, 'move_rejected', 'section_mover', 'error', $exception->getMessage(), $sourceBlockId);
+
+            throw $exception;
+        }
+    }
+
     public function removeSection(Page $page, string $blockId): array
     {
         $blockId = trim($blockId);
@@ -530,6 +591,17 @@ class Pipeline
             'goal' => $page->prompt !== '' ? str($page->prompt)->limit(180)->toString() : 'Edited from builder instruction.',
             'audience' => 'Visitors',
             'prompt_summary' => 'Inserted section: '.str($instruction)->limit(120),
+        ];
+    }
+
+    private function moveArtifact(Page $page, string $sourceBlockId, string $targetBlockId, string $position): array
+    {
+        return [
+            'title' => $page->name,
+            'page_type' => 'generic',
+            'goal' => $page->prompt !== '' ? str($page->prompt)->limit(180)->toString() : 'Edited from builder instruction.',
+            'audience' => 'Visitors',
+            'prompt_summary' => 'Moved '.$sourceBlockId.' '.$position.' '.$targetBlockId,
         ];
     }
 

@@ -107,6 +107,45 @@ class SectionTree extends Component
         $this->cancelInsert();
     }
 
+    public function moveBlock(string $sourceBlockId, string $targetBlockId, string $position): void
+    {
+        $sourceBlockId = trim($sourceBlockId);
+        $targetBlockId = trim($targetBlockId);
+        $position = $position === 'before' ? 'before' : 'after';
+
+        if ($sourceBlockId === '' || $targetBlockId === '' || $sourceBlockId === $targetBlockId) {
+            return;
+        }
+
+        $ids = array_column($this->blockIndex, 'id');
+        $sourceIndex = array_search($sourceBlockId, $ids, true);
+        $targetIndex = array_search($targetBlockId, $ids, true);
+
+        if ($sourceIndex === false || $targetIndex === false) {
+            return;
+        }
+
+        $insertionIndex = $position === 'before' ? $targetIndex : $targetIndex + 1;
+        $normalizedDestination = $sourceIndex < $insertionIndex ? $insertionIndex - 1 : $insertionIndex;
+        if ($sourceIndex === $normalizedDestination) {
+            $this->dispatch('section-moved', sourceBlockId: $sourceBlockId, targetBlockId: $targetBlockId, position: $position);
+
+            return;
+        }
+
+        try {
+            app(Pipeline::class)->moveSection($this->page, $sourceBlockId, $targetBlockId, $position);
+        } catch (HtmlValidationException $exception) {
+            $this->dispatch('section-move-failed', sourceBlockId: $sourceBlockId, errors: $exception->errors);
+
+            return;
+        }
+
+        $this->page->refresh();
+        $this->dispatch('section-moved', sourceBlockId: $sourceBlockId, targetBlockId: $targetBlockId, position: $position);
+        $this->dispatch('generation-finished', pageId: $this->page->id, status: $this->page->status);
+    }
+
     public function removeBlock(string $blockId): void
     {
         $blockId = trim($blockId);

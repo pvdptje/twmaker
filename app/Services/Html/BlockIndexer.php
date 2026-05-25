@@ -109,6 +109,50 @@ class BlockIndexer
         throw new HtmlValidationException(["Block [{$blockId}] was not found."]);
     }
 
+    public function moveBlock(string $html, string $sourceBlockId, string $targetBlockId, string $position): string
+    {
+        if ($position !== 'before' && $position !== 'after') {
+            throw new HtmlValidationException(["Move position must be 'before' or 'after'."]);
+        }
+
+        $sourceBlockId = trim($sourceBlockId);
+        $targetBlockId = trim($targetBlockId);
+
+        if ($sourceBlockId === '' || $targetBlockId === '') {
+            throw new HtmlValidationException(['A source and target block id are required to move a section.']);
+        }
+
+        if ($sourceBlockId === $targetBlockId) {
+            return $html;
+        }
+
+        $sourceHtml = null;
+        $targetExists = false;
+        foreach ($this->index($html) as $block) {
+            if ($block['id'] === $sourceBlockId) {
+                $sourceHtml = $block['html'];
+            }
+            if ($block['id'] === $targetBlockId) {
+                $targetExists = true;
+            }
+        }
+
+        if ($sourceHtml === null) {
+            throw new HtmlValidationException(["Block [{$sourceBlockId}] was not found."]);
+        }
+
+        if (! $targetExists) {
+            throw new HtmlValidationException(["Block [{$targetBlockId}] was not found."]);
+        }
+
+        return $this->insertBlocks(
+            $this->removeBlock($html, $sourceBlockId),
+            $targetBlockId,
+            $position,
+            $sourceHtml,
+        );
+    }
+
     public function insertBlocks(string $html, string $anchorBlockId, string $position, string $newBlocksHtml): string
     {
         if ($position !== 'before' && $position !== 'after') {

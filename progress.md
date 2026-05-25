@@ -88,13 +88,14 @@ in_progress
 - [2026-05-24] M5.shared-builder-model-selector: moved builder model selection into one top-bar select that includes provider names and feeds generation, insert-section, and targeted-edit submissions through shared browser state.
 - [2026-05-24] M5.model-selector-canvas-toolbar: moved the shared model selector into the canvas toolbar beside Live preview and restored the workspace grid so the select is not covered by surrounding panels.
 - [2026-05-25] M5.section-row-actions-menu: collapsed the two per-row insert plus buttons into a single kebab dropdown (Insert above, Insert below, Remove section) and added a synchronous remove pipeline that snapshots a version before deletion, refuses removing the only block, broadcasts `remove_requested`/`remove_applied`/`remove_rejected` events, and extends stream-panel styling for the new event kinds.
+- [2026-05-25] M5.section-row-drag-reorder: section tree rows are now drag-and-drop reorderable with cyan top/bottom drop indicators, the source row dims during drag, and drop fires a synchronous `Pipeline::moveSection` that snapshots a version, rewrites `html_source` via `BlockIndexer::moveBlock`, broadcasts `move_requested`/`move_applied`/`move_rejected` events, and short-circuits no-op drops at the Livewire layer so redundant `page_versions` snapshots are skipped.
 
 ## In Progress
-- M5 follow-up: browser-test insert-section and section remove with a real provider call.
+- M5 follow-up: browser-test insert-section, section remove, and section drag-reorder with a real provider call.
 - Started: 2026-05-24
 - Last activity: 2026-05-25
-- Files touched: app/Livewire/Builder/SidePanels/SectionTree/SectionTree.php, app/Livewire/Builder/SidePanels/SectionTree/section-tree.blade.php, app/Livewire/Builder/StreamPanel/StreamPanel.php, app/Livewire/Builder/StreamPanel/stream-panel.blade.php, app/Livewire/Builder/StreamPanel/EventList/event-list.blade.php, app/Services/Generation/Pipeline.php, app/Services/Html/BlockIndexer.php, app/Services/Schema/DocumentSchema.php, tests/Feature/BuilderShellTest.php, tests/Unit/Html/BlockIndexerTest.php, progress.md
-- Current state: Section rows now expose one kebab dropdown with insert-above, insert-below, and a confirm-style remove. Remove runs inline through `Pipeline::removeSection`, snapshots a `page_versions` row before deletion, refuses to leave the page empty, and records remove_* events that the stream panel and event list color correctly. Verified with `vendor\bin\pint.bat --dirty`, `php artisan test --filter=BlockIndexerTest`, `php artisan test --filter=BuilderShellTest`, `php artisan test --filter=PipelineTest`, and a full `php artisan test` (153 tests, 347 assertions).
+- Files touched: app/Livewire/Builder/SidePanels/SectionTree/SectionTree.php, app/Livewire/Builder/SidePanels/SectionTree/section-tree.blade.php, app/Services/Generation/Pipeline.php, app/Services/Html/BlockIndexer.php, tests/Unit/Html/BlockIndexerTest.php, progress.md
+- Current state: Section rows are draggable and droppable; dropping a row fires `Pipeline::moveSection` which snapshots a `page_versions` row, calls `BlockIndexer::moveBlock` (remove + insert composition), revalidates, and records `move_*` events. A no-op guard in `SectionTree::moveBlock` compares positions in the current `blockIndex` and short-circuits drops that resolve to the source's existing slot. Verified with `vendor\bin\pint.bat --dirty`, `php artisan test --filter=BlockIndexerTest`, `php artisan test --filter=BuilderShellTest`, and `php artisan test --filter=PipelineTest`.
 
 ## Blocked
 - None.
@@ -327,3 +328,4 @@ in_progress
 - M5 preview selection outline verification passed: `php artisan test --filter=BuilderShellTest`, `npm.cmd run test:js`, and `npm.cmd run build`.
 - M5 preview selection overlay polish verification passed: `vendor\bin\pint.bat --dirty --test`, `php artisan test` (145 tests, 300 assertions), `npm.cmd run test:js` (16 tests), and `npm.cmd run build`.
 - M5 insert-section pipeline verification passed: `php artisan test --filter=BlockIndexerTest`, `php artisan test --filter=PipelineTest`, `php artisan test --filter=BuilderShellTest`, `vendor\bin\pint.bat --dirty`, `php artisan test` (150 tests, 338 assertions), `npm.cmd run test:js` (19 tests), and `npm.cmd run build`.
+- M5 section row drag-reorder verification passed: `vendor\bin\pint.bat --dirty`, `php artisan test --filter=BlockIndexerTest` (4 tests), `php artisan test --filter=BuilderShellTest` (34 tests), and `php artisan test --filter=PipelineTest` (16 tests).

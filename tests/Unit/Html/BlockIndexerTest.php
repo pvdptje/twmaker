@@ -43,6 +43,26 @@ HTML;
         $this->assertSame(['block_hero', 'block_logos', 'block_features'], array_column($blocks, 'id'));
     }
 
+    public function test_move_block_relocates_section_to_new_position(): void
+    {
+        $html = <<<'HTML'
+<!-- tw:block id="block_hero" type="hero" label="Hero" -->
+<section>Hero</section>
+<!-- /tw:block -->
+<!-- tw:block id="block_features" type="features" label="Features" -->
+<section>Features</section>
+<!-- /tw:block -->
+<!-- tw:block id="block_cta" type="cta" label="CTA" -->
+<section>CTA</section>
+<!-- /tw:block -->
+HTML;
+
+        $updated = (new BlockIndexer)->moveBlock($html, 'block_cta', 'block_hero', 'before');
+        $blocks = (new BlockIndexer)->index($updated);
+
+        $this->assertSame(['block_cta', 'block_hero', 'block_features'], array_column($blocks, 'id'));
+    }
+
     public function test_remove_block_drops_only_the_targeted_marker_pair(): void
     {
         $html = <<<'HTML'

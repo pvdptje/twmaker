@@ -42,7 +42,12 @@
             this.insertRunning = false;
         },
     }"
-    x-init="loadSelection()"
+    x-init="
+        loadSelection();
+        if (! Alpine.store('sectionDrag')) {
+            Alpine.store('sectionDrag', { sourceId: null });
+        }
+    "
     x-on:builder-model-selection-changed.window="updateSelection($event)"
     x-on:generation-started.window="beginInsert($event)"
     x-on:generation-finished.window="finishInsert($event)"
@@ -84,11 +89,46 @@
                 </form>
             @endif
             <div
-                x-data="{ menuOpen: false, confirmRemove: false, removing: false }"
+                x-data="{ menuOpen: false, confirmRemove: false, removing: false, dropPosition: null, moving: false }"
                 x-on:click.outside="menuOpen = false; confirmRemove = false"
                 x-on:keydown.escape.window="menuOpen = false; confirmRemove = false"
-                class="rounded-md {{ $isSelected ? 'bg-cyan-500/10 ring-1 ring-cyan-500/30' : 'hover:bg-neutral-800' }}"
+                x-on:section-moved.window="if ($event.detail.sourceBlockId === @js($id)) moving = false"
+                x-on:section-move-failed.window="if ($event.detail.sourceBlockId === @js($id)) moving = false"
+                draggable="true"
+                x-on:dragstart="$store.sectionDrag.sourceId = @js($id); $event.dataTransfer.effectAllowed = 'move'; $event.dataTransfer.setData('text/plain', @js($id))"
+                x-on:dragend="$store.sectionDrag.sourceId = null; dropPosition = null"
+                x-on:dragover.prevent="
+                    if (! $store.sectionDrag.sourceId || $store.sectionDrag.sourceId === @js($id)) { dropPosition = null; return; }
+                    $event.dataTransfer.dropEffect = 'move';
+                    const rect = $event.currentTarget.getBoundingClientRect();
+                    dropPosition = ($event.clientY - rect.top) < rect.height / 2 ? 'before' : 'after';
+                "
+                x-on:dragleave="if (! $event.currentTarget.contains($event.relatedTarget)) dropPosition = null"
+                x-on:drop.prevent="
+                    const sourceId = $store.sectionDrag.sourceId;
+                    const position = dropPosition;
+                    dropPosition = null;
+                    $store.sectionDrag.sourceId = null;
+                    if (! sourceId || ! position || sourceId === @js($id)) return;
+                    moving = true;
+                    $wire.moveBlock(sourceId, @js($id), position);
+                "
+                x-bind:class="{
+                    'opacity-40': $store.sectionDrag.sourceId === @js($id),
+                    'opacity-60': moving,
+                }"
+                class="relative rounded-md cursor-grab active:cursor-grabbing {{ $isSelected ? 'bg-cyan-500/10 ring-1 ring-cyan-500/30' : 'hover:bg-neutral-800' }}"
             >
+                <div
+                    x-show="dropPosition === 'before'"
+                    x-cloak
+                    class="pointer-events-none absolute inset-x-0 -top-0.5 h-0.5 rounded bg-cyan-400"
+                ></div>
+                <div
+                    x-show="dropPosition === 'after'"
+                    x-cloak
+                    class="pointer-events-none absolute inset-x-0 -bottom-0.5 h-0.5 rounded bg-cyan-400"
+                ></div>
                 <div class="flex items-center gap-2 px-2 py-1.5">
                     <input
                         type="checkbox"
