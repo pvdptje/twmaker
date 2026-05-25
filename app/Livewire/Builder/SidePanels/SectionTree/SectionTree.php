@@ -5,6 +5,8 @@ namespace App\Livewire\Builder\SidePanels\SectionTree;
 use App\Jobs\InsertSectionJob;
 use App\Models\Page;
 use App\Services\Generation\GenerationEventRecorder;
+use App\Services\Generation\Pipeline;
+use App\Services\Html\HtmlValidationException;
 use App\Services\Llm\LlmRegistry;
 use Illuminate\Contracts\View\View;
 use Livewire\Attributes\Reactive;
@@ -103,6 +105,26 @@ class SectionTree extends Component
         );
 
         $this->cancelInsert();
+    }
+
+    public function removeBlock(string $blockId): void
+    {
+        $blockId = trim($blockId);
+        if ($blockId === '') {
+            return;
+        }
+
+        try {
+            app(Pipeline::class)->removeSection($this->page, $blockId);
+        } catch (HtmlValidationException $exception) {
+            $this->dispatch('section-remove-failed', blockId: $blockId, errors: $exception->errors);
+
+            return;
+        }
+
+        $this->page->refresh();
+        $this->dispatch('section-removed', blockId: $blockId);
+        $this->dispatch('generation-finished', pageId: $this->page->id, status: $this->page->status);
     }
 
     public function render(): View

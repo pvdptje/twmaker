@@ -167,6 +167,57 @@ class Pipeline
         }
     }
 
+    public function removeSection(Page $page, string $blockId): array
+    {
+        $blockId = trim($blockId);
+
+        if ($blockId === '') {
+            throw new HtmlValidationException(['A block id is required to remove a section.']);
+        }
+
+        $this->events->record($page, 'remove_requested', 'section_remover', 'info', 'Removing selected section.', $blockId, [
+            'block_id' => $blockId,
+        ]);
+
+        try {
+            $currentHtml = (string) ($page->html_source ?? '');
+            $existingBlocks = $this->blockIndexer->index($currentHtml);
+            if (count($existingBlocks) <= 1) {
+                throw new HtmlValidationException(['Cannot remove the only section on the page.']);
+            }
+
+            $this->snapshotVersion($page, 'edit', 'Remove: '.$blockId);
+
+            $htmlSource = $this->cleanHtml($this->blockIndexer->removeBlock($currentHtml, $blockId));
+            $this->htmlValidator->assertValid($htmlSource);
+            $blockIndex = $this->scrubArray($this->blockIndexer->index($htmlSource));
+            $document = $this->scrubArray($this->htmlArtifact(
+                $this->removeArtifact($page, $blockId),
+                $htmlSource,
+                $blockIndex,
+            ));
+
+            $page->forceFill([
+                'html_source' => $htmlSource,
+                'rendered_html_cache' => $this->renderer->renderPreviewHtml($htmlSource, $page->name),
+                'status' => 'valid',
+                'last_generation_summary' => $document['page_metadata']['prompt_summary'] ?? null,
+            ])->save();
+
+            $this->events->record($page, 'remove_applied', 'section_remover', 'success', 'Removed section.', $blockId, [
+                'block_id' => $blockId,
+                'blocks_remaining' => count($blockIndex),
+            ]);
+
+            return $document;
+        } catch (Throwable $exception) {
+            $page->forceFill(['status' => 'valid'])->save();
+            $this->events->record($page, 'remove_rejected', 'section_remover', 'error', $exception->getMessage(), $blockId);
+
+            throw $exception;
+        }
+    }
+
     /**
      * @param  array<int, string>  $targetIds
      */
@@ -479,6 +530,17 @@ class Pipeline
             'goal' => $page->prompt !== '' ? str($page->prompt)->limit(180)->toString() : 'Edited from builder instruction.',
             'audience' => 'Visitors',
             'prompt_summary' => 'Inserted section: '.str($instruction)->limit(120),
+        ];
+    }
+
+    private function removeArtifact(Page $page, string $blockId): array
+    {
+        return [
+            'title' => $page->name,
+            'page_type' => 'generic',
+            'goal' => $page->prompt !== '' ? str($page->prompt)->limit(180)->toString() : 'Edited from builder instruction.',
+            'audience' => 'Visitors',
+            'prompt_summary' => 'Removed section: '.$blockId,
         ];
     }
 

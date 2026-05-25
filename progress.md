@@ -87,13 +87,14 @@ in_progress
 - [2026-05-24] M5.insert-section-pipeline: added an AI insert-new-section flow with block insertion, `SectionInserter`, queued `InsertSectionJob`, pipeline orchestration, stream events, section-tree plus buttons, and inline prompt UI.
 - [2026-05-24] M5.shared-builder-model-selector: moved builder model selection into one top-bar select that includes provider names and feeds generation, insert-section, and targeted-edit submissions through shared browser state.
 - [2026-05-24] M5.model-selector-canvas-toolbar: moved the shared model selector into the canvas toolbar beside Live preview and restored the workspace grid so the select is not covered by surrounding panels.
+- [2026-05-25] M5.section-row-actions-menu: collapsed the two per-row insert plus buttons into a single kebab dropdown (Insert above, Insert below, Remove section) and added a synchronous remove pipeline that snapshots a version before deletion, refuses removing the only block, broadcasts `remove_requested`/`remove_applied`/`remove_rejected` events, and extends stream-panel styling for the new event kinds.
 
 ## In Progress
-- M5 follow-up: browser-test insert-section with a real provider call and decide whether it needs incremental preview insertion later.
+- M5 follow-up: browser-test insert-section and section remove with a real provider call.
 - Started: 2026-05-24
-- Last activity: 2026-05-24
-- Files touched: app/Livewire/Builder/Canvas/canvas.blade.php, app/Livewire/Builder/ModelSelector/model-selector.blade.php, app/Livewire/Builder/Workspace/workspace.blade.php, progress.md
-- Current state: The shared model selector now lives in the existing canvas toolbar next to Live preview, with compact sizing and explicit z-index. The separate workspace-wide selector row was removed, returning the builder grid to the original canvas/sidebar/stream layout. Verified with focused BuilderShell tests and Vite build.
+- Last activity: 2026-05-25
+- Files touched: app/Livewire/Builder/SidePanels/SectionTree/SectionTree.php, app/Livewire/Builder/SidePanels/SectionTree/section-tree.blade.php, app/Livewire/Builder/StreamPanel/StreamPanel.php, app/Livewire/Builder/StreamPanel/stream-panel.blade.php, app/Livewire/Builder/StreamPanel/EventList/event-list.blade.php, app/Services/Generation/Pipeline.php, app/Services/Html/BlockIndexer.php, app/Services/Schema/DocumentSchema.php, tests/Feature/BuilderShellTest.php, tests/Unit/Html/BlockIndexerTest.php, progress.md
+- Current state: Section rows now expose one kebab dropdown with insert-above, insert-below, and a confirm-style remove. Remove runs inline through `Pipeline::removeSection`, snapshots a `page_versions` row before deletion, refuses to leave the page empty, and records remove_* events that the stream panel and event list color correctly. Verified with `vendor\bin\pint.bat --dirty`, `php artisan test --filter=BlockIndexerTest`, `php artisan test --filter=BuilderShellTest`, `php artisan test --filter=PipelineTest`, and a full `php artisan test` (153 tests, 347 assertions).
 
 ## Blocked
 - None.

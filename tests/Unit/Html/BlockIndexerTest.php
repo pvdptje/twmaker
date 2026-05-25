@@ -42,4 +42,22 @@ HTML;
 
         $this->assertSame(['block_hero', 'block_logos', 'block_features'], array_column($blocks, 'id'));
     }
+
+    public function test_remove_block_drops_only_the_targeted_marker_pair(): void
+    {
+        $html = <<<'HTML'
+<!-- tw:block id="block_hero" type="hero" label="Hero" -->
+<section>Hero</section>
+<!-- /tw:block -->
+<!-- tw:block id="block_features" type="features" label="Features" -->
+<section>Features</section>
+<!-- /tw:block -->
+HTML;
+
+        $updated = (new BlockIndexer)->removeBlock($html, 'block_hero');
+        $blocks = (new BlockIndexer)->index($updated);
+
+        $this->assertSame(['block_features'], array_column($blocks, 'id'));
+        $this->assertStringNotContainsString('block_hero', $updated);
+    }
 }

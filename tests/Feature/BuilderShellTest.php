@@ -470,6 +470,71 @@ class BuilderShellTest extends TestCase
             && $job->apiKey === 'test-insert-key');
     }
 
+    public function test_section_tree_removes_a_block_and_snapshots_a_version(): void
+    {
+        $project = Project::query()->create([
+            'id' => app(IdGenerator::class)->project(),
+            'name' => 'Acme',
+        ]);
+        $page = Page::query()->create([
+            'id' => app(IdGenerator::class)->page(),
+            'project_id' => $project->id,
+            'name' => 'Homepage',
+            'prompt' => '',
+            'html_source' => $this->markedHtmlSourceWithTwoBlocks(),
+            'status' => 'valid',
+        ]);
+        $blockIndex = app(BlockIndexer::class)->index($page->html_source);
+
+        Livewire::test(SectionTree::class, ['page' => $page, 'blockIndex' => $blockIndex])
+            ->call('removeBlock', 'block_hero')
+            ->assertDispatched('section-removed', blockId: 'block_hero');
+
+        $page->refresh();
+        $remaining = app(BlockIndexer::class)->index((string) $page->html_source);
+        $this->assertCount(1, $remaining);
+        $this->assertSame('block_features', $remaining[0]['id']);
+
+        $this->assertDatabaseHas('generation_events', [
+            'page_id' => $page->id,
+            'kind' => 'remove_applied',
+            'stage' => 'section_remover',
+            'target_id' => 'block_hero',
+            'level' => 'success',
+        ]);
+
+        $this->assertSame(1, PageVersion::query()->where('page_id', $page->id)->count());
+    }
+
+    public function test_section_tree_refuses_to_remove_the_only_block(): void
+    {
+        $project = Project::query()->create([
+            'id' => app(IdGenerator::class)->project(),
+            'name' => 'Acme',
+        ]);
+        $page = Page::query()->create([
+            'id' => app(IdGenerator::class)->page(),
+            'project_id' => $project->id,
+            'name' => 'Homepage',
+            'prompt' => '',
+            'html_source' => $this->markedHtmlSource(),
+            'status' => 'valid',
+        ]);
+        $blockIndex = app(BlockIndexer::class)->index($page->html_source);
+
+        Livewire::test(SectionTree::class, ['page' => $page, 'blockIndex' => $blockIndex])
+            ->call('removeBlock', 'block_hero')
+            ->assertDispatched('section-remove-failed');
+
+        $page->refresh();
+        $this->assertCount(1, app(BlockIndexer::class)->index((string) $page->html_source));
+        $this->assertDatabaseHas('generation_events', [
+            'page_id' => $page->id,
+            'kind' => 'remove_rejected',
+            'stage' => 'section_remover',
+        ]);
+    }
+
     public function test_workspace_updates_generation_status_from_generation_events(): void
     {
         $project = Project::query()->create([
@@ -949,6 +1014,12 @@ HTML,
     private function markedHtmlSource(): string
     {
         return '<!-- tw:block id="block_hero" type="hero" label="Hero" --><section class="px-6 py-24"><h1>Ship pages with marked blocks</h1></section><!-- /tw:block -->';
+    }
+
+    private function markedHtmlSourceWithTwoBlocks(): string
+    {
+        return '<!-- tw:block id="block_hero" type="hero" label="Hero" --><section class="px-6 py-24"><h1>Hero</h1></section><!-- /tw:block -->'
+            .'<!-- tw:block id="block_features" type="features" label="Features" --><section class="px-6 py-16"><h2>Features</h2></section><!-- /tw:block -->';
     }
 
     private function cacheProviderModels(string $provider, string $apiKey, array $models): void

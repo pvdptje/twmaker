@@ -93,6 +93,22 @@ class BlockIndexer
             .substr($html, $last['end_offset']);
     }
 
+    public function removeBlock(string $html, string $blockId): string
+    {
+        foreach ($this->index($html) as $block) {
+            if ($block['id'] !== $blockId) {
+                continue;
+            }
+
+            $before = substr($html, 0, $block['start_offset']);
+            $after = substr($html, $block['end_offset']);
+
+            return rtrim($before)."\n".ltrim($after);
+        }
+
+        throw new HtmlValidationException(["Block [{$blockId}] was not found."]);
+    }
+
     public function insertBlocks(string $html, string $anchorBlockId, string $position, string $newBlocksHtml): string
     {
         if ($position !== 'before' && $position !== 'after') {
