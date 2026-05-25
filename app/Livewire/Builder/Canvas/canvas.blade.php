@@ -20,6 +20,93 @@
                 </span>
             @endif
 
+            <div
+                class="relative"
+                x-data="{
+                    device: 'desktop',
+                    deviceOpen: false,
+                    storageKey: 'twmaker.builder.previewDevice',
+                    devices: [
+                        { id: 'desktop', label: 'Desktop', width: 'Full' },
+                        { id: 'tablet', label: 'Tablet', width: '768 px' },
+                        { id: 'mobile', label: 'Mobile', width: '390 px' },
+                    ],
+                    init() {
+                        const stored = localStorage.getItem(this.storageKey);
+                        if (['desktop','tablet','mobile'].includes(stored)) this.device = stored;
+                        this.apply();
+                    },
+                    select(id) {
+                        this.device = id;
+                        this.deviceOpen = false;
+                        localStorage.setItem(this.storageKey, id);
+                        this.apply();
+                    },
+                    currentLabel() {
+                        const found = this.devices.find((d) => d.id === this.device);
+                        return found ? found.label : 'Desktop';
+                    },
+                    apply() {
+                        const frame = document.getElementById('builder-preview-frame');
+                        if (!frame) return;
+                        const widths = { desktop: '', tablet: '768px', mobile: '390px' };
+                        const w = widths[this.device] || '';
+                        frame.style.maxWidth = w;
+                        frame.style.marginLeft = w ? 'auto' : '';
+                        frame.style.marginRight = w ? 'auto' : '';
+                    },
+                }"
+                x-on:click.outside="deviceOpen = false"
+                x-on:keydown.escape.window="deviceOpen = false"
+            >
+                <button
+                    type="button"
+                    x-on:click="deviceOpen = !deviceOpen"
+                    :title="'Preview width: ' + currentLabel()"
+                    :aria-label="'Preview width: ' + currentLabel()"
+                    :aria-haspopup="'menu'"
+                    :aria-expanded="deviceOpen ? 'true' : 'false'"
+                    class="inline-flex h-8 items-center gap-1.5 rounded-md border border-neutral-800 bg-neutral-900 px-2.5 text-xs font-medium text-neutral-300 transition hover:border-neutral-700 hover:text-white focus:outline-none focus:ring-2 focus:ring-cyan-400/40"
+                >
+                    <svg x-show="device === 'desktop'" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" class="h-3.5 w-3.5" aria-hidden="true">
+                        <rect x="2.5" y="3.5" width="15" height="10" rx="1.25"/>
+                        <path d="M7.5 17h5M10 13.5V17" stroke-linecap="round"/>
+                    </svg>
+                    <svg x-show="device === 'tablet'" x-cloak viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" class="h-3.5 w-3.5" aria-hidden="true">
+                        <rect x="4" y="2.5" width="12" height="15" rx="1.5"/>
+                        <path d="M9 15h2" stroke-linecap="round"/>
+                    </svg>
+                    <svg x-show="device === 'mobile'" x-cloak viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" class="h-3.5 w-3.5" aria-hidden="true">
+                        <rect x="6" y="2" width="8" height="16" rx="1.5"/>
+                        <path d="M9 15.5h2" stroke-linecap="round"/>
+                    </svg>
+                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" class="h-3 w-3 text-neutral-500" aria-hidden="true">
+                        <path d="M6 8l4 4 4-4" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </button>
+                <div
+                    x-show="deviceOpen"
+                    x-cloak
+                    x-transition.opacity.duration.100ms
+                    role="menu"
+                    class="absolute right-0 top-9 z-40 w-40 rounded-md border border-neutral-800 bg-neutral-950 p-1 shadow-lg shadow-black/40"
+                >
+                    <template x-for="d in devices" :key="d.id">
+                        <button
+                            type="button"
+                            role="menuitemradio"
+                            x-on:click="select(d.id)"
+                            x-bind:aria-checked="device === d.id ? 'true' : 'false'"
+                            x-bind:class="device === d.id ? 'bg-neutral-800 text-white' : 'text-neutral-200 hover:bg-neutral-800'"
+                            class="flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-left text-xs"
+                        >
+                            <span x-text="d.label"></span>
+                            <span class="text-[10px] text-neutral-500" x-text="d.width"></span>
+                        </button>
+                    </template>
+                </div>
+            </div>
+
             <button
                 type="button"
                 x-data="{
