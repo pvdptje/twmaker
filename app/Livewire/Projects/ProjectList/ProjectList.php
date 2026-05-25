@@ -83,7 +83,7 @@ class ProjectList extends Component
     public function render(): View
     {
         return view()->file(__DIR__.'/project-list.blade.php', [
-            'projects' => Project::query()->latest()->get(),
+            'projects' => Project::query()->withCount('pages')->latest()->get(),
         ])->layout('components.layouts.app', ['title' => 'Projects']);
     }
 }

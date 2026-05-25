@@ -50,7 +50,10 @@
                         @else
                             <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                                 <a href="{{ route('projects.show', $project) }}" wire:navigate class="min-w-0 flex-1">
-                                    <div class="font-medium text-white">{{ $project->name }}</div>
+                                    <div class="flex flex-wrap items-center gap-2">
+                                        <span class="font-medium text-white">{{ $project->name }}</span>
+                                        <span class="rounded bg-neutral-800 px-2 py-1 text-xs text-neutral-300">{{ $project->pages_count }} {{ $project->pages_count === 1 ? 'page' : 'pages' }}</span>
+                                    </div>
                                     <div class="mt-1 text-sm text-neutral-400">{{ $project->description ?: 'No description' }}</div>
                                 </a>
                                 <div class="flex shrink-0 flex-wrap gap-2">

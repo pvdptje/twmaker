@@ -49,6 +49,49 @@ class BuilderShellTest extends TestCase
         ]);
     }
 
+    public function test_project_list_shows_page_counts(): void
+    {
+        $project = Project::query()->create([
+            'id' => app(IdGenerator::class)->project(),
+            'name' => 'Acme',
+        ]);
+        Project::query()->create([
+            'id' => app(IdGenerator::class)->project(),
+            'name' => 'Empty Project',
+        ]);
+        $singlePageProject = Project::query()->create([
+            'id' => app(IdGenerator::class)->project(),
+            'name' => 'Single Page Project',
+        ]);
+
+        Page::query()->create([
+            'id' => app(IdGenerator::class)->page(),
+            'project_id' => $project->id,
+            'name' => 'Homepage',
+            'prompt' => '',
+            'status' => 'draft',
+        ]);
+        Page::query()->create([
+            'id' => app(IdGenerator::class)->page(),
+            'project_id' => $project->id,
+            'name' => 'Pricing',
+            'prompt' => '',
+            'status' => 'draft',
+        ]);
+        Page::query()->create([
+            'id' => app(IdGenerator::class)->page(),
+            'project_id' => $singlePageProject->id,
+            'name' => 'About',
+            'prompt' => '',
+            'status' => 'draft',
+        ]);
+
+        Livewire::test(ProjectList::class)
+            ->assertSee('2 pages')
+            ->assertSee('1 page')
+            ->assertSee('0 pages');
+    }
+
     public function test_project_list_renames_a_project(): void
     {
         $project = Project::query()->create([
