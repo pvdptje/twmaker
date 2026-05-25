@@ -1,5 +1,5 @@
 <main
-    class="mx-auto flex min-h-screen w-full max-w-5xl flex-col gap-6 px-6 py-8"
+    class="min-h-screen bg-neutral-950 text-neutral-100"
     x-data="{
         apiKeys: @entangle('apiKeys'),
         primaryProvider: @entangle('primaryProvider').live,
@@ -63,75 +63,96 @@
     }"
     x-init="load()"
 >
-    <header class="flex items-start justify-between gap-4">
-        <div>
-            <a href="{{ route('projects.index') }}" wire:navigate class="text-sm text-cyan-300 hover:text-cyan-200">Projects</a>
-            <h1 class="mt-2 text-3xl font-semibold tracking-normal text-white">LLM setup</h1>
-            <p class="mt-1 text-sm text-neutral-400">Bring your own provider keys, stored only in this browser, and choose the default models used by generation and edits.</p>
-        </div>
-    </header>
-
-    <form wire:submit="save" x-on:submit="persist()" class="grid gap-4 lg:grid-cols-[1fr_22rem]">
-        <section class="rounded-lg border border-neutral-800 bg-neutral-900">
-            <div class="border-b border-neutral-800 px-4 py-3 text-sm font-medium text-neutral-300">Provider keys</div>
-            <div class="border-b border-neutral-800 px-4 py-3 text-xs leading-5 text-neutral-400">
-                Keys are saved to your browser localStorage and sent only when you generate or edit. Server env keys are optional fallbacks for self-hosted demos or shared installs.
+    <div class="mx-auto flex w-full max-w-7xl flex-col gap-4 px-4 py-4 sm:px-6 lg:px-8">
+        <header class="flex h-28 flex-col justify-center gap-3 overflow-hidden border-b border-neutral-800 lg:h-20 lg:flex-row lg:items-center lg:justify-between">
+            <div class="flex min-w-0 items-center gap-4">
+                <a href="{{ route('projects.index') }}" wire:navigate class="shrink-0 text-xl font-semibold tracking-normal text-white">
+                    TwMaker
+                </a>
+                <div class="hidden h-8 w-px bg-neutral-800 sm:block"></div>
+                <div class="min-w-0 overflow-hidden">
+                    <a href="{{ route('projects.index') }}" wire:navigate class="text-xs font-semibold uppercase tracking-normal text-cyan-300 hover:text-cyan-200">Projects</a>
+                    <h1 class="mt-1 text-2xl font-semibold tracking-normal text-white sm:text-3xl">LLM setup</h1>
+                    <p class="mt-1 max-w-2xl truncate text-sm text-neutral-400">Keys are stored only in this browser. Server env keys are optional fallbacks.</p>
+                </div>
             </div>
-            <div class="divide-y divide-neutral-800">
-                @foreach ($providerOptions as $providerOption)
-                    <div class="p-4">
-                        <div class="flex items-center justify-between gap-3">
-                            <div>
-                                <h2 class="text-base font-semibold text-white">{{ $providerOption['label'] }}</h2>
-                                <p class="mt-1 text-xs text-neutral-500">{{ $providerOption['driver'] }} provider</p>
-                            </div>
-                            <button type="button" x-on:click="persistProviderKey('{{ $providerOption['id'] }}')" wire:click="refreshModels('{{ $providerOption['id'] }}')" class="rounded-md border border-neutral-700 px-3 py-2 text-sm font-semibold text-neutral-200 hover:border-neutral-500">Refresh models</button>
-                        </div>
+        </header>
 
-                        <label class="mt-4 block text-xs font-medium text-neutral-400">
-                            API key
-                            <input wire:model.blur="apiKeys.{{ $providerOption['id'] }}" x-model="apiKeys['{{ $providerOption['id'] }}']" type="password" autocomplete="off" class="mt-1 w-full rounded-md border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400" placeholder="Stored in this browser">
-                        </label>
-                        <p class="mt-2 text-xs text-neutral-500">Leave this empty to use an optional server fallback key, when one is configured.</p>
-                        @error("apiKeys.{$providerOption['id']}")
-                            <div class="mt-2 text-xs text-red-300">{{ $message }}</div>
-                        @enderror
-
-                        @if (($modelCatalogStatuses[$providerOption['id']] ?? '') !== '')
-                            <div class="mt-2 text-xs text-neutral-500">{{ $modelCatalogStatuses[$providerOption['id']] }}</div>
-                        @endif
+        <form wire:submit="save" x-on:submit="persist()" class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
+            <section class="min-w-0 rounded-lg border border-neutral-800 bg-neutral-900 shadow-2xl shadow-black/20">
+                <div class="flex flex-wrap items-center justify-between gap-3 border-b border-neutral-800 px-4 py-3 sm:px-5">
+                    <div>
+                        <h2 class="text-sm font-semibold text-white">Provider keys</h2>
+                        <p class="mt-0.5 text-xs text-neutral-500">{{ count($providerOptions) }} configured providers</p>
                     </div>
-                @endforeach
-            </div>
-        </section>
+                </div>
 
-        <aside class="rounded-lg border border-neutral-800 bg-neutral-900 p-4">
-            <h2 class="text-base font-semibold text-white">Defaults</h2>
+                <div class="divide-y divide-neutral-800">
+                    @foreach ($providerOptions as $providerOption)
+                        <article class="px-4 py-3 transition hover:bg-neutral-800/55 sm:px-5">
+                            <div class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                                <div class="min-w-0 flex-1">
+                                    <div class="flex min-w-0 items-center gap-2.5">
+                                        <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-neutral-700 bg-neutral-950 text-sm font-semibold text-cyan-200">
+                                            {{ str($providerOption['label'])->substr(0, 1)->upper() }}
+                                        </span>
+                                        <div class="min-w-0">
+                                            <h3 class="truncate text-base font-semibold text-white">{{ $providerOption['label'] }}</h3>
+                                            <p class="mt-0.5 text-xs text-neutral-500">{{ $providerOption['driver'] }} provider</p>
+                                        </div>
+                                    </div>
 
-            <div class="mt-4">
-                <div class="text-xs font-semibold uppercase tracking-normal text-neutral-500">Builder model</div>
-                <label class="mt-3 block text-xs font-medium text-neutral-400">
-                    Provider
-                    <select wire:model.live="primaryProvider" x-model="primaryProvider" x-on:change="syncDefaults()" class="mt-1 w-full rounded-md border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400">
-                        @foreach ($providerOptions as $providerOption)
-                            <option value="{{ $providerOption['id'] }}">{{ $providerOption['label'] }}</option>
-                        @endforeach
-                    </select>
-                </label>
-                <label class="mt-3 block text-xs font-medium text-neutral-400">
-                    Model
-                    <select wire:model.live="primaryModel" x-model="primaryModel" x-on:change="syncDefaults()" class="mt-1 w-full rounded-md border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400">
-                        @foreach (($modelOptionsByProvider[$primaryProvider] ?? []) as $modelOption)
-                            <option value="{{ $modelOption['id'] }}">{{ $modelOption['label'] }} ({{ $modelOption['id'] }})</option>
-                        @endforeach
-                    </select>
-                </label>
-            </div>
+                                    <label class="mt-3 block text-xs font-medium text-neutral-400">
+                                        API key
+                                        <input wire:model.blur="apiKeys.{{ $providerOption['id'] }}" x-model="apiKeys['{{ $providerOption['id'] }}']" type="password" autocomplete="off" class="mt-1 h-9 w-full rounded-md border border-neutral-800 bg-neutral-950 px-3 text-sm text-white outline-none placeholder:text-neutral-600 focus:border-cyan-400" placeholder="Stored in this browser">
+                                    </label>
 
-            <button type="submit" class="mt-4 w-full rounded-md bg-cyan-500 px-3 py-2 text-sm font-semibold text-neutral-950 hover:bg-cyan-400">Save setup</button>
-            @if ($saveStatus !== '')
-                <div class="mt-2 text-xs text-neutral-500">{{ $saveStatus }}</div>
-            @endif
-        </aside>
-    </form>
+                                    @error("apiKeys.{$providerOption['id']}")
+                                        <div class="mt-2 text-xs text-red-300">{{ $message }}</div>
+                                    @enderror
+
+                                    @if (($modelCatalogStatuses[$providerOption['id']] ?? '') !== '')
+                                        <div class="mt-2 text-xs text-neutral-500">{{ $modelCatalogStatuses[$providerOption['id']] }}</div>
+                                    @endif
+                                </div>
+
+                                <button type="button" x-on:click="persistProviderKey('{{ $providerOption['id'] }}')" wire:click="refreshModels('{{ $providerOption['id'] }}')" class="inline-flex h-8 shrink-0 items-center justify-center rounded-md border border-neutral-700 px-3 text-sm font-semibold text-neutral-200 hover:border-neutral-500">
+                                    Refresh models
+                                </button>
+                            </div>
+                        </article>
+                    @endforeach
+                </div>
+            </section>
+
+            <aside class="rounded-lg border border-neutral-800 bg-neutral-900 p-3 shadow-2xl shadow-black/20">
+                <h2 class="text-base font-semibold text-white">Defaults</h2>
+
+                <div class="mt-3">
+                    <div class="text-xs font-semibold uppercase tracking-normal text-neutral-500">Builder model</div>
+                    <label class="mt-2 block text-xs font-medium text-neutral-400">
+                        Provider
+                        <select wire:model.live="primaryProvider" x-model="primaryProvider" x-on:change="syncDefaults()" class="mt-1 h-9 w-full rounded-md border border-neutral-800 bg-neutral-950 px-3 text-sm text-white outline-none focus:border-cyan-400">
+                            @foreach ($providerOptions as $providerOption)
+                                <option value="{{ $providerOption['id'] }}">{{ $providerOption['label'] }}</option>
+                            @endforeach
+                        </select>
+                    </label>
+                    <label class="mt-2 block text-xs font-medium text-neutral-400">
+                        Model
+                        <select wire:model.live="primaryModel" x-model="primaryModel" x-on:change="syncDefaults()" class="mt-1 h-9 w-full rounded-md border border-neutral-800 bg-neutral-950 px-3 text-sm text-white outline-none focus:border-cyan-400">
+                            @foreach (($modelOptionsByProvider[$primaryProvider] ?? []) as $modelOption)
+                                <option value="{{ $modelOption['id'] }}">{{ $modelOption['label'] }} ({{ $modelOption['id'] }})</option>
+                            @endforeach
+                        </select>
+                    </label>
+                </div>
+
+                <button type="submit" class="mt-3 inline-flex h-9 w-full items-center justify-center rounded-md bg-cyan-400 px-3 text-sm font-semibold text-neutral-950 hover:bg-cyan-300">Save setup</button>
+                @if ($saveStatus !== '')
+                    <div class="mt-2 text-xs text-neutral-500">{{ $saveStatus }}</div>
+                @endif
+            </aside>
+        </form>
+    </div>
 </main>

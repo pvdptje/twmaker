@@ -13,6 +13,7 @@ use App\Livewire\Builder\LeftSidebar\LeftSidebar;
 use App\Livewire\Builder\ModelSelector\ModelSelector;
 use App\Livewire\Builder\RightInspector\RightInspector;
 use App\Livewire\Builder\SidePanels\GenerationControls\GenerationControls;
+use App\Livewire\Builder\SidePanels\ProjectSwitcher\ProjectSwitcher;
 use App\Livewire\Builder\SidePanels\SectionTree\SectionTree;
 use App\Livewire\Builder\StreamPanel\StreamPanel;
 use App\Livewire\Builder\Workspace\Workspace;
@@ -304,6 +305,37 @@ class BuilderShellTest extends TestCase
             ->assertSee('No generation events yet.')
             ->assertSee('maxRows: 80', false)
             ->assertSee('/preview.css', false);
+    }
+
+    public function test_project_switcher_lists_project_pages_for_quick_navigation(): void
+    {
+        $project = Project::query()->create([
+            'id' => app(IdGenerator::class)->project(),
+            'name' => 'Acme',
+        ]);
+
+        $homePage = Page::query()->create([
+            'id' => app(IdGenerator::class)->page(),
+            'project_id' => $project->id,
+            'name' => 'Homepage',
+            'prompt' => '',
+            'status' => 'draft',
+        ]);
+
+        $pricingPage = Page::query()->create([
+            'id' => app(IdGenerator::class)->page(),
+            'project_id' => $project->id,
+            'name' => 'Pricing',
+            'prompt' => '',
+            'status' => 'draft',
+        ]);
+
+        Livewire::test(ProjectSwitcher::class, ['project' => $project, 'page' => $homePage])
+            ->assertSee('Project dashboard')
+            ->assertSee('Homepage')
+            ->assertSee('Pricing')
+            ->assertSee(route('builder.workspace', [$project, $homePage]), false)
+            ->assertSee(route('builder.workspace', [$project, $pricingPage]), false);
     }
 
     public function test_workspace_renders_marked_html_in_preview_srcdoc(): void

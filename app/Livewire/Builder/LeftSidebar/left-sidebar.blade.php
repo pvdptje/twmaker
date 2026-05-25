@@ -85,7 +85,7 @@
     </div>
 
     <div class="min-h-0 flex-1 overflow-y-auto">
-        <livewire:builder.side-panels.project-switcher.project-switcher :project="$project" />
+        <livewire:builder.side-panels.project-switcher.project-switcher :project="$project" :page="$page" />
         <livewire:builder.side-panels.section-tree.section-tree
             :page="$page"
             :block-index="$blockIndex"
