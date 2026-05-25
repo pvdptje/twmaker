@@ -33,11 +33,29 @@ class ProviderModelCatalogTest extends TestCase
             [
                 'id' => 'claude-new-20260521',
                 'label' => 'Claude New',
+                'modalities' => ['text'],
             ],
         ], $catalog->refresh('anthropic', 'test-key'));
 
         $this->assertSame('claude-new-20260521', $catalog->models('anthropic', 'test-key')[0]['id']);
         Http::assertSentCount(1);
+    }
+
+    public function test_marks_claude_3_models_as_vision_capable(): void
+    {
+        Cache::flush();
+        Http::fake([
+            'https://api.anthropic.com/v1/models*' => Http::response([
+                'data' => [
+                    ['id' => 'claude-3-5-sonnet-latest', 'display_name' => 'Claude 3.5 Sonnet'],
+                ],
+                'has_more' => false,
+            ]),
+        ]);
+
+        $models = app(ProviderModelCatalog::class)->refresh('anthropic', 'test-key');
+
+        $this->assertContains('image', $models[0]['modalities']);
     }
 
     public function test_forgets_one_cached_model(): void
@@ -61,6 +79,7 @@ class ProviderModelCatalogTest extends TestCase
             [
                 'id' => 'claude-live-20260521',
                 'label' => 'Claude Live',
+                'modalities' => ['text'],
             ],
         ], $catalog->models('anthropic', 'test-key'));
     }
@@ -87,6 +106,7 @@ class ProviderModelCatalogTest extends TestCase
             [
                 'id' => 'deepseek-chat',
                 'label' => 'DeepSeek Chat',
+                'modalities' => ['text'],
             ],
         ], $catalog->refresh('deepseek', 'test-key'));
 

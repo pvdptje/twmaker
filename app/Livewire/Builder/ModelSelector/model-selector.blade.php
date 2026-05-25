@@ -63,6 +63,7 @@
                 detail: {
                     provider: choice.provider,
                     model: choice.model,
+                    modalities: Array.isArray(choice.modalities) ? choice.modalities : ['text'],
                     apiKey: localStorage.getItem(this.storageKey(choice.provider)) || '',
                 },
             }));

@@ -4,7 +4,10 @@ namespace App\Services\Llm;
 
 class LlmRegistry
 {
-    public function __construct(private readonly ProviderModelCatalog $catalog) {}
+    public function __construct(
+        private readonly ProviderModelCatalog $catalog,
+        private readonly ModelCapabilities $capabilities = new ModelCapabilities,
+    ) {}
 
     public function implementedProviders(): array
     {
@@ -43,7 +46,7 @@ class LlmRegistry
         $fetched = $this->catalog->models($provider, $apiKey);
 
         if (is_array($fetched) && $fetched !== []) {
-            return $this->normalizeModels($fetched);
+            return $this->normalizeModels($fetched, $provider);
         }
 
         return [];
@@ -58,7 +61,7 @@ class LlmRegistry
         $fetched = $this->catalog->refresh($provider, $apiKey);
 
         if (is_array($fetched) && $fetched !== []) {
-            return $this->normalizeModels($fetched);
+            return $this->normalizeModels($fetched, $provider);
         }
 
         return [];
@@ -67,6 +70,17 @@ class LlmRegistry
     public function modelIds(string $provider, ?string $apiKey = null): array
     {
         return array_column($this->modelOptions($provider, $apiKey), 'id');
+    }
+
+    public function supportsModality(string $provider, string $modelId, string $modality, ?string $apiKey = null): bool
+    {
+        foreach ($this->modelOptions($provider, $apiKey) as $option) {
+            if (($option['id'] ?? null) === $modelId) {
+                return in_array($modality, (array) ($option['modalities'] ?? []), true);
+            }
+        }
+
+        return in_array($modality, $this->capabilities->detect($provider, $modelId), true);
     }
 
     public function defaultModel(string $provider, string $stage, ?string $apiKey = null): string
@@ -81,17 +95,29 @@ class LlmRegistry
         return (string) ($modelIds[0] ?? '');
     }
 
-    private function normalizeModels(array $models): array
+    private function normalizeModels(array $models, ?string $provider = null): array
     {
         return collect($models)
-            ->map(function (mixed $model): array {
+            ->map(function (mixed $model) use ($provider): array {
                 if (is_string($model)) {
-                    return ['id' => $model, 'label' => $model];
+                    return [
+                        'id' => $model,
+                        'label' => $model,
+                        'modalities' => $provider !== null ? $this->capabilities->detect($provider, $model) : ['text'],
+                    ];
+                }
+
+                $id = (string) ($model['id'] ?? '');
+                $modalities = $model['modalities'] ?? null;
+
+                if (! is_array($modalities) || $modalities === []) {
+                    $modalities = $provider !== null ? $this->capabilities->detect($provider, $id) : ['text'];
                 }
 
                 return [
-                    'id' => (string) ($model['id'] ?? ''),
+                    'id' => $id,
                     'label' => (string) ($model['label'] ?? $model['id'] ?? ''),
+                    'modalities' => array_values(array_filter(array_map('strval', $modalities))),
                 ];
             })
             ->filter(fn (array $model): bool => $model['id'] !== '')

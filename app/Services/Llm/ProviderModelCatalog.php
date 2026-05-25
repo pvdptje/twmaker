@@ -9,6 +9,8 @@ use Throwable;
 
 class ProviderModelCatalog
 {
+    public function __construct(private readonly ModelCapabilities $capabilities = new ModelCapabilities) {}
+
     public function models(string $provider, ?string $apiKey = null): ?array
     {
         $apiKey = $this->apiKey($provider, $apiKey);
@@ -134,6 +136,7 @@ class ProviderModelCatalog
                     $models[] = [
                         'id' => $id,
                         'label' => (string) ($model['display_name'] ?? $id),
+                        'modalities' => $this->capabilities->detect('anthropic', $id, $model),
                     ];
                 }
 
@@ -193,6 +196,7 @@ class ProviderModelCatalog
                 $models[] = [
                     'id' => $id,
                     'label' => $this->labelFromModelId($id),
+                    'modalities' => $this->capabilities->detect($provider, $id, $model),
                 ];
             }
 
@@ -236,6 +240,7 @@ class ProviderModelCatalog
                 $models[] = [
                     'id' => $id,
                     'label' => (string) ($model['displayName'] ?? $this->labelFromModelId($id)),
+                    'modalities' => $this->capabilities->detect('gemini', $id, $model),
                 ];
             }
 
@@ -277,6 +282,7 @@ class ProviderModelCatalog
                 $models[] = [
                     'id' => $id,
                     'label' => $this->labelFromModelId($id),
+                    'modalities' => $this->capabilities->detect('ollama', $id, $model),
                 ];
             }
 

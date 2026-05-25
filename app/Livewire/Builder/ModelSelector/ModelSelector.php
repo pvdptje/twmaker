@@ -27,13 +27,20 @@ class ModelSelector extends Component
                 $providerLabel = (string) $provider['label'];
 
                 return collect($this->registry()->modelOptions($providerId))
-                    ->map(fn (array $model): array => [
-                        'value' => $providerId.'|'.$model['id'],
-                        'provider' => $providerId,
-                        'providerLabel' => $providerLabel,
-                        'model' => (string) $model['id'],
-                        'label' => $providerLabel.' - '.$model['label'].' ('.$model['id'].')',
-                    ])
+                    ->map(function (array $model) use ($providerId, $providerLabel): array {
+                        $modalities = (array) ($model['modalities'] ?? ['text']);
+                        $supportsVision = in_array('image', $modalities, true);
+
+                        return [
+                            'value' => $providerId.'|'.$model['id'],
+                            'provider' => $providerId,
+                            'providerLabel' => $providerLabel,
+                            'model' => (string) $model['id'],
+                            'modalities' => array_values($modalities),
+                            'label' => $providerLabel.' - '.$model['label'].' ('.$model['id'].')'
+                                .($supportsVision ? ' [vision]' : ''),
+                        ];
+                    })
                     ->all();
             })
             ->values()
