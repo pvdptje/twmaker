@@ -108,12 +108,14 @@ done
 - [2026-05-25] M5.project-page-list-actions-verification: `vendor\bin\pint.bat --dirty`, `php artisan test tests\Feature\BuilderShellTest.php`, `php artisan test`, `npm.cmd run build`, and `npm.cmd run test:js` pass.
 - [2026-05-25] M5.project-index-page-counts: project index cards now show the number of pages in each project.
 - [2026-05-25] M5.project-index-page-counts-verification: `vendor\bin\pint.bat --dirty`, `php artisan test tests\Feature\BuilderShellTest.php`, `php artisan test`, `npm.cmd run build`, and `npm.cmd run test:js` pass.
+- [2026-05-25] M5.project-download-zip: added a project-level Download project action that returns a zip containing each generated page as an HTML file.
+- [2026-05-25] M5.project-download-zip-verification: `vendor\bin\pint --dirty` and `php artisan test` pass.
 
 ## In Progress
-- None active after local verification.
+- None active after verification.
 - Last activity: 2026-05-25
-- Files touched: app/Livewire/Projects/ProjectList/ProjectList.php, app/Livewire/Projects/ProjectList/project-list.blade.php, tests/Feature/BuilderShellTest.php, progress.md
-- Current state: Project index page counts are implemented, verified, and ready to commit, push, and deploy.
+- Files touched: app/Http/Controllers/ProjectHtmlDownloadController.php, routes/web.php, app/Livewire/Projects/ProjectDashboard/project-dashboard.blade.php, tests/Feature/BuilderShellTest.php, progress.md
+- Current state: Project zip download is implemented and verified. It is ready to commit, push, and deploy.
 
 ## Blocked
 - None.
@@ -163,11 +165,17 @@ done
 - Terminal generation events should not broadcast full-document HTML unless the browser needs it for an incremental patch. Full-refresh paths should keep the DB row as the source of truth and let the workspace fetch fresh preview HTML after `generation-finished`.
 - Setup and builder should use one shared model selection for generation, insertion, editing, and document enhancements; separate setup defaults are unnecessary while the shared selector can still feed every action.
 - LLM requests should not set temperature. Provider/model defaults are safer across mixed dynamic model catalogs than guessing support or retrying after rejection.
+- Project zip downloads should include only pages with non-empty generated HTML, reuse the existing download HTML renderer, avoid overwriting duplicate page names by suffixing filenames, and return 404 when nothing generated exists.
 
 ## Spec Change Proposals
 - None. Previous marked-HTML pivot proposal was approved by the user and applied to `plan.md` as R3.
 
 ## Files Created Or Modified This Session
+- `app/Http/Controllers/ProjectHtmlDownloadController.php`: created: builds a temporary project zip of generated page HTML files and deletes it after send.
+- `routes/web.php`: modified: adds the project-level download route.
+- `app/Livewire/Projects/ProjectDashboard/project-dashboard.blade.php`: modified: adds the Download project button above the page list.
+- `tests/Feature/BuilderShellTest.php`: modified: covers the project zip download, duplicate page filenames, empty draft exclusion, no-generated-HTML 404, and dashboard button route.
+- `progress.md`: modified: records the project zip download session and verification.
 - `app/Livewire/Projects/ProjectList/ProjectList.php`: modified: loads project page counts for the index.
 - `app/Livewire/Projects/ProjectList/project-list.blade.php`: modified: displays a compact page-count badge on each project row.
 - `tests/Feature/BuilderShellTest.php`: modified: covers zero, singular, and plural project page counts.
@@ -366,6 +374,7 @@ done
 
 ## Notes
 - Every agent: read `plan.md` Sec. 0.3 (Rules Of Engagement) before touching anything.
+- M5 project download zip verification passed: `vendor\bin\pint --dirty` and `php artisan test` (194 tests, 486 assertions).
 - M1 acceptance is complete as of 2026-05-20.
 - `php artisan migrate:fresh --no-interaction` required elevated filesystem permission in this environment for SQLite writes.
 - `php artisan test` required elevated filesystem permission once for Laravel compiled view writes; final run passed.

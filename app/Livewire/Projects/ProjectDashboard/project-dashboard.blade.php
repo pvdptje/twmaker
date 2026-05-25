@@ -27,7 +27,13 @@
         </form>
 
         <div class="rounded-lg border border-neutral-800 bg-neutral-900">
-            <div class="border-b border-neutral-800 px-4 py-3 text-sm font-medium text-neutral-300">Pages</div>
+            <div class="flex flex-wrap items-center justify-between gap-3 border-b border-neutral-800 px-4 py-3">
+                <div class="text-sm font-medium text-neutral-300">Pages</div>
+                <a
+                    href="{{ route('builder.projects.download-html', $project) }}"
+                    class="rounded-md border border-neutral-700 px-3 py-2 text-sm font-semibold text-neutral-200 hover:border-cyan-500 hover:text-cyan-200"
+                >Download project</a>
+            </div>
             <div class="divide-y divide-neutral-800">
                 @forelse ($pages as $page)
                     <div wire:key="page-{{ $page->id }}" class="px-4 py-3 hover:bg-neutral-800">

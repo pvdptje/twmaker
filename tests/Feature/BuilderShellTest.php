@@ -209,6 +209,8 @@ class BuilderShellTest extends TestCase
         ]);
 
         Livewire::test(ProjectDashboard::class, ['project' => $project])
+            ->assertSee('Download project')
+            ->assertSee(route('builder.projects.download-html', $project), false)
             ->set('name', 'Homepage')
             ->set('prompt', 'A developer-tool landing page')
             ->call('createPage')
@@ -395,6 +397,73 @@ class BuilderShellTest extends TestCase
             ->assertSee('https://cdn.tailwindcss.com', false)
             ->assertSee('alpinejs@3.x.x', false)
             ->assertDontSee('/preview-bridge.js', false);
+    }
+
+    public function test_project_html_download_returns_zip_of_generated_pages(): void
+    {
+        $project = Project::query()->create([
+            'id' => app(IdGenerator::class)->project(),
+            'name' => 'Acme Launch',
+        ]);
+
+        Page::query()->create([
+            'id' => app(IdGenerator::class)->page(),
+            'project_id' => $project->id,
+            'name' => 'Homepage',
+            'prompt' => '',
+            'html_source' => $this->markedHtmlSource(),
+            'status' => 'valid',
+        ]);
+        Page::query()->create([
+            'id' => app(IdGenerator::class)->page(),
+            'project_id' => $project->id,
+            'name' => 'Homepage',
+            'prompt' => '',
+            'html_source' => '<section><h1>Pricing</h1></section>',
+            'status' => 'valid',
+        ]);
+        Page::query()->create([
+            'id' => app(IdGenerator::class)->page(),
+            'project_id' => $project->id,
+            'name' => 'Draft',
+            'prompt' => '',
+            'status' => 'draft',
+        ]);
+
+        $response = $this->get(route('builder.projects.download-html', $project))
+            ->assertOk()
+            ->assertDownload('acme-launch.zip');
+
+        $zip = new \ZipArchive;
+        $this->assertTrue($zip->open($response->baseResponse->getFile()->getPathname()));
+        $this->assertSame(2, $zip->numFiles);
+        $this->assertNotFalse($zip->locateName('homepage.html'));
+        $this->assertNotFalse($zip->locateName('homepage-2.html'));
+        $this->assertFalse($zip->locateName('draft.html'));
+        $this->assertStringContainsString('Ship pages with marked blocks', $zip->getFromName('homepage.html').$zip->getFromName('homepage-2.html'));
+        $this->assertStringContainsString('Pricing', $zip->getFromName('homepage.html').$zip->getFromName('homepage-2.html'));
+        $this->assertStringContainsString('https://cdn.tailwindcss.com', $zip->getFromName('homepage.html'));
+        $this->assertStringNotContainsString('/preview-bridge.js', $zip->getFromName('homepage.html'));
+        $zip->close();
+    }
+
+    public function test_project_html_download_requires_generated_html(): void
+    {
+        $project = Project::query()->create([
+            'id' => app(IdGenerator::class)->project(),
+            'name' => 'Acme',
+        ]);
+
+        Page::query()->create([
+            'id' => app(IdGenerator::class)->page(),
+            'project_id' => $project->id,
+            'name' => 'Draft',
+            'prompt' => '',
+            'status' => 'draft',
+        ]);
+
+        $this->get(route('builder.projects.download-html', $project))
+            ->assertNotFound();
     }
 
     public function test_page_html_download_requires_page_to_belong_to_project(): void
