@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\Storage;
 
 class Page extends Model
 {
@@ -22,7 +23,22 @@ class Page extends Model
         'rendered_html_cache',
         'status',
         'last_generation_summary',
+        'screenshot_path',
+        'screenshot_status',
+        'screenshot_taken_at',
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'screenshot_taken_at' => 'datetime',
+        ];
+    }
+
+    public function hasScreenshot(): bool
+    {
+        return $this->screenshot_status === 'ready' && filled($this->screenshot_path);
+    }
 
     protected static function booted(): void
     {
@@ -37,6 +53,12 @@ class Page extends Model
 
             if ($page->team_id === null && auth()->check()) {
                 $page->team_id = auth()->user()->defaultTeam?->id;
+            }
+        });
+
+        static::deleting(function (Page $page): void {
+            if (filled($page->screenshot_path)) {
+                Storage::disk(config('filesystems.default', 'local'))->delete($page->screenshot_path);
             }
         });
     }

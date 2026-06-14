@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Projects\ProjectDashboard;
 
+use App\Jobs\GeneratePageScreenshotJob;
 use App\Jobs\GenerateSiteRunJob;
 use App\Models\Page;
 use App\Models\Project;
@@ -121,6 +122,19 @@ class ProjectDashboard extends Component
         if ($this->editingPageId === $pageId) {
             $this->cancelRenamingPage();
         }
+    }
+
+    public function generateScreenshot(string $pageId): void
+    {
+        $page = $this->project->pages()->findOrFail($pageId);
+
+        if (trim((string) ($page->html_source ?? '')) === '') {
+            return;
+        }
+
+        $page->forceFill(['screenshot_status' => 'queued'])->save();
+
+        GeneratePageScreenshotJob::dispatch($page->id);
     }
 
     public function openGenerateSite(string $pageId): void

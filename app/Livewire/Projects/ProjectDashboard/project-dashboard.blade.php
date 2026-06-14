@@ -3,6 +3,7 @@
     $generatedCount = $downloadablePages->count();
     $draftCount = $pages->count() - $generatedCount;
     $latestPage = $pages->first();
+    $anyScreenshotProcessing = $pages->contains(fn ($page) => in_array($page->screenshot_status, ['queued', 'processing'], true));
 
     $hasHtml = fn ($page) => trim((string) ($page->html_source ?? '')) !== '';
     $statusMeta = function ($page) use ($hasHtml) {
@@ -185,18 +186,29 @@
                             </form>
                         @else
                             <a href="{{ route('builder.workspace', [$project, $page]) }}" wire:navigate class="block rounded-t-2xl border-b border-white/10 bg-[#0b0b0b] p-3">
-                                <div class="h-28 rounded-xl border {{ $t['ring'] }} bg-gradient-to-br {{ $t['grad'] }} p-3">
-                                    <div class="flex items-center justify-between">
-                                        <div class="h-3 w-20 rounded-full {{ $t['bar'] }}"></div>
-                                        <div class="h-5 w-12 rounded-full bg-white/10"></div>
-                                    </div>
-                                    <div class="mt-4 h-3.5 w-28 rounded bg-white/60"></div>
-                                    <div class="mt-2.5 h-2 w-40 rounded bg-white/20"></div>
-                                    <div class="mt-4 grid grid-cols-3 gap-2">
-                                        <div class="h-8 rounded-lg bg-white/10"></div>
-                                        <div class="h-8 rounded-lg bg-white/10"></div>
-                                        <div class="h-8 rounded-lg bg-white/10"></div>
-                                    </div>
+                                <div class="relative h-28 overflow-hidden rounded-xl border {{ $t['ring'] }} {{ $page->hasScreenshot() ? 'bg-[#0a0a0a]' : 'bg-gradient-to-br '.$t['grad'] }} p-3">
+                                    @if ($page->hasScreenshot())
+                                        <img src="{{ route('builder.pages.screenshot', [$project, $page]) }}?v={{ $page->screenshot_taken_at?->timestamp }}" alt="{{ $page->name }} preview" loading="lazy" class="absolute inset-0 h-full w-full object-cover object-top">
+                                    @else
+                                        <div class="flex items-center justify-between">
+                                            <div class="h-3 w-20 rounded-full {{ $t['bar'] }}"></div>
+                                            <div class="h-5 w-12 rounded-full bg-white/10"></div>
+                                        </div>
+                                        <div class="mt-4 h-3.5 w-28 rounded bg-white/60"></div>
+                                        <div class="mt-2.5 h-2 w-40 rounded bg-white/20"></div>
+                                        <div class="mt-4 grid grid-cols-3 gap-2">
+                                            <div class="h-8 rounded-lg bg-white/10"></div>
+                                            <div class="h-8 rounded-lg bg-white/10"></div>
+                                            <div class="h-8 rounded-lg bg-white/10"></div>
+                                        </div>
+                                    @endif
+
+                                    @if (in_array($page->screenshot_status, ['queued', 'processing'], true))
+                                        <div class="absolute inset-0 flex items-center justify-center gap-2 bg-black/60 text-xs font-semibold text-cyan-200 backdrop-blur-sm">
+                                            <svg viewBox="0 0 24 24" fill="none" class="h-4 w-4 animate-spin"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2.5" class="opacity-25"/><path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg>
+                                            Capturing…
+                                        </div>
+                                    @endif
                                 </div>
                             </a>
 
@@ -239,10 +251,24 @@
                                     </div>
                                 @endif
 
-                                <div class="mt-4 flex items-center justify-between border-t border-white/10 pt-3 text-xs text-zinc-500">
+                                <div class="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-white/10 pt-3 text-xs text-zinc-500">
                                     <span>Updated {{ $page->updated_at?->diffForHumans() ?? 'recently' }}</span>
                                     <div class="flex items-center gap-1.5">
                                         <a href="{{ route('builder.workspace', [$project, $page]) }}" wire:navigate class="rounded-lg border border-white/10 px-2.5 py-1 font-semibold text-zinc-200 transition hover:border-cyan-400/40 hover:text-cyan-200">Open</a>
+                                        @if ($pageHasHtml)
+                                            <button
+                                                type="button"
+                                                wire:click="generateScreenshot('{{ $page->id }}')"
+                                                wire:target="generateScreenshot('{{ $page->id }}')"
+                                                wire:loading.attr="disabled"
+                                                @disabled(in_array($page->screenshot_status, ['queued', 'processing'], true))
+                                                title="{{ $page->hasScreenshot() ? 'Update screenshot from latest version' : 'Create a screenshot of the latest version' }}"
+                                                class="inline-flex items-center gap-1 rounded-lg border border-cyan-400/30 bg-cyan-400/10 px-2.5 py-1 font-semibold text-cyan-200 transition hover:bg-cyan-400/15 disabled:cursor-not-allowed disabled:opacity-60"
+                                            >
+                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="h-3.5 w-3.5"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                                                <span>{{ $page->hasScreenshot() ? 'Update' : 'Screenshot' }}</span>
+                                            </button>
+                                        @endif
                                         <div class="relative" x-data="{ menu: false }" @keydown.escape.window="menu = false">
                                             <button type="button" @click="menu = !menu" class="flex h-7 w-7 items-center justify-center rounded-lg border border-white/10 font-semibold text-zinc-300 transition hover:border-white/25" aria-label="More actions">⋯</button>
                                             <div x-show="menu" x-cloak x-transition.opacity @click.outside="menu = false" class="absolute right-0 z-30 mt-2 w-48 overflow-hidden rounded-xl border border-white/10 bg-[#141414] p-1 shadow-2xl shadow-black/50">
@@ -276,6 +302,10 @@
 
             @if ($pages->isEmpty())
                 <p class="mt-6 text-center text-sm text-zinc-500">No pages yet — create a page to open the builder workspace.</p>
+            @endif
+
+            @if ($anyScreenshotProcessing)
+                <div wire:poll.4s class="hidden"></div>
             @endif
         </div>
     </section>

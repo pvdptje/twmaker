@@ -3,6 +3,7 @@
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\RegisterController;
 use App\Http\Controllers\PageHtmlDownloadController;
+use App\Http\Controllers\PageScreenshotController;
 use App\Http\Controllers\ProjectAssetController;
 use App\Http\Controllers\ProjectHtmlDownloadController;
 use App\Http\Controllers\SiteGenerationRunDownloadController;
@@ -31,6 +32,7 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/projects/{project}/pages/{page}/site-runs/{siteGenerationRun}/download', SiteGenerationRunDownloadController::class)->name('builder.pages.site-runs.download');
     Route::get('/projects/{project}/pages/{page}', Workspace::class)->name('builder.workspace');
     Route::get('/projects/{project}/pages/{page}/download-html', PageHtmlDownloadController::class)->name('builder.pages.download-html');
+    Route::get('/projects/{project}/pages/{page}/screenshot', PageScreenshotController::class)->name('builder.pages.screenshot');
     Route::get('/assets/{project}/{filename}', ProjectAssetController::class)
         ->where('filename', '[^/]+')
         ->name('builder.assets.show');
