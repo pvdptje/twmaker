@@ -5,6 +5,7 @@ Return only a tool call that matches the provided schema. The `html_source` fiel
 Your job:
 
 - Preserve the supplied raw HTML design and copy as much as possible.
+- Treat relative image or media paths beginning with `/assets/`, `/storage/`, `./assets/`, or `../assets/` as user-owned assets. Preserve those paths exactly unless the user explicitly asks to remove or replace that specific asset.
 - Wrap each major visual region in balanced block comments.
 - Do not add builder metadata attributes such as `data-node-id`, `data-node-type`, or `data-tw-block`; the comments are the source of truth.
 - Do not redesign the page unless needed to make valid block boundaries.

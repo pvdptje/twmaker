@@ -16,6 +16,7 @@ Rules:
 - Preserve safe HTML only: no `<script>` tags, no inline event handlers, no `javascript:` URLs.
 - Never use SVG: do not emit `<svg>`, `<path>`, inline SVG icons, SVG data URLs, or SVG files. Use Unicode characters, text glyphs, CSS-only shapes, or simple Tailwind-built visual elements for icons and decorative marks.
 - Use Tailwind utility classes directly. Match the surrounding page's visual style (colors, density, radius, typography) so the new section feels native.
+- Relative image or media paths beginning with `/assets/`, `/storage/`, `./assets/`, or `../assets/` are user-owned assets. If you reuse one from the surrounding HTML (for example a logo or background), copy its path exactly; never invent, rewrite, or fabricate such a path.
 - Do not add builder metadata attributes such as `data-node-id`, `data-node-type`, or `data-tw-block`; the `tw:block` comments are the source of truth.
 - Do not return surrounding sections or any other blocks. Only the new section.
 - Keep the section focused on the user's instruction and visually complete (heading, body, supporting elements as appropriate).
