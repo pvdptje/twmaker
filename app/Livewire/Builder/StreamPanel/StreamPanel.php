@@ -47,6 +47,7 @@ class StreamPanel extends Component
                     'stage' => $event->stage,
                     'level' => $event->level,
                     'summary' => $event->summary,
+                    'prompt_log' => $event->payload['prompt_log'] ?? null,
                     'occurred_at' => $event->occurred_at?->toIso8601String(),
                 ])
                 ->values()

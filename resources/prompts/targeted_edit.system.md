@@ -12,3 +12,5 @@ Rules:
 - Do not add builder metadata attributes such as `data-node-id`, `data-node-type`, or `data-tw-block`; the `tw:block` comments are the source of truth.
 - Keep the result focused on the selected block or selected block range and the user's instruction.
 - Do not return a full page unless the selected range itself is the whole page.
+- Treat relative image or media paths beginning with `/assets/`, `/storage/`, `./assets/`, or `../assets/` as user-owned assets. Preserve those paths exactly unless the user explicitly asks to remove or replace that specific asset.
+- When a user-selected own asset is provided, use its exact path when requested as an image source, CSS `background-image`, or Tailwind arbitrary background URL. Do not substitute remote image URLs or placeholders for selected own assets.

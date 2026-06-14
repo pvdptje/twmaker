@@ -11,6 +11,14 @@
         pendingPreviewChunks: {},
         previewFlushTimer: null,
         maxRows: 80,
+        promptModal: null,
+        promptContextText(promptLog) {
+            try {
+                return JSON.stringify(promptLog?.context || {}, null, 2);
+            } catch (error) {
+                return '{}';
+            }
+        },
         applyChunk(text, chunk, position) {
             if (position < text.length) {
                 if (text.slice(position, position + chunk.length) === chunk) return text;
@@ -87,6 +95,8 @@
                 stage: event.stage || '',
                 level: event.level || 'info',
                 summary: event.summary || '',
+                prompt_log: event.prompt_log || event.payload?.prompt_log || null,
+                prompt_log_available: Boolean(event.prompt_log || event.payload?.prompt_log || event.payload?.prompt_log_available),
                 occurred_at: event.occurred_at || null,
             });
             this.events = this.events.slice(0, this.maxRows);
@@ -149,7 +159,13 @@
     <div class="grid min-h-0 grid-cols-[minmax(0,1fr)_minmax(18rem,32rem)]">
         <div class="min-h-0 overflow-y-auto p-3">
         <template x-for="event in events" :key="event.id">
-            <div data-generation-event-row class="mb-2 rounded-md border px-3 py-2 shadow-sm" :class="eventClass(event)">
+            <div
+                data-generation-event-row
+                class="mb-2 rounded-md border px-3 py-2 shadow-sm"
+                :class="[eventClass(event), event.prompt_log ? 'cursor-pointer hover:border-cyan-500/60' : '']"
+                x-on:click="if (event.prompt_log) promptModal = event"
+                x-bind:title="event.prompt_log ? 'View prompt sent for this activity' : ''"
+            >
                 <div class="flex items-start gap-3">
                     <div class="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border" :class="iconClass(event)">
                         <template x-if="event.level === 'success'">
@@ -169,6 +185,9 @@
                     <div class="min-w-0 flex-1">
                         <div class="text-xs text-neutral-500"><span x-text="event.stage"></span> / <span x-text="event.kind"></span></div>
                         <div class="text-sm text-neutral-200" x-text="event.summary"></div>
+                        <template x-if="event.prompt_log || event.prompt_log_available">
+                            <div class="mt-1 text-[11px] font-medium text-cyan-300">Prompt available</div>
+                        </template>
                     </div>
                 </div>
             </div>
@@ -189,4 +208,55 @@
             >Waiting for broadcast chunks.</pre>
         </aside>
     </div>
+
+    <template x-if="promptModal">
+        <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/75 px-4 py-8" x-on:keydown.escape.window="promptModal = null">
+            <div class="flex max-h-full w-full max-w-5xl flex-col rounded-md border border-neutral-800 bg-neutral-950 shadow-2xl" x-on:click.stop>
+                <div class="flex items-start justify-between gap-4 border-b border-neutral-800 px-4 py-3">
+                    <div class="min-w-0">
+                        <div class="text-sm font-semibold text-white">Prompt log</div>
+                        <div class="mt-1 truncate text-xs text-neutral-500">
+                            <span x-text="promptModal.stage"></span>
+                            <span>/</span>
+                            <span x-text="promptModal.kind"></span>
+                            <span class="text-neutral-700"> - </span>
+                            <span x-text="promptModal.prompt_log.provider"></span>
+                            <span>/</span>
+                            <span x-text="promptModal.prompt_log.model"></span>
+                        </div>
+                    </div>
+                    <button
+                        type="button"
+                        x-on:click="promptModal = null"
+                        class="inline-flex h-8 w-8 items-center justify-center rounded-md border border-neutral-800 text-lg text-neutral-400 hover:border-neutral-600 hover:text-white"
+                        aria-label="Close prompt log"
+                    >&times;</button>
+                </div>
+                <div class="grid min-h-0 flex-1 gap-0 overflow-hidden md:grid-cols-2">
+                    <section class="min-h-0 border-b border-neutral-800 md:border-b-0 md:border-r">
+                        <div class="border-b border-neutral-800 px-3 py-2 text-xs font-semibold text-neutral-300">System prompt</div>
+                        <textarea
+                            readonly
+                            class="h-[34rem] max-h-[34rem] min-h-0 w-full resize-none overflow-auto border-0 bg-transparent p-3 font-mono text-[11px] leading-5 text-neutral-200 outline-none focus:ring-0"
+                            x-bind:value="promptModal.prompt_log.system_prompt || ''"
+                        ></textarea>
+                    </section>
+                    <section class="min-h-0">
+                        <div class="border-b border-neutral-800 px-3 py-2 text-xs font-semibold text-neutral-300">User prompt</div>
+                        <textarea
+                            readonly
+                            class="h-[34rem] max-h-[34rem] min-h-0 w-full resize-none overflow-auto border-0 bg-transparent p-3 font-mono text-[11px] leading-5 text-cyan-50 outline-none focus:ring-0"
+                            x-bind:value="promptModal.prompt_log.user_prompt || ''"
+                        ></textarea>
+                    </section>
+                </div>
+                <div class="border-t border-neutral-800">
+                    <details class="group">
+                        <summary class="cursor-pointer px-4 py-2 text-xs font-semibold text-neutral-400 hover:text-white">Context</summary>
+                        <pre class="max-h-52 overflow-auto whitespace-pre-wrap break-words border-t border-neutral-800 p-3 font-mono text-[11px] leading-5 text-neutral-300" x-text="promptContextText(promptModal.prompt_log)"></pre>
+                    </details>
+                </div>
+            </div>
+        </div>
+    </template>
 </div>

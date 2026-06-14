@@ -43,6 +43,11 @@ class Project extends Model
         return $this->hasMany(Page::class);
     }
 
+    public function assets(): HasMany
+    {
+        return $this->hasMany(ProjectAsset::class);
+    }
+
     public function siteGenerationRuns(): HasMany
     {
         return $this->hasMany(SiteGenerationRun::class);

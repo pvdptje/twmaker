@@ -80,4 +80,45 @@ describe('builder realtime bridge', () => {
             { html: '<body><main>Hello</main></body>' },
         ]);
     });
+
+    it('uses streamed targeted edit html when terminal event omits html source', () => {
+        const { handlers, window } = bootRealtime();
+        const applied = [];
+
+        window.addEventListener('targeted-edit-applied', (event) => applied.push(event.detail));
+
+        handlers['.GenerationEventBroadcast']({
+            page_id: 'page_01',
+            kind: 'edit_requested',
+            stage: 'targeted_edit',
+            payload: { target_ids: ['block_hero'] },
+        });
+
+        handlers['.GenerationStreamChunk']({
+            page_id: 'page_01',
+            stage: 'targeted_edit',
+            chunk: '<section>Updated',
+            position: 0,
+            stream: 'html',
+        });
+
+        handlers['.GenerationStreamChunk']({
+            page_id: 'page_01',
+            stage: 'targeted_edit',
+            chunk: '</section>',
+            position: 16,
+            stream: 'html',
+        });
+
+        handlers['.GenerationEventBroadcast']({
+            page_id: 'page_01',
+            kind: 'edit_applied',
+            stage: 'targeted_edit',
+            payload: { target_ids: ['block_hero'], html_source_available: true },
+        });
+
+        expect(applied).toEqual([
+            { targetIds: ['block_hero'], html: '<section>Updated</section>' },
+        ]);
+    });
 });

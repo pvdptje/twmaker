@@ -6,6 +6,7 @@ use App\Events\GenerationStreamChunk;
 use App\Models\Page;
 use App\Services\Generation\GenerationStreamBuffer;
 use App\Services\Llm\LlmProvider;
+use App\Services\Llm\PromptLog;
 use App\Services\Llm\TextRequest;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -43,7 +44,7 @@ class SectionGenerator
         );
 
         if (trim($result->html) !== '') {
-            return new SectionGenerationResult($result->html, 'retry', $result->llm);
+            return new SectionGenerationResult($result->html, 'retry', $result->llm, $result->promptLog);
         }
 
         return new SectionGenerationResult($this->fallbackHtml($page), 'deterministic_fallback');
@@ -86,7 +87,7 @@ class SectionGenerator
             'provider' => $provider,
             'model' => $response->model,
             'usage' => $response->usage,
-        ]);
+        ], promptLog: PromptLog::fromTextRequest($request));
     }
 
     private function streamHtml(Page $page, string $stage): callable

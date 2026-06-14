@@ -42,11 +42,20 @@
             if (event.detail?.pageId && event.detail.pageId !== @js($page->id)) return;
             this.editRunning = false;
         },
+        finishTargetedEdit(event) {
+            if (event.detail?.page_id && event.detail.page_id !== @js($page->id)) return;
+            if (event.detail?.stage && event.detail.stage !== 'targeted_edit') return;
+            if (event.detail?.kind && event.detail.kind !== 'edit_applied' && event.detail.kind !== 'edit_rejected') return;
+            this.editRunning = false;
+        },
     }"
     x-init="loadSelection()"
     x-on:builder-model-selection-changed.window="updateSelection($event)"
     x-on:generation-started.window="beginEdit($event)"
     x-on:generation-finished.window="finishEdit($event)"
+    x-on:generation-event-received.window="finishTargetedEdit($event)"
+    x-on:targeted-edit-applied.window="finishTargetedEdit($event)"
+    x-on:targeted-edit-stream-cancel.window="finishTargetedEdit($event)"
     x-on:dragover.prevent="dragOver = true"
     x-on:dragleave="if ($event.target === $el) dragOver = false"
     x-on:drop.prevent="dragOver = false; handleDrop($event)"
@@ -94,6 +103,123 @@
     <template x-if="attachError">
         <div class="mt-2 text-xs text-red-300" x-text="attachError"></div>
     </template>
+    <div class="mt-4 border-t border-neutral-800 pt-3">
+        <div class="flex items-center justify-between gap-3">
+            <div class="text-xs font-semibold uppercase tracking-normal text-neutral-500">Own assets</div>
+            @if ($ownAssets->isNotEmpty())
+                <div class="text-[11px] text-neutral-600">{{ $ownAssets->count() }} saved</div>
+            @endif
+        </div>
+
+        @if ($selectedAsset)
+            <div class="mt-2 flex items-center gap-2 rounded-md border border-neutral-800 bg-neutral-950 p-2">
+                <img src="{{ $selectedAsset->publicHtmlUrl() }}" alt="" class="h-12 w-12 rounded border border-neutral-800 object-cover" />
+                <div class="min-w-0 flex-1">
+                    <div class="truncate text-xs font-medium text-neutral-200">{{ $selectedAsset->original_name }}</div>
+                    <div class="mt-0.5 truncate text-[11px] text-neutral-600">{{ $selectedAsset->publicHtmlUrl() }}</div>
+                </div>
+                <button
+                    type="button"
+                    wire:click="openAssetPicker"
+                    class="inline-flex h-8 items-center justify-center rounded-md border border-neutral-800 px-2 text-xs font-semibold text-neutral-300 hover:border-neutral-600 hover:text-white"
+                >Replace</button>
+                <button
+                    type="button"
+                    wire:click="clearOwnAsset"
+                    class="inline-flex h-8 w-8 items-center justify-center rounded-md border border-neutral-800 text-sm text-neutral-400 hover:border-red-500 hover:text-red-200"
+                    aria-label="Remove selected asset"
+                >&times;</button>
+            </div>
+        @else
+            <button
+                type="button"
+                wire:click="openAssetPicker"
+                class="mt-2 inline-flex h-9 w-full items-center justify-center rounded-md border border-neutral-800 bg-neutral-950 px-3 text-xs font-semibold text-neutral-300 transition hover:border-neutral-600 hover:text-white"
+            >
+                Choose own asset
+            </button>
+        @endif
+
+        @if ($assetStatus !== '')
+            <div class="mt-2 text-xs text-neutral-500">{{ $assetStatus }}</div>
+        @endif
+    </div>
+
+    @if ($assetPickerOpen)
+        <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-8" wire:keydown.escape="closeAssetPicker">
+            <div class="flex max-h-full w-full max-w-2xl flex-col rounded-md border border-neutral-800 bg-neutral-950 shadow-2xl">
+                <div class="flex items-center justify-between border-b border-neutral-800 px-4 py-3">
+                    <div>
+                        <div class="text-sm font-semibold text-white">Choose own asset</div>
+                        <div class="mt-0.5 text-xs text-neutral-500">{{ $ownAssets->count() }} saved for this project</div>
+                    </div>
+                    <button
+                        type="button"
+                        wire:click="closeAssetPicker"
+                        class="inline-flex h-8 w-8 items-center justify-center rounded-md border border-neutral-800 text-lg text-neutral-400 hover:border-neutral-600 hover:text-white"
+                        aria-label="Close asset picker"
+                    >&times;</button>
+                </div>
+
+                <div class="border-b border-neutral-800 p-4">
+                    <div class="flex items-center gap-2">
+                        <label
+                            class="inline-flex h-9 flex-1 cursor-pointer items-center justify-center rounded-md border border-neutral-800 bg-neutral-900 px-3 text-xs font-semibold text-neutral-300 transition hover:border-neutral-600 hover:text-white"
+                        >
+                            <span>{{ $assetUpload ? $assetUpload->getClientOriginalName() : 'Upload image' }}</span>
+                            <input
+                                type="file"
+                                wire:model="assetUpload"
+                                accept="image/png,image/jpeg,image/webp"
+                                class="hidden"
+                            />
+                        </label>
+                        <button
+                            type="button"
+                            wire:click="uploadOwnAsset"
+                            wire:loading.attr="disabled"
+                            wire:target="assetUpload,uploadOwnAsset"
+                            class="inline-flex h-9 items-center justify-center rounded-md bg-neutral-100 px-3 text-xs font-semibold text-neutral-950 hover:bg-white disabled:bg-neutral-800 disabled:text-neutral-500"
+                            @disabled(! $assetUpload)
+                        >
+                            <span wire:loading wire:target="uploadOwnAsset" class="mr-2 h-3 w-3 animate-spin rounded-full border-2 border-neutral-500 border-t-cyan-300"></span>
+                            Add and use
+                        </button>
+                    </div>
+                    @error('assetUpload')
+                        <div class="mt-2 text-xs text-red-300">{{ $message }}</div>
+                    @enderror
+                </div>
+
+                <div class="min-h-0 overflow-y-auto p-4">
+                    @if ($ownAssets->isNotEmpty())
+                        <div class="grid grid-cols-2 gap-3">
+                            @foreach ($ownAssets as $asset)
+                                <button
+                                    type="button"
+                                    wire:key="asset-picker-{{ $asset->id }}"
+                                    wire:click="chooseOwnAsset('{{ $asset->id }}')"
+                                    class="group overflow-hidden rounded-md border {{ in_array($asset->id, $selectedAssetIds, true) ? 'border-cyan-400' : 'border-neutral-800' }} bg-neutral-900 text-left transition hover:border-cyan-500"
+                                    title="{{ $asset->original_name }} - {{ $asset->publicHtmlUrl() }}"
+                                >
+                                    <img src="{{ $asset->publicHtmlUrl() }}" alt="" class="aspect-[4/3] w-full object-cover opacity-85 transition group-hover:opacity-100" />
+                                    <div class="px-2 py-2">
+                                        <div class="truncate text-xs font-medium text-neutral-200">{{ $asset->original_name }}</div>
+                                        <div class="mt-0.5 truncate text-[11px] text-neutral-600">{{ $asset->publicHtmlUrl() }}</div>
+                                    </div>
+                                </button>
+                            @endforeach
+                        </div>
+                    @else
+                        <div class="rounded-md border border-dashed border-neutral-800 px-4 py-8 text-center text-sm text-neutral-500">
+                            Upload an image to use it in this edit.
+                        </div>
+                    @endif
+                </div>
+            </div>
+        </div>
+    @endif
+
     <div class="mt-3 flex items-center gap-2">
         <button
             type="button"

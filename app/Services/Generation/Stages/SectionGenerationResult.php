@@ -8,5 +8,6 @@ class SectionGenerationResult
         public readonly string $html,
         public readonly ?string $recovery = null,
         public readonly array $llm = [],
+        public readonly array $promptLog = [],
     ) {}
 }

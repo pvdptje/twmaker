@@ -4,6 +4,7 @@ namespace App\Livewire\Builder\Inspector\EditForm;
 
 use App\Jobs\TargetedEditJob;
 use App\Models\Page;
+use App\Services\Assets\ProjectAssetLibrary;
 use App\Services\Generation\GenerationEventRecorder;
 use App\Services\Llm\ImageAttachments;
 use App\Services\Llm\LlmRegistry;
@@ -11,9 +12,13 @@ use App\Services\Llm\TeamProviderCredentials;
 use Illuminate\Contracts\View\View;
 use Livewire\Attributes\Reactive;
 use Livewire\Component;
+use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
+use Livewire\WithFileUploads;
 
 class EditForm extends Component
 {
+    use WithFileUploads;
+
     public Page $page;
 
     #[Reactive]
@@ -36,6 +41,14 @@ class EditForm extends Component
      * @var array<int, array{base64: string, mime_type: string}>
      */
     public array $images = [];
+
+    public ?TemporaryUploadedFile $assetUpload = null;
+
+    public array $selectedAssetIds = [];
+
+    public string $assetStatus = '';
+
+    public bool $assetPickerOpen = false;
 
     public function mount(): void
     {
@@ -81,6 +94,8 @@ class EditForm extends Component
             'selectedNodeId' => ['nullable', 'string'],
             'selectedBlockIds' => ['array'],
             'selectedBlockIds.*' => ['string'],
+            'selectedAssetIds' => ['array'],
+            'selectedAssetIds.*' => ['string'],
             'instruction' => ['required', 'string', 'min:3', 'max:5000'],
             'provider' => ['required', 'string', 'in:'.implode(',', $this->providerIds())],
             'model' => ['required', 'string', 'in:'.implode(',', $this->modelIds())],
@@ -93,6 +108,7 @@ class EditForm extends Component
             return;
         }
 
+        $assetIds = $this->selectedAssetIds();
         if ($this->images !== [] && ! $this->registry()->supportsModality($this->provider, $this->model, 'image', $this->normalizedApiKey())) {
             $this->addError('instruction', 'The selected model does not accept image input. Pick a vision-capable model or remove the attachments.');
 
@@ -110,35 +126,93 @@ class EditForm extends Component
                 'instruction' => $this->instruction,
                 'target_ids' => $targetIds,
                 'reference_images' => count($this->images),
+                'own_assets' => $assetIds,
             ],
         );
 
         $this->page->forceFill(['status' => 'generating'])->save();
         $this->dispatch('generation-started', pageId: $this->page->id, stage: 'targeted_edit');
 
-        TargetedEditJob::dispatch($this->page->id, count($targetIds) === 1 ? $targetIds[0] : $targetIds, $this->instruction, $this->provider, $this->model, $this->normalizedApiKey(), $this->images);
+        TargetedEditJob::dispatch($this->page->id, count($targetIds) === 1 ? $targetIds[0] : $targetIds, $this->instruction, $this->provider, $this->model, $this->normalizedApiKey(), $this->images, $assetIds);
         $this->instruction = '';
         $this->images = [];
+        $this->selectedAssetIds = [];
     }
 
     /**
      * @param  array<int, array{base64?: string, mime_type?: string}>|null  $attachments
      */
-    public function applyEditWithSelection(string $provider, string $model, ?string $apiKey = null, ?array $attachments = null): void
+    public function applyEditWithSelection(string $provider, string $model, ?string $apiKey = null, ?array $attachments = null, ?array $assetIds = null): void
     {
         $this->provider = $provider;
         $this->model = $model;
         $this->apiKey = '';
         $this->images = app(ImageAttachments::class)->normalize($attachments);
+        $this->selectedAssetIds = $this->normalizeAssetIds($assetIds ?? $this->selectedAssetIds);
         $this->storeProvider();
         $this->storeModel();
 
         $this->applyEdit();
     }
 
+    public function openAssetPicker(): void
+    {
+        $this->assetPickerOpen = true;
+        $this->assetStatus = '';
+    }
+
+    public function closeAssetPicker(): void
+    {
+        $this->assetPickerOpen = false;
+        $this->assetUpload = null;
+    }
+
+    public function chooseOwnAsset(string $assetId): void
+    {
+        $asset = $this->page->project()->firstOrFail()
+            ->assets()
+            ->whereKey($assetId)
+            ->firstOrFail();
+
+        $this->selectedAssetIds = [$asset->id];
+        $this->assetStatus = '';
+        $this->assetPickerOpen = false;
+    }
+
+    public function clearOwnAsset(): void
+    {
+        $this->selectedAssetIds = [];
+        $this->assetStatus = '';
+    }
+
+    public function uploadOwnAsset(ProjectAssetLibrary $assets): void
+    {
+        $this->validate([
+            'assetUpload' => ['required', 'file', 'mimetypes:image/png,image/jpeg,image/webp', 'max:'.ProjectAssetLibrary::MAX_UPLOAD_KILOBYTES],
+        ]);
+
+        if ($this->assetUpload === null) {
+            return;
+        }
+
+        $asset = $assets->storeUploaded($this->page->project()->firstOrFail(), $this->assetUpload);
+
+        $this->assetUpload = null;
+        $this->assetStatus = 'Asset added.';
+        $this->selectedAssetIds = [$asset->id];
+        $this->assetPickerOpen = false;
+    }
+
     public function render(): View
     {
-        return view()->file(__DIR__.'/edit-form.blade.php');
+        $ownAssets = $this->page->project
+            ? $this->page->project->assets()->latest()->get()
+            : collect();
+
+        return view()->file(__DIR__.'/edit-form.blade.php', [
+            'ownAssets' => $ownAssets,
+            'selectedAsset' => $ownAssets->firstWhere('id', $this->selectedAssetIds()[0] ?? null),
+        ]);
     }
 
     private function providerOptions(): array
@@ -251,5 +325,18 @@ class EditForm extends Component
         return is_string($this->selectedNodeId) && $this->selectedNodeId !== ''
             ? [$this->selectedNodeId]
             : [];
+    }
+
+    private function selectedAssetIds(): array
+    {
+        return $this->normalizeAssetIds($this->selectedAssetIds);
+    }
+
+    private function normalizeAssetIds(array $assetIds): array
+    {
+        return array_slice(array_values(array_unique(array_filter(
+            $assetIds,
+            fn (mixed $id): bool => is_string($id) && str_starts_with($id, 'asset_'),
+        ))), 0, ProjectAssetLibrary::MAX_SELECTED_ASSETS);
     }
 }

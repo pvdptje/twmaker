@@ -16,6 +16,7 @@ class IdGenerator
         'node' => 'node_',
         'element' => 'elem_',
         'element_instance' => 'inst_',
+        'project_asset' => 'asset_',
         'generation_event' => 'evt_',
         'team_provider_credential' => 'cred_',
         'site_generation_run' => 'srun_',
@@ -69,6 +70,11 @@ class IdGenerator
     public function elementInstance(): string
     {
         return $this->make('element_instance');
+    }
+
+    public function projectAsset(): string
+    {
+        return $this->make('project_asset');
     }
 
     public function generationEvent(): string

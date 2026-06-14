@@ -151,7 +151,9 @@
 
         if (event.kind === 'edit_applied') {
             const targetIds = Array.isArray(event.payload?.target_ids) ? event.payload.target_ids : [];
-            const html = typeof event.payload?.html_source === 'string' ? event.payload.html_source : '';
+            const html = typeof event.payload?.html_source === 'string' && event.payload.html_source !== ''
+                ? event.payload.html_source
+                : state.html;
             if (targetIds.length > 0 && html !== '') {
                 emit('targeted-edit-applied', { targetIds, html });
             }

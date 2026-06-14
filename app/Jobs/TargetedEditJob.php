@@ -25,6 +25,7 @@ class TargetedEditJob implements ShouldBeEncrypted, ShouldQueue
         public readonly ?string $model = null,
         public readonly ?string $apiKey = null,
         public readonly array $images = [],
+        public readonly array $assetIds = [],
     ) {}
 
     public function handle(Pipeline $pipeline): void
@@ -40,6 +41,7 @@ class TargetedEditJob implements ShouldBeEncrypted, ShouldQueue
                 $this->model,
                 $this->apiKey,
                 $this->images,
+                $this->assetIds,
             );
         } catch (Throwable $exception) {
             // Pipeline records edit_rejected. Keep sync queue mode from surfacing a Livewire 500 overlay.

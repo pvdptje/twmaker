@@ -33,8 +33,35 @@ class GenerationEventBroadcast implements ShouldBroadcastNow
             'target_id' => $this->event->target_id,
             'level' => $this->event->level,
             'summary' => $this->event->summary,
-            'payload' => $this->event->payload,
+            'payload' => $this->broadcastPayload(),
             'occurred_at' => $this->event->occurred_at?->toISOString(),
         ];
+    }
+
+    /**
+     * Keep realtime events below broadcaster payload limits. The full payload,
+     * including prompt logs, remains stored on the GenerationEvent row.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function broadcastPayload(): ?array
+    {
+        $payload = $this->event->payload;
+
+        if (! is_array($payload)) {
+            return null;
+        }
+
+        if (array_key_exists('prompt_log', $payload)) {
+            unset($payload['prompt_log']);
+            $payload['prompt_log_available'] = true;
+        }
+
+        if (is_string($payload['html_source'] ?? null) && strlen($payload['html_source']) > 7_000) {
+            unset($payload['html_source']);
+            $payload['html_source_available'] = true;
+        }
+
+        return $payload;
     }
 }

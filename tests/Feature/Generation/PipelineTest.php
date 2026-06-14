@@ -4,6 +4,7 @@ namespace Tests\Feature\Generation;
 
 use App\Models\Page;
 use App\Models\Project;
+use App\Models\ProjectAsset;
 use App\Services\Generation\GenerationStreamBuffer;
 use App\Services\Generation\Pipeline;
 use App\Services\Html\BlockIndexer;
@@ -14,6 +15,7 @@ use App\Services\Llm\StructuredResponse;
 use App\Services\Llm\TextRequest;
 use App\Services\Llm\TextResponse;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class PipelineTest extends TestCase
@@ -282,7 +284,11 @@ HTML;
         $blockIndex = app(BlockIndexer::class)->index($artifact['marked_html']);
 
         $page->forceFill([
-            'html_source' => $artifact['marked_html'],
+            'html_source' => str_replace(
+                '<h1 class="mt-4 text-5xl font-bold">Ship pages with marked blocks</h1>',
+                '<img src="/assets/user-provided/existing-logo.png" alt="Existing logo"><h1 class="mt-4 text-5xl font-bold">Ship pages with marked blocks</h1>',
+                $artifact['marked_html'],
+            ),
             'status' => 'valid',
         ])->save();
 
@@ -327,7 +333,11 @@ HTML;
         $blockIndex = app(BlockIndexer::class)->index($artifact['marked_html']);
 
         $page->forceFill([
-            'html_source' => $artifact['marked_html'],
+            'html_source' => str_replace(
+                '<h1 class="mt-4 text-5xl font-bold">Ship pages with marked blocks</h1>',
+                '<img src="/assets/user-provided/existing-logo.png" alt="Existing logo"><h1 class="mt-4 text-5xl font-bold">Ship pages with marked blocks</h1>',
+                $artifact['marked_html'],
+            ),
             'status' => 'valid',
         ])->save();
 
@@ -710,6 +720,76 @@ HTML;
         $this->assertStringContainsString('visual reference screenshot', (string) $provider->lastTextRequest?->userPrompt);
     }
 
+    public function test_pipeline_attaches_project_assets_and_instructs_exact_public_paths(): void
+    {
+        Storage::fake('public');
+        [$project, $page] = $this->makePage('A developer tool landing page');
+        $otherProject = Project::query()->create([
+            'id' => app(IdGenerator::class)->project(),
+            'name' => 'Other',
+        ]);
+        $artifact = $this->htmlArtifact();
+
+        $htmlWithExistingAsset = str_replace(
+            '<h1 class="mt-4 text-5xl font-bold">Ship pages with marked blocks</h1>',
+            '<img src="/assets/user-provided/existing-logo.png" alt="Existing logo"><div style="background-image: url(\'/assets/proj_fake/asset_logo.png\')"></div><h1 class="mt-4 text-5xl font-bold">Ship pages with marked blocks</h1>',
+            $artifact['marked_html'],
+        );
+        $this->assertStringContainsString('/assets/user-provided/existing-logo.png', $htmlWithExistingAsset);
+        $this->assertStringContainsString('/assets/proj_fake/asset_logo.png', $htmlWithExistingAsset);
+
+        $page->forceFill([
+            'html_source' => $htmlWithExistingAsset,
+            'status' => 'valid',
+        ])->save();
+
+        $asset = $this->makeStoredAsset($project, 'summer-hero-product.png', 'project-assets/'.$project->id.'/asset_logo.png', 'brand-image-bytes');
+        $otherAsset = $this->makeStoredAsset($otherProject, 'other.png', 'project-assets/'.$otherProject->id.'/asset_other.png', 'other-image-bytes');
+        $asset->forceFill(['public_url' => '/storage/'.$asset->path])->save();
+
+        $replacement = <<<'HTML'
+<!-- tw:block id="draft_hero" type="hero" label="Hero" -->
+<section class="bg-white px-6 py-24"><img src="/assets/proj_fake/asset_logo.png" alt="Brand"><h1>Asset guided edit</h1></section>
+<!-- /tw:block -->
+HTML;
+        $provider = new FakeTargetedEditProvider($replacement);
+
+        $this->app->instance(LlmProvider::class, $provider);
+
+        app(Pipeline::class)->edit($page, 'block_hero', 'Use my own uploaded brand image.', assetIds: [$asset->id, $otherAsset->id]);
+
+        $expectedAssetUrl = '/assets/'.$project->id.'/'.basename($asset->path);
+
+        $this->assertSame([], $provider->lastTextRequest?->images);
+        $this->assertStringContainsString('Asset insertion task:', (string) $provider->lastTextRequest?->userPrompt);
+        $this->assertStringContainsString('Public HTML path: `'.$expectedAssetUrl.'`', (string) $provider->lastTextRequest?->userPrompt);
+        $this->assertStringNotContainsString('/storage/'.$asset->path, (string) $provider->lastTextRequest?->userPrompt);
+        $this->assertStringContainsString('Original filename: summer-hero-product.png', (string) $provider->lastTextRequest?->userPrompt);
+        $this->assertStringNotContainsString('Attached image number', (string) $provider->lastTextRequest?->userPrompt);
+        $this->assertStringContainsString('make your best guess', (string) $provider->lastTextRequest?->userPrompt);
+        $this->assertStringContainsString('Keep unrelated HTML, text, links, classes, structure, and existing asset paths intact', (string) $provider->lastTextRequest?->userPrompt);
+        $this->assertStringContainsString('Return only the replacement marked block', (string) $provider->lastTextRequest?->userPrompt);
+        $this->assertStringContainsString('every zero', (string) $provider->lastTextRequest?->userPrompt);
+        $this->assertStringContainsString('Example background usage', (string) $provider->lastTextRequest?->userPrompt);
+        $this->assertStringContainsString('Copy it exactly', (string) $provider->lastTextRequest?->userPrompt);
+        $this->assertStringContainsString('/assets/user-provided/existing-logo.png', (string) $provider->lastTextRequest?->userPrompt);
+        $this->assertStringContainsString('/assets/proj_fake/asset_logo.png', (string) $provider->lastTextRequest?->userPrompt);
+        $this->assertStringContainsString('replace that URL with the selected Public HTML path exactly', (string) $provider->lastTextRequest?->userPrompt);
+        $this->assertStringNotContainsString($otherAsset->public_url, (string) $provider->lastTextRequest?->userPrompt);
+
+        $event = $page->generationEvents()
+            ->where('kind', 'edit_applied')
+            ->firstOrFail();
+
+        $this->assertSame('targeted_edit', $event->payload['prompt_log']['stage'] ?? null);
+        $this->assertSame(0, $event->payload['prompt_log']['image_count'] ?? null);
+        $this->assertStringContainsString('Asset insertion task:', $event->payload['prompt_log']['user_prompt'] ?? '');
+        $this->assertStringContainsString($expectedAssetUrl, $event->payload['prompt_log']['user_prompt'] ?? '');
+        $this->assertStringContainsString($expectedAssetUrl, $event->payload['html_source'] ?? '');
+        $this->assertStringNotContainsString('/assets/proj_fake/asset_logo.png', $event->payload['html_source'] ?? '');
+        $this->assertArrayNotHasKey('apiKey', $event->payload['prompt_log']);
+    }
+
     private function makePage(string $prompt): array
     {
         $ids = app(IdGenerator::class);
@@ -771,6 +851,28 @@ HTML,
 <!-- /tw:block -->
 HTML,
         ];
+    }
+
+    private function makeStoredAsset(Project $project, string $name, string $path, string $contents): ProjectAsset
+    {
+        $id = app(IdGenerator::class)->projectAsset();
+        $path = preg_replace('/asset_[^\/]+\.png$/', $id.'.png', $path) ?? $path;
+
+        Storage::disk('public')->put($path, $contents);
+
+        return ProjectAsset::query()->create([
+            'id' => $id,
+            'project_id' => $project->id,
+            'team_id' => $project->team_id,
+            'original_name' => $name,
+            'mime_type' => 'image/png',
+            'disk' => 'public',
+            'path' => $path,
+            'public_url' => '/assets/'.$project->id.'/'.basename($path),
+            'width' => 80,
+            'height' => 40,
+            'bytes' => strlen($contents),
+        ]);
     }
 
     private function footerBlock(): string

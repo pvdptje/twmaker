@@ -8,6 +8,7 @@ use App\Jobs\GenerateRelatedPageJob;
 use App\Jobs\GenerateSiteRunJob;
 use App\Jobs\InsertSectionJob;
 use App\Jobs\TargetedEditJob;
+use App\Events\GenerationEventBroadcast;
 use App\Livewire\Builder\Inspector\EditForm\EditForm;
 use App\Livewire\Builder\Inspector\VersionList\VersionList;
 use App\Livewire\Builder\LeftSidebar\LeftSidebar;
@@ -24,6 +25,7 @@ use App\Livewire\Setup\LlmSetup;
 use App\Models\Page;
 use App\Models\PageVersion;
 use App\Models\Project;
+use App\Models\ProjectAsset;
 use App\Models\SiteGenerationRun;
 use App\Models\SiteGenerationRunPage;
 use App\Models\User;
@@ -34,9 +36,11 @@ use App\Services\Llm\StructuredRequest;
 use App\Services\Llm\StructuredResponse;
 use App\Services\Llm\TeamProviderCredentials;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
 use Tests\TestCase;
 
@@ -1054,6 +1058,109 @@ class BuilderShellTest extends TestCase
             && $job->images[0]['base64'] === $imageBase64);
     }
 
+    public function test_edit_form_uploads_and_selects_project_assets_for_targeted_edit(): void
+    {
+        Queue::fake();
+        Storage::fake('public');
+        $this->cacheProviderModels('deepseek', 'test-edit-key', [
+            ['id' => 'deepseek-chat', 'label' => 'DeepSeek Chat', 'modalities' => ['text']],
+        ]);
+
+        $project = Project::query()->create([
+            'id' => app(IdGenerator::class)->project(),
+            'name' => 'Acme',
+        ]);
+        $page = Page::query()->create([
+            'id' => app(IdGenerator::class)->page(),
+            'project_id' => $project->id,
+            'name' => 'Homepage',
+            'prompt' => '',
+            'status' => 'valid',
+        ]);
+
+        $component = Livewire::test(EditForm::class, ['page' => $page, 'selectedNodeId' => 'block_hero'])
+            ->call('openAssetPicker')
+            ->assertSet('assetPickerOpen', true)
+            ->set('assetUpload', UploadedFile::fake()->image('logo.png', 80, 40)->size(20_000))
+            ->call('uploadOwnAsset')
+            ->assertSet('assetStatus', 'Asset added.')
+            ->assertSet('assetPickerOpen', false);
+
+        $asset = ProjectAsset::query()->firstOrFail();
+
+        Storage::disk('public')->assertExists($asset->path);
+        $this->assertSame($project->id, $asset->project_id);
+        $this->assertSame('/assets/'.$project->id.'/'.basename($asset->path), $asset->public_url);
+        $this->assertGreaterThan(5_500_000, $asset->bytes);
+
+        $this->get($asset->public_url)
+            ->assertOk()
+            ->assertHeader('Content-Type', 'image/png');
+
+        $component
+            ->set('instruction', 'Use the selected logo in the hero')
+            ->call('applyEditWithSelection', 'deepseek', 'deepseek-chat', 'test-edit-key', null)
+            ->assertSet('instruction', '')
+            ->assertSet('selectedAssetIds', [])
+            ->assertDispatched('generation-started', pageId: $page->id, stage: 'targeted_edit');
+
+        Queue::assertPushed(TargetedEditJob::class, fn (TargetedEditJob $job): bool => $job->assetIds === [$asset->id]
+            && $job->images === []);
+    }
+
+    public function test_edit_form_chooses_existing_project_asset_from_modal(): void
+    {
+        Storage::fake('public');
+
+        $project = Project::query()->create([
+            'id' => app(IdGenerator::class)->project(),
+            'name' => 'Acme',
+        ]);
+        $page = Page::query()->create([
+            'id' => app(IdGenerator::class)->page(),
+            'project_id' => $project->id,
+            'name' => 'Homepage',
+            'prompt' => '',
+            'status' => 'valid',
+        ]);
+
+        $assetId = app(IdGenerator::class)->projectAsset();
+        $path = "project-assets/{$project->id}/{$assetId}.png";
+        Storage::disk('public')->put($path, 'image-bytes');
+        $asset = ProjectAsset::query()->create([
+            'id' => $assetId,
+            'project_id' => $project->id,
+            'team_id' => $project->team_id,
+            'original_name' => 'hero-product.png',
+            'mime_type' => 'image/png',
+            'disk' => 'public',
+            'path' => $path,
+            'public_url' => "/storage/{$path}",
+            'width' => 120,
+            'height' => 80,
+            'bytes' => strlen('image-bytes'),
+        ]);
+        $expectedAssetUrl = "/assets/{$project->id}/{$assetId}.png";
+
+        Livewire::test(EditForm::class, ['page' => $page, 'selectedNodeId' => 'block_hero'])
+            ->assertSee('Choose own asset')
+            ->assertDontSee('hero-product.png')
+            ->call('openAssetPicker')
+            ->assertSet('assetPickerOpen', true)
+            ->assertSee('hero-product.png')
+            ->assertSee($expectedAssetUrl)
+            ->assertDontSee("/storage/{$path}")
+            ->call('chooseOwnAsset', $asset->id)
+            ->assertSet('assetPickerOpen', false)
+            ->assertSet('selectedAssetIds', [$asset->id])
+            ->assertSee('hero-product.png')
+            ->assertSee($expectedAssetUrl)
+            ->assertSee('Replace')
+            ->call('clearOwnAsset')
+            ->assertSet('selectedAssetIds', [])
+            ->assertSee('Choose own asset');
+    }
+
     public function test_edit_form_rejects_attachments_when_model_does_not_support_vision(): void
     {
         Queue::fake();
@@ -1587,6 +1694,106 @@ HTML,
             ->assertDontSee('shouldAutoOpen', false);
     }
 
+    public function test_stream_panel_includes_prompt_log_data_for_activity_modal(): void
+    {
+        $project = Project::query()->create([
+            'id' => app(IdGenerator::class)->project(),
+            'name' => 'Acme',
+        ]);
+        $page = Page::query()->create([
+            'id' => app(IdGenerator::class)->page(),
+            'project_id' => $project->id,
+            'name' => 'Homepage',
+            'prompt' => '',
+            'status' => 'valid',
+        ]);
+        $page->generationEvents()->create([
+            'id' => app(IdGenerator::class)->generationEvent(),
+            'kind' => 'edit_applied',
+            'stage' => 'targeted_edit',
+            'target_id' => 'block_hero',
+            'level' => 'success',
+            'summary' => 'Edited selected block.',
+            'payload' => [
+                'prompt_log' => [
+                    'stage' => 'targeted_edit',
+                    'provider' => 'deepseek',
+                    'model' => 'deepseek-v4-flash',
+                    'system_prompt' => 'System prompt body.',
+                    'user_prompt' => 'Use /assets/project/logo.png in this block.',
+                    'context' => ['page_id' => $page->id],
+                    'image_count' => 1,
+                ],
+            ],
+            'occurred_at' => now('UTC'),
+        ]);
+
+        Livewire::test(StreamPanel::class, ['page' => $page])
+            ->assertSee('Prompt available', false)
+            ->assertSee('user_prompt', false)
+            ->assertSee('logo.png in this block.', false)
+            ->assertSee('System prompt body.', false)
+            ->assertSee('promptModal', false);
+    }
+
+    public function test_generation_event_broadcast_strips_large_prompt_log_payload(): void
+    {
+        $project = Project::query()->create([
+            'id' => app(IdGenerator::class)->project(),
+            'name' => 'Acme',
+        ]);
+        $page = Page::query()->create([
+            'id' => app(IdGenerator::class)->page(),
+            'project_id' => $project->id,
+            'name' => 'Homepage',
+            'prompt' => '',
+            'status' => 'valid',
+        ]);
+        $event = $page->generationEvents()->create([
+            'id' => app(IdGenerator::class)->generationEvent(),
+            'kind' => 'edit_applied',
+            'stage' => 'targeted_edit',
+            'target_id' => 'block_hero',
+            'level' => 'success',
+            'summary' => 'Edited selected block.',
+            'payload' => [
+                'target_ids' => ['block_hero'],
+                'html_source' => '<section>Updated</section>',
+                'prompt_log' => [
+                    'system_prompt' => str_repeat('system ', 2000),
+                    'user_prompt' => str_repeat('user ', 2000),
+                ],
+            ],
+            'occurred_at' => now('UTC'),
+        ]);
+
+        $broadcastPayload = (new GenerationEventBroadcast($event))->broadcastWith();
+
+        $this->assertArrayNotHasKey('prompt_log', $broadcastPayload['payload']);
+        $this->assertTrue($broadcastPayload['payload']['prompt_log_available']);
+        $this->assertSame(['block_hero'], $broadcastPayload['payload']['target_ids']);
+        $this->assertSame('<section>Updated</section>', $broadcastPayload['payload']['html_source']);
+        $this->assertArrayHasKey('prompt_log', $event->fresh()->payload);
+
+        $largeEvent = $page->generationEvents()->create([
+            'id' => app(IdGenerator::class)->generationEvent(),
+            'kind' => 'edit_applied',
+            'stage' => 'targeted_edit',
+            'target_id' => 'block_hero',
+            'level' => 'success',
+            'summary' => 'Edited selected block.',
+            'payload' => [
+                'target_ids' => ['block_hero'],
+                'html_source' => str_repeat('<div>Large block</div>', 500),
+            ],
+            'occurred_at' => now('UTC'),
+        ]);
+        $largeBroadcastPayload = (new GenerationEventBroadcast($largeEvent))->broadcastWith();
+
+        $this->assertArrayNotHasKey('html_source', $largeBroadcastPayload['payload']);
+        $this->assertTrue($largeBroadcastPayload['payload']['html_source_available']);
+    }
+
     public function test_edit_form_button_shows_running_state_until_generation_finishes(): void
     {
         $project = Project::query()->create([
@@ -1605,6 +1812,9 @@ HTML,
             ->assertSee('editRunning', false)
             ->assertSee('Applying edit', false)
             ->assertSee('x-on:generation-finished.window="finishEdit($event)"', false)
+            ->assertSee('x-on:generation-event-received.window="finishTargetedEdit($event)"', false)
+            ->assertSee('x-on:targeted-edit-applied.window="finishTargetedEdit($event)"', false)
+            ->assertSee('x-on:targeted-edit-stream-cancel.window="finishTargetedEdit($event)"', false)
             ->assertSee('animate-spin', false);
     }
 

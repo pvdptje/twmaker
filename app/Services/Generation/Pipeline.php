@@ -4,6 +4,8 @@ namespace App\Services\Generation;
 
 use App\Models\Page;
 use App\Models\PageVersion;
+use App\Models\ProjectAsset;
+use App\Services\Assets\ProjectAssetLibrary;
 use App\Services\Generation\Stages\DocumentEnhancer;
 use App\Services\Generation\Stages\HtmlMarker;
 use App\Services\Generation\Stages\SectionGenerationResult;
@@ -36,6 +38,7 @@ class Pipeline
         private readonly BlockIndexer $blockIndexer,
         private readonly Renderer $renderer,
         private readonly IdGenerator $ids,
+        private readonly ProjectAssetLibrary $assetLibrary,
     ) {}
 
     private function snapshotVersion(Page $page, string $kind, string $summary): void
@@ -115,9 +118,9 @@ class Pipeline
     /**
      * @param  array<int, array{base64: string, mime_type: string}>  $images
      */
-    public function edit(Page $page, string $targetId, string $instruction, ?string $provider = null, ?string $model = null, ?string $apiKey = null, array $images = []): array
+    public function edit(Page $page, string $targetId, string $instruction, ?string $provider = null, ?string $model = null, ?string $apiKey = null, array $images = [], array $assetIds = []): array
     {
-        return $this->editMany($page, [$targetId], $instruction, $provider, $model, $apiKey, $images);
+        return $this->editMany($page, [$targetId], $instruction, $provider, $model, $apiKey, $images, $assetIds);
     }
 
     /**
@@ -358,7 +361,7 @@ class Pipeline
      * @param  array<int, string>  $targetIds
      * @param  array<int, array{base64: string, mime_type: string}>  $images
      */
-    public function editMany(Page $page, array $targetIds, string $instruction, ?string $provider = null, ?string $model = null, ?string $apiKey = null, array $images = []): array
+    public function editMany(Page $page, array $targetIds, string $instruction, ?string $provider = null, ?string $model = null, ?string $apiKey = null, array $images = [], array $assetIds = []): array
     {
         $provider ??= (string) config('llm.default_provider', 'anthropic');
         $targetIds = array_values(array_unique(array_filter(
@@ -366,17 +369,20 @@ class Pipeline
             fn (mixed $id): bool => is_string($id) && $id !== '',
         )));
         $eventTargetId = implode(',', $targetIds);
+        $ownAssets = $this->assetLibrary->selectedAssetsForPage($page, $assetIds);
+        $ownAssetPromptData = $this->ownAssetPromptData($ownAssets);
 
         if (! $this->hasFreshEditRequestEvent($page, $eventTargetId)) {
             $this->events->record($page, 'edit_requested', 'targeted_edit', 'info', count($targetIds) > 1 ? 'Editing selected block range.' : 'Editing selected block.', $eventTargetId, [
                 'instruction' => $instruction,
                 'target_ids' => $targetIds,
                 'reference_images' => count($images),
+                'own_assets' => array_column($ownAssetPromptData, 'id'),
             ]);
         }
 
         try {
-            $result = $this->targetedEdit->editMany($page, $targetIds, $instruction, $provider, $model, $apiKey, $images);
+            $result = $this->targetedEdit->editMany($page, $targetIds, $instruction, $provider, $model, $apiKey, $images, $ownAssetPromptData, count($images));
             $htmlSource = $this->blockIndexer->replaceBlocks(
                 (string) ($page->html_source ?? ''),
                 $targetIds,
@@ -414,6 +420,25 @@ class Pipeline
 
             throw $exception;
         }
+    }
+
+    /**
+     * @param  array<int, ProjectAsset>  $assets
+     * @return array<int, array{id: string, original_name: string, mime_type: string, public_url: string, width: int|null, height: int|null}>
+     */
+    private function ownAssetPromptData(array $assets): array
+    {
+        return array_map(
+            fn (ProjectAsset $asset): array => [
+                'id' => $asset->id,
+                'original_name' => $asset->original_name,
+                'mime_type' => $asset->mime_type,
+                'public_url' => $asset->publicHtmlUrl(),
+                'width' => $asset->width,
+                'height' => $asset->height,
+            ],
+            $assets,
+        );
     }
 
     private function htmlArtifact(array $artifact, string $htmlSource, array $blockIndex): array
@@ -484,12 +509,21 @@ class Pipeline
     private function payloadWithUsage(array|SectionGenerationResult $value, array $payload = []): array
     {
         $llm = $value instanceof SectionGenerationResult ? $value->llm : ($value['_llm'] ?? null);
+        $promptLog = $value instanceof SectionGenerationResult ? $value->promptLog : ($value['_prompt_log'] ?? null);
 
         if (! is_array($llm)) {
-            return $payload;
+            $llm = null;
         }
 
-        return $payload + ['llm' => $llm];
+        if (is_array($llm) && $llm !== []) {
+            $payload += ['llm' => $llm];
+        }
+
+        if (is_array($promptLog) && $promptLog !== []) {
+            $payload += ['prompt_log' => $promptLog];
+        }
+
+        return $payload;
     }
 
     /**

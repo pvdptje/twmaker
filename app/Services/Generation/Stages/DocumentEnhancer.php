@@ -11,6 +11,7 @@ use App\Services\Html\HtmlFragmentRepairer;
 use App\Services\Html\HtmlValidationException;
 use App\Services\Ids\IdGenerator;
 use App\Services\Llm\LlmProvider;
+use App\Services\Llm\PromptLog;
 use App\Services\Llm\TextRequest;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -86,6 +87,7 @@ class DocumentEnhancer
                 'model' => $response->model,
                 'usage' => $response->usage,
             ],
+            '_prompt_log' => PromptLog::fromTextRequest($request),
         ];
     }
 

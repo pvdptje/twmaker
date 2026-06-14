@@ -4,6 +4,7 @@ namespace App\Services\Generation\Stages;
 
 use App\Events\GenerationStreamChunk;
 use App\Models\Page;
+use App\Models\ProjectAsset;
 use App\Services\Generation\GenerationStreamBuffer;
 use App\Services\Html\BlockIndexer;
 use App\Services\Html\HtmlDocumentValidator;
@@ -11,6 +12,7 @@ use App\Services\Html\HtmlFragmentRepairer;
 use App\Services\Html\HtmlValidationException;
 use App\Services\Ids\IdGenerator;
 use App\Services\Llm\LlmProvider;
+use App\Services\Llm\PromptLog;
 use App\Services\Llm\TextRequest;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -30,18 +32,19 @@ class TargetedEdit
     /**
      * @param  array<int, array{base64: string, mime_type: string}>  $images
      */
-    public function edit(Page $page, string $targetId, string $instruction, ?string $provider = null, ?string $model = null, ?string $apiKey = null, array $images = []): array
+    public function edit(Page $page, string $targetId, string $instruction, ?string $provider = null, ?string $model = null, ?string $apiKey = null, array $images = [], array $ownAssets = [], ?int $referenceImageCount = null): array
     {
-        return $this->editMany($page, [$targetId], $instruction, $provider, $model, $apiKey, $images);
+        return $this->editMany($page, [$targetId], $instruction, $provider, $model, $apiKey, $images, $ownAssets, $referenceImageCount);
     }
 
     /**
      * @param  array<int, string>  $targetIds
      * @param  array<int, array{base64: string, mime_type: string}>  $images
      */
-    public function editMany(Page $page, array $targetIds, string $instruction, ?string $provider = null, ?string $model = null, ?string $apiKey = null, array $images = []): array
+    public function editMany(Page $page, array $targetIds, string $instruction, ?string $provider = null, ?string $model = null, ?string $apiKey = null, array $images = [], array $ownAssets = [], ?int $referenceImageCount = null): array
     {
         $provider ??= (string) config('llm.default_provider', 'anthropic');
+        $referenceImageCount ??= count($images);
         $targetIds = $this->normalizeTargetIds($targetIds);
         $htmlSource = (string) ($page->html_source ?? '');
         $blockIndex = $this->targetIndex($htmlSource, $targetIds);
@@ -57,12 +60,13 @@ class TargetedEdit
             provider: $provider,
             model: $model ?: (string) config("llm.providers.{$provider}.models.targeted_edit"),
             systemPrompt: $this->prompts->system('targeted_edit'),
-            userPrompt: $this->buildUserPrompt($instruction, $targetIds, $targetBlocks, $htmlSource, $blockIndex, $images),
+            userPrompt: $this->buildUserPrompt($instruction, $targetIds, $targetBlocks, $htmlSource, $blockIndex, $images, $ownAssets, $referenceImageCount),
             context: [
                 'page_id' => $page->id,
                 'page_name' => $page->name,
                 'target_ids' => implode(',', $targetIds),
-                'reference_images' => count($images),
+                'reference_images' => $referenceImageCount,
+                'own_assets' => count($ownAssets),
             ],
             maxTokens: (int) config("llm.providers.{$provider}.edit_max_tokens", 8000),
             apiKey: $apiKey,
@@ -83,6 +87,7 @@ class TargetedEdit
             $this->repairer->repair($this->stripCodeFence(trim((string) $response->text))),
             $targetBlocks[0],
         );
+        $replacement = $this->repairSelectedAssetPaths($replacement, $ownAssets, $htmlSource, $targetBlocks);
 
         $this->validator->assertValid($replacement);
 
@@ -95,6 +100,7 @@ class TargetedEdit
                 'model' => $response->model,
                 'usage' => $response->usage,
             ],
+            '_prompt_log' => PromptLog::fromTextRequest($request),
         ];
     }
 
@@ -139,8 +145,9 @@ class TargetedEdit
      * @param  array<int, array<string, mixed>>  $blockIndex
      * @param  array<int, array{base64: string, mime_type: string}>  $images
      */
-    private function buildUserPrompt(string $instruction, array $targetIds, array $targetBlocks, string $htmlSource, array $blockIndex, array $images = []): string
+    private function buildUserPrompt(string $instruction, array $targetIds, array $targetBlocks, string $htmlSource, array $blockIndex, array $images = [], array $ownAssets = [], ?int $referenceImageCount = null): string
     {
+        $referenceImageCount ??= count($images);
         $targetHtml = $this->targetHtml($htmlSource, $targetBlocks);
         $surrounding = $this->surroundingHtml($htmlSource, $targetBlocks);
         $compact = $this->compactBlockIndex($blockIndex);
@@ -158,20 +165,152 @@ class TargetedEdit
                 : 'Return one or more complete tw:block regions that replace the selected contiguous block range. The first returned block keeps the first selected block identity; extra returned blocks become new sections.';
         }
 
-        $imageNote = $images !== []
-            ? 'A visual reference '.(count($images) === 1 ? 'screenshot is' : count($images).' screenshots are')
+        $imageNote = $referenceImageCount > 0
+            ? 'A visual reference '.($referenceImageCount === 1 ? 'screenshot is' : $referenceImageCount.' screenshots are')
                 .' attached. Use the screenshot to guide the requested edit, especially layout, hierarchy, spacing, color, and visual style, while keeping the result compatible with the surrounding page.'
             : null;
+        $ownAssetNote = $this->assetInsertionPrompt($ownAssets, $referenceImageCount);
+        $existingAssetNote = $this->existingAssetPrompt($targetHtml, $surrounding, $ownAssets);
 
         return implode("\n\n", array_filter([
             "User instruction:\n{$instruction}",
             $imageNote,
+            $ownAssetNote,
+            $existingAssetNote,
             'Selected block ids: '.implode(', ', $targetIds),
             "All block ids in the page:\n".trim($blockList),
             "Selected block HTML (including markers):\n{$targetHtml}",
             "Surrounding HTML for context:\n{$surrounding}",
             $rangeNote,
         ]));
+    }
+
+    /**
+     * @param  array<int, array{id: string, original_name: string, mime_type: string, public_url: string, width: int|null, height: int|null}>  $ownAssets
+     */
+    private function assetInsertionPrompt(array $ownAssets, int $referenceImageCount): ?string
+    {
+        if ($ownAssets === []) {
+            return null;
+        }
+
+        $lines = [
+            'Asset insertion task:',
+            'Use the selected user-owned asset path(s) in the selected HTML block or selected contiguous block range.',
+            'If the user instruction does not clearly say where to place the asset, make your best guess based on the block structure, existing images/backgrounds, asset filename, and surrounding content.',
+            'Keep unrelated HTML, text, links, classes, structure, and existing asset paths intact. Change only what is needed to use the selected asset well.',
+            'Return only the replacement marked block or marked contiguous block range, exactly as required by the system prompt.',
+            'Each Public HTML path below is immutable. Copy it exactly, including the leading slash, every letter, every digit, every zero, and the filename extension. Treat it as a code literal, not prose.',
+            'Never infer, abbreviate, retype from memory, or "correct" the path. If you use the asset, paste the exact Public HTML path string from between the backticks.',
+            'Use the exact path as an `<img src>`, a CSS `background-image: url(...)`, or a Tailwind arbitrary background class such as `bg-[url(\'...\')]`, depending on what fits the requested edit.',
+            'Do not rehost, crop, base64-encode, convert, or invent another path for a selected asset. Do not replace it with a remote URL or placeholder when this asset satisfies the request.',
+        ];
+
+        foreach ($ownAssets as $asset) {
+            $dimensions = ($asset['width'] ?? null) !== null && ($asset['height'] ?? null) !== null
+                ? "{$asset['width']}x{$asset['height']}"
+                : 'unknown size';
+
+            $lines[] = implode("\n", [
+                '- Asset ID: '.$asset['id'],
+                '  Public HTML path: `'.$asset['public_url'].'`',
+                '  Original filename: '.$asset['original_name'],
+                '  MIME type: '.$asset['mime_type'],
+                '  Dimensions: '.$dimensions,
+                '  Example image usage: <img src="'.$asset['public_url'].'" alt="">',
+                '  Example background usage: <div style="background-image: url(\''.$asset['public_url'].'\')"></div>',
+            ]);
+        }
+
+        return implode("\n", $lines);
+    }
+
+    /**
+     * @param  array<int, array{id: string, original_name: string, mime_type: string, public_url: string, width: int|null, height: int|null}>  $ownAssets
+     */
+    private function existingAssetPrompt(string $targetHtml, string $surrounding, array $ownAssets = []): ?string
+    {
+        $paths = $this->userOwnedAssetPaths($targetHtml."\n".$surrounding);
+        $selectedPath = count($ownAssets) === 1 && is_string($ownAssets[0]['public_url'] ?? null)
+            ? $ownAssets[0]['public_url']
+            : null;
+
+        if ($paths === []) {
+            return $selectedPath !== null
+                ? 'User-owned asset path rule: relative paths beginning with `/assets/`, `/storage/`, `./assets/`, or `../assets/` are files the user added. Preserve unrelated existing asset paths, but when applying the selected asset to an image or background, use the selected Public HTML path exactly.'
+                : 'User-owned asset path rule: relative paths beginning with `/assets/`, `/storage/`, `./assets/`, or `../assets/` are files the user added. Preserve them exactly unless the user explicitly asks to remove or replace that specific asset.';
+        }
+
+        $instruction = $selectedPath !== null
+            ? "Preserve unrelated existing paths. If the requested edit applies the selected asset to an existing image/background URL, replace that URL with the selected Public HTML path exactly: `{$selectedPath}`."
+            : 'Preserve these paths exactly unless the user explicitly asks to remove or replace that specific asset.';
+
+        return "Existing user-owned asset paths found in the selected/surrounding HTML:\n"
+            .implode("\n", array_map(fn (string $path): string => "- {$path}", $paths))
+            ."\n".$instruction;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function userOwnedAssetPaths(string $html): array
+    {
+        preg_match_all('/(?:"|\'|\(|\s)((?:\/assets\/|\/storage\/|\.\/assets\/|\.\.\/assets\/)[^"\'\)\s<>]+)/i', $html, $matches);
+
+        return array_slice(array_values(array_unique($matches[1] ?? [])), 0, 20);
+    }
+
+    /**
+     * @param  array<int, array{id: string, original_name: string, mime_type: string, public_url: string, width: int|null, height: int|null}>  $ownAssets
+     * @param  array<int, array<string, mixed>>  $targetBlocks
+     */
+    private function repairSelectedAssetPaths(string $html, array $ownAssets, string $htmlSource, array $targetBlocks): string
+    {
+        if (count($ownAssets) !== 1 || ! is_string($ownAssets[0]['public_url'] ?? null) || $ownAssets[0]['public_url'] === '') {
+            return $html;
+        }
+
+        $selectedPath = $ownAssets[0]['public_url'];
+        $existingPaths = array_flip($this->userOwnedAssetPaths(
+            $this->targetHtml($htmlSource, $targetBlocks)."\n".$this->surroundingHtml($htmlSource, $targetBlocks)
+        ));
+
+        return preg_replace_callback(
+            "/(?P<prefix>^|[\"'\\(\\s])(?P<path>\\/assets\\/[^\"'\\)\\s<>]+)/i",
+            function (array $match) use ($selectedPath, $existingPaths): string {
+                $path = (string) $match['path'];
+
+                if ($path === $selectedPath) {
+                    return $match[0];
+                }
+
+                if (! preg_match('/^\/assets\/[^\/]+\/asset_[^\/]+\.(png|jpe?g|webp)$/i', $path)) {
+                    return $match[0];
+                }
+
+                if (isset($existingPaths[$path]) && $this->validProjectAssetPath($path)) {
+                    return $match[0];
+                }
+
+                return (string) $match['prefix'].$selectedPath;
+            },
+            $html,
+        ) ?? $html;
+    }
+
+    private function validProjectAssetPath(string $path): bool
+    {
+        if (! preg_match('/^\/assets\/(?P<project>[^\/]+)\/(?P<filename>asset_[^\/]+\.(?:png|jpe?g|webp))$/i', $path, $matches)) {
+            return false;
+        }
+
+        $assetId = pathinfo((string) $matches['filename'], PATHINFO_FILENAME);
+
+        return ProjectAsset::query()
+            ->whereKey($assetId)
+            ->where('project_id', (string) $matches['project'])
+            ->where('path', 'like', '%/'.(string) $matches['filename'])
+            ->exists();
     }
 
     private function compactBlockIndex(array $blocks): array
