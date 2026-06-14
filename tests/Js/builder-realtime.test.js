@@ -81,11 +81,45 @@ describe('builder realtime bridge', () => {
         ]);
     });
 
-    it('uses streamed targeted edit html when terminal event omits html source', () => {
+    it('patches the block in place when the terminal event carries html source', () => {
         const { handlers, window } = bootRealtime();
         const applied = [];
+        const finished = [];
 
         window.addEventListener('targeted-edit-applied', (event) => applied.push(event.detail));
+        window.addEventListener('generation-finished', (event) => finished.push(event.detail));
+
+        handlers['.GenerationEventBroadcast']({
+            page_id: 'page_01',
+            kind: 'edit_requested',
+            stage: 'targeted_edit',
+            payload: { target_ids: ['block_hero'] },
+        });
+
+        handlers['.GenerationEventBroadcast']({
+            page_id: 'page_01',
+            kind: 'edit_applied',
+            stage: 'targeted_edit',
+            payload: { target_ids: ['block_hero'], html_source: '<section>Final</section>' },
+        });
+
+        expect(applied).toEqual([
+            { targetIds: ['block_hero'], html: '<section>Final</section>' },
+        ]);
+        expect(finished).toEqual([
+            { pageId: 'page_01', status: 'valid', incremental: true },
+        ]);
+    });
+
+    it('reconciles from the server instead of streamed text when html source is dropped', () => {
+        const { handlers, window } = bootRealtime();
+        const applied = [];
+        const cancelled = [];
+        const finished = [];
+
+        window.addEventListener('targeted-edit-applied', (event) => applied.push(event.detail));
+        window.addEventListener('targeted-edit-stream-cancel', (event) => cancelled.push(event.detail));
+        window.addEventListener('generation-finished', (event) => finished.push(event.detail));
 
         handlers['.GenerationEventBroadcast']({
             page_id: 'page_01',
@@ -117,8 +151,13 @@ describe('builder realtime bridge', () => {
             payload: { target_ids: ['block_hero'], html_source_available: true },
         });
 
-        expect(applied).toEqual([
-            { targetIds: ['block_hero'], html: '<section>Updated</section>' },
+        // The raw stream must never be patched in as the final result.
+        expect(applied).toEqual([]);
+        // The in-progress streamed preview is dropped, and a full authoritative
+        // reconcile is requested via a non-incremental generation-finished.
+        expect(cancelled).toEqual([{ targetIds: ['block_hero'] }]);
+        expect(finished).toEqual([
+            { pageId: 'page_01', status: 'valid', incremental: false },
         ]);
     });
 });

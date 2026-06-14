@@ -149,13 +149,27 @@
             emit('section-generation-stream-start', {});
         }
 
+        // Targeted edits normally patch just the edited block in place using the
+        // authoritative block HTML that rides along on the broadcast. When that HTML
+        // is too large for the broadcaster it gets dropped server-side, and the raw
+        // streamed text is NOT a safe substitute (it skips code-fence stripping, HTML
+        // repair, id normalisation, and asset-path repair). In that case fall back to
+        // a full authoritative reconcile from the server, the same way full
+        // generations do, rather than patching the iframe with unvalidated stream text.
+        let editPatchedInPlace = true;
+
         if (event.kind === 'edit_applied') {
             const targetIds = Array.isArray(event.payload?.target_ids) ? event.payload.target_ids : [];
-            const html = typeof event.payload?.html_source === 'string' && event.payload.html_source !== ''
-                ? event.payload.html_source
-                : state.html;
+            const html = typeof event.payload?.html_source === 'string' ? event.payload.html_source : '';
+
             if (targetIds.length > 0 && html !== '') {
                 emit('targeted-edit-applied', { targetIds, html });
+            } else {
+                editPatchedInPlace = false;
+
+                if (state.activeTargetedEdit) {
+                    emit('targeted-edit-stream-cancel', { targetIds: state.activeTargetedEdit.targetIds });
+                }
             }
         }
 
@@ -170,7 +184,7 @@
         const terminal = {
             generation_completed: ['valid', false],
             generation_failed: ['error', false],
-            edit_applied: ['valid', true],
+            edit_applied: ['valid', editPatchedInPlace],
             edit_rejected: ['error', true],
             insert_applied: ['valid', false],
             insert_rejected: ['error', false],
