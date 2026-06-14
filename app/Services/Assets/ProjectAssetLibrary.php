@@ -69,6 +69,53 @@ class ProjectAssetLibrary
     }
 
     /**
+     * Persist already-decoded image bytes (e.g. from ImageGenerator) as a project
+     * asset. Mirrors storeUploaded but works from raw bytes rather than an upload.
+     */
+    public function storeGeneratedImage(Project $project, string $bytes, string $mime, string $originalName): ProjectAsset
+    {
+        $mime = strtolower($mime);
+        if (! in_array($mime, ImageAttachments::ALLOWED_MIMES, true)) {
+            throw ValidationException::withMessages([
+                'assetPrompt' => 'The generated image format is not supported.',
+            ]);
+        }
+
+        if ($bytes === '' || strlen($bytes) > self::MAX_UPLOAD_BYTES) {
+            throw ValidationException::withMessages([
+                'assetPrompt' => 'The generated image was empty or too large.',
+            ]);
+        }
+
+        $size = @getimagesizefromstring($bytes);
+        if ($size === false) {
+            throw ValidationException::withMessages([
+                'assetPrompt' => 'The generated image could not be read.',
+            ]);
+        }
+
+        $id = $this->ids->projectAsset();
+        $filename = $id.'.'.$this->extensionForMime($mime);
+        $path = "project-assets/{$project->id}/{$filename}";
+
+        Storage::disk('public')->put($path, $bytes);
+
+        return ProjectAsset::query()->create([
+            'id' => $id,
+            'project_id' => $project->id,
+            'team_id' => $project->team_id,
+            'original_name' => $this->safeName($originalName),
+            'mime_type' => $mime,
+            'disk' => 'public',
+            'path' => $path,
+            'public_url' => $this->publicUrl($project, $filename),
+            'width' => (int) ($size[0] ?? 0) ?: null,
+            'height' => (int) ($size[1] ?? 0) ?: null,
+            'bytes' => strlen($bytes),
+        ]);
+    }
+
+    /**
      * @param  array<int, string>  $assetIds
      * @return array<int, ProjectAsset>
      */
@@ -143,7 +190,12 @@ class ProjectAssetLibrary
 
     private function safeOriginalName(UploadedFile $file): string
     {
-        $name = trim($file->getClientOriginalName());
+        return $this->safeName($file->getClientOriginalName());
+    }
+
+    private function safeName(string $name): string
+    {
+        $name = trim($name);
 
         return $name !== '' ? str($name)->limit(255, '')->toString() : 'image';
     }

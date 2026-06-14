@@ -7,6 +7,8 @@ use App\Models\Page;
 use App\Services\Assets\ProjectAssetLibrary;
 use App\Services\Generation\GenerationEventRecorder;
 use App\Services\Llm\ImageAttachments;
+use App\Services\Llm\ImageGenerationException;
+use App\Services\Llm\ImageGenerator;
 use App\Services\Llm\LlmRegistry;
 use App\Services\Llm\TeamProviderCredentials;
 use Illuminate\Contracts\View\View;
@@ -49,6 +51,8 @@ class EditForm extends Component
     public string $assetStatus = '';
 
     public bool $assetPickerOpen = false;
+
+    public string $assetPrompt = '';
 
     public function mount(): void
     {
@@ -203,6 +207,39 @@ class EditForm extends Component
         $this->assetPickerOpen = false;
     }
 
+    public function generateOwnAsset(ImageGenerator $generator, ProjectAssetLibrary $assets): void
+    {
+        $this->validate([
+            'assetPrompt' => ['required', 'string', 'min:3', 'max:1000'],
+        ]);
+
+        $team = $this->credentials()->teamForPage($this->page);
+        if (! $generator->isConfigured($team)) {
+            $this->addError('assetPrompt', 'Image generation is not configured. Add an OpenAI API key first.');
+
+            return;
+        }
+
+        $name = $this->generatedAssetName();
+
+        try {
+            // gpt-image-1 can take 20-40s; lift the request ceiling for this call.
+            @set_time_limit((int) config('llm.image_generation.timeout', 180) + 30);
+
+            $image = $generator->generate($this->assetPrompt, $team);
+            $asset = $assets->storeGeneratedImage($this->page->project()->firstOrFail(), $image->bytes, $image->mimeType, $name);
+        } catch (ImageGenerationException $exception) {
+            $this->addError('assetPrompt', $exception->getMessage());
+
+            return;
+        }
+
+        $this->selectedAssetIds = [$asset->id];
+        $this->assetStatus = 'Image generated.';
+        $this->assetPrompt = '';
+        $this->assetPickerOpen = false;
+    }
+
     public function render(): View
     {
         $ownAssets = $this->page->project
@@ -212,7 +249,15 @@ class EditForm extends Component
         return view()->file(__DIR__.'/edit-form.blade.php', [
             'ownAssets' => $ownAssets,
             'selectedAsset' => $ownAssets->firstWhere('id', $this->selectedAssetIds()[0] ?? null),
+            'imageGenerationEnabled' => app(ImageGenerator::class)->isConfigured($this->credentials()->teamForPage($this->page)),
         ]);
+    }
+
+    private function generatedAssetName(): string
+    {
+        $name = trim(str($this->assetPrompt)->limit(60, '')->toString());
+
+        return $name !== '' ? $name : 'generated-image';
     }
 
     private function providerOptions(): array

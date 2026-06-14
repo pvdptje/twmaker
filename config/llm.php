@@ -177,4 +177,18 @@ return [
             ],
         ]),
     ],
+
+    // Image generation is a separate capability from the freely-selected design
+    // model: it always runs on a dedicated image model/endpoint (only OpenAI and
+    // Gemini implement it in Prism), independent of which text model edits the
+    // HTML. The API key is resolved per-team (falling back to this provider's key)
+    // by TeamProviderCredentials, so nothing extra is needed here beyond the key.
+    'image_generation' => [
+        'provider' => env('LLM_IMAGE_PROVIDER', 'openai'),
+        'model' => env('LLM_IMAGE_MODEL', 'gpt-image-1'),
+        'size' => env('LLM_IMAGE_SIZE', '1024x1024'),
+        'quality' => env('LLM_IMAGE_QUALITY', 'medium'),
+        'output_format' => env('LLM_IMAGE_OUTPUT_FORMAT', 'png'),
+        'timeout' => (float) env('LLM_IMAGE_TIMEOUT', 180),
+    ],
 ];

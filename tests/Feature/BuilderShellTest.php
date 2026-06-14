@@ -28,9 +28,12 @@ use App\Models\Project;
 use App\Models\ProjectAsset;
 use App\Models\SiteGenerationRun;
 use App\Models\SiteGenerationRunPage;
+use App\Models\Team;
 use App\Models\User;
 use App\Services\Html\BlockIndexer;
 use App\Services\Ids\IdGenerator;
+use App\Services\Llm\GeneratedImageData;
+use App\Services\Llm\ImageGenerator;
 use App\Services\Llm\LlmProvider;
 use App\Services\Llm\StructuredRequest;
 use App\Services\Llm\StructuredResponse;
@@ -57,6 +60,17 @@ class BuilderShellTest extends TestCase
         $this->user = User::factory()->create();
         $this->user->createDefaultTeam();
         $this->actingAs($this->user);
+    }
+
+    private function fakePngBytes(int $width, int $height): string
+    {
+        $image = imagecreatetruecolor($width, $height);
+        ob_start();
+        imagepng($image);
+        $bytes = (string) ob_get_clean();
+        imagedestroy($image);
+
+        return $bytes;
     }
 
     public function test_project_list_creates_a_project(): void
@@ -1106,6 +1120,89 @@ class BuilderShellTest extends TestCase
 
         Queue::assertPushed(TargetedEditJob::class, fn (TargetedEditJob $job): bool => $job->assetIds === [$asset->id]
             && $job->images === []);
+    }
+
+    public function test_edit_form_generates_an_image_asset_and_selects_it(): void
+    {
+        Storage::fake('public');
+
+        $project = Project::query()->create([
+            'id' => app(IdGenerator::class)->project(),
+            'name' => 'Acme',
+        ]);
+        $page = Page::query()->create([
+            'id' => app(IdGenerator::class)->page(),
+            'project_id' => $project->id,
+            'name' => 'Homepage',
+            'prompt' => '',
+            'status' => 'valid',
+        ]);
+
+        $png = $this->fakePngBytes(96, 64);
+
+        $this->app->instance(ImageGenerator::class, new class(app(TeamProviderCredentials::class), $png) extends ImageGenerator
+        {
+            public function __construct(TeamProviderCredentials $credentials, private readonly string $png)
+            {
+                parent::__construct($credentials);
+            }
+
+            public function isConfigured(?Team $team): bool
+            {
+                return true;
+            }
+
+            public function generate(string $prompt, ?Team $team): GeneratedImageData
+            {
+                return new GeneratedImageData(bytes: $this->png, mimeType: 'image/png', revisedPrompt: $prompt);
+            }
+        });
+
+        $component = Livewire::test(EditForm::class, ['page' => $page, 'selectedNodeId' => 'block_hero'])
+            ->call('openAssetPicker')
+            ->assertSee('Generate with AI')
+            ->set('assetPrompt', 'a calm mountain lake at dawn')
+            ->call('generateOwnAsset')
+            ->assertHasNoErrors()
+            ->assertSet('assetStatus', 'Image generated.')
+            ->assertSet('assetPrompt', '')
+            ->assertSet('assetPickerOpen', false);
+
+        $asset = ProjectAsset::query()->firstOrFail();
+
+        $this->assertSame([$asset->id], $component->get('selectedAssetIds'));
+        $this->assertSame($project->id, $asset->project_id);
+        $this->assertSame('image/png', $asset->mime_type);
+        $this->assertSame(96, $asset->width);
+        $this->assertSame(64, $asset->height);
+        $this->assertSame('/assets/'.$project->id.'/'.basename($asset->path), $asset->public_url);
+        Storage::disk('public')->assertExists($asset->path);
+
+        $this->get($asset->public_url)
+            ->assertOk()
+            ->assertHeader('Content-Type', 'image/png');
+    }
+
+    public function test_edit_form_hides_image_generation_when_not_configured(): void
+    {
+        config()->set('llm.image_generation.provider', 'openai');
+        config()->set('llm.providers.openai.api_key', '');
+
+        $project = Project::query()->create([
+            'id' => app(IdGenerator::class)->project(),
+            'name' => 'Acme',
+        ]);
+        $page = Page::query()->create([
+            'id' => app(IdGenerator::class)->page(),
+            'project_id' => $project->id,
+            'name' => 'Homepage',
+            'prompt' => '',
+            'status' => 'valid',
+        ]);
+
+        Livewire::test(EditForm::class, ['page' => $page, 'selectedNodeId' => 'block_hero'])
+            ->call('openAssetPicker')
+            ->assertDontSee('Generate with AI');
     }
 
     public function test_edit_form_chooses_existing_project_asset_from_modal(): void

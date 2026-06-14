@@ -191,6 +191,37 @@
                     @enderror
                 </div>
 
+                @if ($imageGenerationEnabled)
+                    <div class="border-b border-neutral-800 p-4">
+                        <div class="flex items-center justify-between gap-2">
+                            <label class="text-[11px] font-semibold uppercase tracking-normal text-neutral-500">Generate with AI</label>
+                            <span class="text-[11px] text-neutral-600">OpenAI</span>
+                        </div>
+                        <textarea
+                            wire:model="assetPrompt"
+                            rows="2"
+                            class="mt-2 w-full rounded-md border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
+                            placeholder="Describe an image, e.g. 'a minimalist mountain landscape at dawn, soft muted tones'"
+                            wire:loading.attr="disabled"
+                            wire:target="generateOwnAsset"
+                        ></textarea>
+                        @error('assetPrompt')
+                            <div class="mt-2 text-xs text-red-300">{{ $message }}</div>
+                        @enderror
+                        <button
+                            type="button"
+                            wire:click="generateOwnAsset"
+                            wire:loading.attr="disabled"
+                            wire:target="generateOwnAsset"
+                            class="mt-2 inline-flex h-9 w-full items-center justify-center rounded-md bg-cyan-500 px-3 text-xs font-semibold text-neutral-950 transition hover:bg-cyan-400 disabled:bg-neutral-800 disabled:text-neutral-500"
+                        >
+                            <span wire:loading wire:target="generateOwnAsset" class="mr-2 h-3 w-3 animate-spin rounded-full border-2 border-neutral-700 border-t-neutral-950"></span>
+                            <span wire:loading.remove wire:target="generateOwnAsset">Generate image</span>
+                            <span wire:loading wire:target="generateOwnAsset">Generating image…</span>
+                        </button>
+                    </div>
+                @endif
+
                 <div class="min-h-0 overflow-y-auto p-4">
                     @if ($ownAssets->isNotEmpty())
                         <div class="grid grid-cols-2 gap-3">
